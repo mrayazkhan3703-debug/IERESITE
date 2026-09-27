@@ -5,7 +5,8 @@ import { getConfig } from "@/lib/config";
 export const PRIVILEGED_ROLES = ["OWNER", "ADMIN", "MANAGER", "CONTENT_EDITOR"] as const;
 
 export function requiresPrivilegedMfa(roles: readonly string[]): boolean {
-  return roles.some((role) => (PRIVILEGED_ROLES as readonly string[]).includes(role));
+  return getConfig().AUTH_MFA_REQUIRED
+    && roles.some((role) => (PRIVILEGED_ROLES as readonly string[]).includes(role));
 }
 
 function encryptionKey(): Buffer {
