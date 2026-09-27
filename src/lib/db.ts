@@ -16,9 +16,26 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+const prismaDatabaseUrl = (() => {
+  const value = process.env.DATABASE_URL
+  if (!value) return undefined
+
+  try {
+    const url = new URL(value)
+    // Keep this Render service below Supabase's 15-connection session-pool limit.
+    if (url.hostname.endsWith('.pooler.supabase.com') && url.port === '5432') {
+      url.searchParams.set('connection_limit', '3')
+    }
+    return url.toString()
+  } catch {
+    return value
+  }
+})()
+
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
+    ...(prismaDatabaseUrl ? { datasources: { db: { url: prismaDatabaseUrl } } } : {}),
     log: process.env.NODE_ENV === 'production' ? ['error'] : ['error', 'warn'],
   })
 
