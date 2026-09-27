@@ -52,6 +52,7 @@ yarn-error.log*
 next-env.d.ts
 local-*
 # Required application/test sources, not local scratch output.
+!src/server/search/local-provider.ts
 !src/server/monitoring/local-alerts.ts
 !src/server/monitoring/local-transport.ts
 !tests/local-alert-delivery.smtp.ts

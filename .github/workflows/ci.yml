@@ -56,7 +56,7 @@ jobs:
       - name: Check tracked filenames and Docker context hygiene
         run: |
           node scripts/check-repository-hygiene.mjs
-          if git check-ignore --no-index -- src/server/monitoring/local-alerts.ts src/server/monitoring/local-transport.ts tests/local-alert-delivery.smtp.ts tests/local-alerts.test.ts tests/performance/local-navigation.spec.ts tests/static-asset-inventory.test.ts scripts/report-backup-operations.mjs tests/backup-operations-report.test.ts; then
+          if git check-ignore --no-index -- src/server/search/local-provider.ts src/server/monitoring/local-alerts.ts src/server/monitoring/local-transport.ts tests/local-alert-delivery.smtp.ts tests/local-alerts.test.ts tests/performance/local-navigation.spec.ts tests/static-asset-inventory.test.ts scripts/report-backup-operations.mjs tests/backup-operations-report.test.ts; then
             echo "Required CI sources must not be ignored."
             exit 1
           else

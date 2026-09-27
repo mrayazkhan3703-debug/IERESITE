@@ -5,6 +5,21 @@ import { pathToFileURL } from "node:url";
 
 const examplePaths = new Set([".env.example", ".env.docker.example"]);
 
+export const requiredSourcePaths = [
+  "src/server/search/local-provider.ts",
+  "src/server/monitoring/local-alerts.ts", "src/server/monitoring/local-transport.ts",
+  "tests/local-alert-delivery.smtp.ts", "tests/local-alerts.test.ts",
+  "tests/performance/local-navigation.spec.ts", "tests/static-asset-inventory.test.ts",
+  "scripts/report-backup-operations.mjs", "tests/backup-operations-report.test.ts",
+];
+
+/** Required runtime/test sources must be in the publishable index, not just on disk. */
+export function findMissingRequiredSources(trackedPaths) {
+  const tracked = new Set(trackedPaths);
+  return requiredSourcePaths.filter((path) => !tracked.has(path))
+    .map((path) => `Required source missing from Git index: ${path}`);
+}
+
 /** Filename/build-context policy only; never reads environment or credential files.
  * @param {string[]} trackedPaths NUL-delimited Git index paths after splitting.
  * @param {string} dockerIgnore Docker ignore policy, not environment contents.
@@ -42,7 +57,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.error("Cannot verify Git index filenames; hygiene check fails closed.");
     process.exitCode = 1;
   } else {
-    const violations = findHygieneViolations(index.stdout.split("\0").filter(Boolean), readFileSync(".dockerignore", "utf8"));
+    const trackedPaths = index.stdout.split("\0").filter(Boolean);
+    const violations = [...findHygieneViolations(trackedPaths, readFileSync(".dockerignore", "utf8")),
+      ...findMissingRequiredSources(trackedPaths)];
     if (violations.length) {
       for (const violation of violations) console.error(violation);
       process.exitCode = 1;
