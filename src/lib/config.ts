@@ -45,6 +45,7 @@ const schema = z.object({
   AUTH_SESSION_TTL_HOURS: int(168),
   AUTH_COOKIE_NAME: z.string().default("ie_session"),
   AUTH_MFA_ENCRYPTION_KEY: z.string().optional(),
+  AUTH_MFA_REQUIRED: bool(true),
   ADMIN_BOOTSTRAP_EMAIL: z.string().email().optional(),
   ADMIN_BOOTSTRAP_PASSWORD: z.string().min(12).optional(),
   ADMIN_BOOTSTRAP_NAME: z.string().optional(),
