@@ -21,4 +21,4 @@ COPY --from=build --chown=bun:bun /app /app
 RUN chown bun:bun /app
 USER bun
 EXPOSE 3000 3001
-CMD ["bun", ".next/standalone/server.js"]
+CMD ["/bin/sh", "scripts/start-staging-web.sh"]
