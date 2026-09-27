@@ -1,0 +1,5 @@
+header,
+[data-consent-banner],
+nav.fixed {
+  visibility: hidden !important;
+}

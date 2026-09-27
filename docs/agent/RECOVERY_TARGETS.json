@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "status": "OWNER_APPROVED_TARGETS_ONLY",
+  "approvedOn": "2026-09-26",
+  "source": "Explicit user instruction",
+  "rpoSeconds": 3600,
+  "rtoSeconds": 7200,
+  "scope": "Backup and disaster recovery; targets are not proof of achieved recovery"
+}

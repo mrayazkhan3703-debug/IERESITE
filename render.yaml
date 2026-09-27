@@ -1,0 +1,63 @@
+# Temporary free, web-only staging preview. Async jobs do not run here.
+# Never use the private backup bucket as application object storage.
+services:
+  - type: web
+    name: iere-staging-web
+    runtime: docker
+    region: frankfurt
+    plan: free
+    branch: main
+    autoDeployTrigger: "off"
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: /bin/sh scripts/start-staging-web.sh
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ENV
+        value: staging
+      - key: STAGING_WEB_ONLY
+        value: "true"
+      - key: PORT
+        value: "3000"
+      - key: HOSTNAME
+        value: 0.0.0.0
+      - key: APP_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_PUBLIC_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: SEARCH_PROVIDER
+        value: postgres
+      - key: AI_PROVIDER
+        value: gemini
+      - key: AI_LIVE_ENABLED
+        value: "true"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: IP_PSEUDONYM_KEY
+        sync: false
+      - key: CRM_PROVIDER
+        value: localdev
+      - key: CRM_LIVE_ENABLED
+        value: "false"
+      - key: EMAIL_PROVIDER
+        value: localdev
+      - key: JOB_SCHEDULER_ENABLED
+        value: "false"

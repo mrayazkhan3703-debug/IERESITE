@@ -1,0 +1,743 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   INVESTMENT EXPERTS — DESIGN TOKENS
+   Blueprint OUTPUT 7 / PART B: premium editorial luxury,
+   warm-neutral canvas, near-black ink, single bronze accent,
+   semantic status tokens, restrained elevation & motion.
+   ============================================================ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  /* V2 elevation scale (U02 §9.2 — deliberate depth) */
+  --shadow-card: var(--ie-elevation-card);
+  --shadow-raised: var(--ie-elevation-raised);
+  --shadow-overlay: var(--ie-elevation-overlay);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  /* IE brand tokens */
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-faint: var(--brand-faint);
+  --color-brand-hero: var(--brand-hero);
+  --color-ink: var(--ink);
+  --color-canvas: var(--canvas);
+  --color-sand: var(--sand);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+}
+
+:root {
+  /* Geometry — small/medium radii per blueprint */
+  --radius: 0.5rem;
+
+  /* Canvas + ink — warm neutrals */
+  --canvas: oklch(0.985 0.003 85);
+  --background: oklch(0.985 0.003 85);
+  --foreground: oklch(0.216 0.006 56);
+  --ink: oklch(0.216 0.006 56);
+  --sand: oklch(0.955 0.006 80);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.216 0.006 56);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.216 0.006 56);
+
+  /* Primary = brand bronze */
+  --brand: oklch(0.51 0.062 70);
+  --brand-strong: oklch(0.42 0.062 68);
+  --brand-soft: oklch(0.9 0.028 80);
+  --brand-faint: oklch(0.955 0.014 80);
+  /* Light warm gold — brand accent tuned for dark/ink hero backgrounds */
+  --brand-hero: oklch(0.85 0.075 80);
+  --primary: var(--brand);
+  --primary-foreground: oklch(0.99 0.003 85);
+
+  --secondary: oklch(0.955 0.006 80);
+  --secondary-foreground: oklch(0.3 0.008 60);
+  --muted: oklch(0.955 0.006 80);
+  --muted-foreground: oklch(0.52 0.01 60);
+  --accent: var(--brand-soft);
+  --accent-foreground: var(--brand-strong);
+
+  --destructive: oklch(0.5 0.18 25);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --success: oklch(0.48 0.09 155);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.5 0.11 75);
+  --warning-foreground: oklch(0.99 0 0);
+  --info: oklch(0.45 0.06 200);
+  --info-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.9 0.008 75);
+  --input: oklch(0.9 0.008 75);
+  --ring: var(--brand);
+
+  --chart-1: var(--ie-viz-1);
+  --chart-2: var(--ie-viz-2);
+  --chart-3: var(--ie-viz-3);
+  --chart-4: var(--ie-viz-4);
+  --chart-5: var(--ie-viz-5);
+
+  --sidebar: oklch(0.97 0.004 80);
+  --sidebar-foreground: oklch(0.216 0.006 56);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: oklch(0.99 0.003 85);
+  --sidebar-accent: oklch(0.94 0.01 78);
+  --sidebar-accent-foreground: oklch(0.3 0.01 60);
+  --sidebar-border: oklch(0.9 0.008 75);
+  --sidebar-ring: var(--brand);
+
+  /* ============================================================
+     V2 DESIGN TOKENS (U02 — V2 Upgrade Prompt §9)
+     New tokens use the --ie-* prefix; V1 names are preserved.
+     ============================================================ */
+
+  /* --- 9.4 Typography scale -------------------------------------------
+     Fluid clamp() values give mobile equivalents automatically;
+     fixed sizes get explicit mobile overrides below. Secondary
+     reading text never drops below 13px / 1.45 line-height. */
+  --ie-font-display: var(--font-display), Georgia, serif;
+  --ie-type-display-hero: clamp(2.5rem, 1.2rem + 5.2vw, 4.5rem);
+  --ie-type-display-hero-lh: 1.05;
+  --ie-type-display-hero-ls: -0.022em;
+  --ie-type-h1: clamp(2.125rem, 1.35rem + 2.6vw, 3.125rem);
+  --ie-type-h1-lh: 1.1;
+  --ie-type-h1-ls: -0.018em;
+  --ie-type-h2: clamp(1.625rem, 1.25rem + 1.4vw, 2.125rem);
+  --ie-type-h2-lh: 1.16;
+  --ie-type-h2-ls: -0.014em;
+  --ie-type-h3: clamp(1.3125rem, 1.15rem + 0.7vw, 1.5625rem);
+  --ie-type-h3-lh: 1.25;
+  --ie-type-h3-ls: -0.01em;
+  --ie-type-body-lg: clamp(1.0625rem, 1rem + 0.4vw, 1.1875rem);
+  --ie-type-body-lg-lh: 1.6;
+  --ie-type-body: 1rem;
+  --ie-type-body-lh: 1.625;
+  --ie-type-metadata: 0.8125rem; /* 13px — floor for secondary reading text */
+  --ie-type-metadata-lh: 1.45;
+  --ie-type-label: 0.75rem; /* micro-labels only (kickers/eyebrows), 12px */
+  --ie-type-label-lh: 1.2;
+  --ie-type-label-ls: 0.14em;
+  --ie-type-data-value: clamp(1.125rem, 1rem + 0.5vw, 1.375rem);
+  --ie-type-data-value-lh: 1.15;
+  --ie-type-table-cell: 0.8125rem; /* 13px, tabular-nums */
+  --ie-type-table-cell-lh: 1.35;
+
+  /* --- 9.2 Grid & spacing -------------------------------------------- */
+  --ie-grid-columns: 12;
+  --ie-grid-gutter: clamp(1rem, 0.5rem + 1.6vw, 1.5rem);
+  /* Section rhythm scale: 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 / 96 */
+  --ie-space-1: 0.25rem; /* 4  */
+  --ie-space-2: 0.5rem; /* 8  */
+  --ie-space-3: 0.75rem; /* 12 */
+  --ie-space-4: 1rem; /* 16 */
+  --ie-space-6: 1.5rem; /* 24 */
+  --ie-space-8: 2rem; /* 32 */
+  --ie-space-12: 3rem; /* 48 */
+  --ie-space-16: 4rem; /* 64 */
+  --ie-space-24: 6rem; /* 96 */
+  --ie-section-pad: clamp(3rem, 1.5rem + 5vw, 4.5rem);
+  --ie-section-pad-sm: clamp(1.75rem, 1rem + 2.5vw, 2.75rem);
+  --ie-section-pad-lg: clamp(4rem, 2rem + 7vw, 6.5rem);
+
+  /* --- 9.2 Depth (3-step elevation) ----------------------------------- */
+  --ie-elevation-card: 0 1px 2px oklch(0.25 0.01 60 / 0.05), 0 4px 12px oklch(0.25 0.01 60 / 0.06);
+  --ie-elevation-raised: 0 2px 6px oklch(0.25 0.01 60 / 0.07), 0 12px 28px oklch(0.25 0.01 60 / 0.1);
+  --ie-elevation-overlay: 0 12px 32px oklch(0.22 0.01 60 / 0.16), 0 28px 64px oklch(0.22 0.01 60 / 0.22);
+
+  /* --- Section background variants (mixed light/dark rhythm, §9.2) ---- */
+  --ie-section-contrast-bg: oklch(0.935 0.011 78); /* warm sand, one step deeper than --sand */
+  /* Dark inverted section — ink canvas with AA-safe local overrides */
+  --ie-ink-2: oklch(0.185 0.006 58);
+  --ie-ink-fg: oklch(0.945 0.004 82);
+  --ie-ink-muted: oklch(0.74 0.012 72);
+  --ie-ink-border: oklch(0.945 0.004 82 / 0.16);
+  --ie-ink-brand: var(--brand-hero); /* light warm gold — AA on ink */
+
+  /* --- Data-visualization palette (§9.2 premium charts) ---------------
+     Bronze-led warm sequence + warm neutrals + semantic up/down. No blue. */
+  --ie-viz-1: var(--brand); /* bronze — primary series */
+  --ie-viz-2: oklch(0.63 0.058 55); /* warm sienna */
+  --ie-viz-3: oklch(0.76 0.05 78); /* light gold */
+  --ie-viz-4: oklch(0.36 0.045 60); /* deep umber */
+  --ie-viz-5: oklch(0.88 0.018 75); /* pale sand */
+  --ie-viz-6: oklch(0.3 0.012 60); /* ink-neutral accent */
+  --ie-viz-up: var(--success);
+  --ie-viz-down: var(--destructive);
+  --ie-viz-grid: oklch(0.9 0.008 75);
+  --ie-viz-axis: var(--muted-foreground);
+
+  /* --- 9.5 Motion tokens ---------------------------------------------- */
+  --ie-duration-fast: 120ms;
+  --ie-duration-base: 180ms;
+  --ie-duration-slow: 240ms;
+  --ie-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ie-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ie-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dark {
+  --canvas: oklch(0.19 0.005 60);
+  --background: oklch(0.19 0.005 60);
+  --foreground: oklch(0.93 0.004 80);
+  --ink: oklch(0.93 0.004 80);
+  --sand: oklch(0.24 0.006 60);
+
+  --card: oklch(0.23 0.006 60);
+  --card-foreground: oklch(0.93 0.004 80);
+  --popover: oklch(0.23 0.006 60);
+  --popover-foreground: oklch(0.93 0.004 80);
+
+  --brand: oklch(0.68 0.075 75);
+  --brand-strong: oklch(0.76 0.08 78);
+  --brand-soft: oklch(0.3 0.03 65);
+  --brand-faint: oklch(0.26 0.02 65);
+  --primary: var(--brand);
+  --primary-foreground: oklch(0.16 0.01 60);
+
+  --secondary: oklch(0.26 0.008 60);
+  --secondary-foreground: oklch(0.9 0.004 80);
+  --muted: oklch(0.26 0.008 60);
+  --muted-foreground: oklch(0.68 0.01 70);
+  --accent: var(--brand-soft);
+  --accent-foreground: var(--brand-strong);
+
+  --destructive: oklch(0.62 0.18 25);
+  --destructive-foreground: oklch(0.15 0.01 60);
+
+  --success: oklch(0.62 0.1 155);
+  --success-foreground: oklch(0.15 0.01 60);
+  --warning: oklch(0.7 0.12 75);
+  --warning-foreground: oklch(0.15 0.01 60);
+  --info: oklch(0.65 0.07 200);
+  --info-foreground: oklch(0.15 0.01 60);
+
+  --border: oklch(0.32 0.01 65);
+  --input: oklch(0.32 0.01 65);
+  --ring: var(--brand);
+
+  --chart-1: var(--ie-viz-1);
+  --chart-2: var(--ie-viz-2);
+  --chart-3: var(--ie-viz-3);
+  --chart-4: var(--ie-viz-4);
+  --chart-5: var(--ie-viz-5);
+
+  --sidebar: oklch(0.22 0.006 60);
+  --sidebar-foreground: oklch(0.9 0.004 80);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: oklch(0.16 0.01 60);
+  --sidebar-accent: oklch(0.28 0.01 65);
+  --sidebar-accent-foreground: oklch(0.9 0.004 80);
+  --sidebar-border: oklch(0.32 0.01 65);
+  --sidebar-ring: var(--brand);
+
+  /* --- V2 token overrides (dark) -------------------------------------- */
+  /* Viz sequence re-tuned for dark canvas (lightness lifted, same hues) */
+  --ie-viz-1: var(--brand);
+  --ie-viz-2: oklch(0.68 0.062 55);
+  --ie-viz-3: oklch(0.82 0.055 80);
+  --ie-viz-4: oklch(0.55 0.05 62);
+  --ie-viz-5: oklch(0.38 0.02 72);
+  --ie-viz-6: oklch(0.85 0.012 75);
+  --ie-viz-grid: oklch(0.32 0.01 65);
+  /* Elevation on dark = stronger shadow + faint top highlight */
+  --ie-elevation-card: 0 1px 2px oklch(0 0 0 / 0.3), 0 4px 12px oklch(0 0 0 / 0.35);
+  --ie-elevation-raised: 0 2px 6px oklch(0 0 0 / 0.35), 0 12px 28px oklch(0 0 0 / 0.45);
+  --ie-elevation-overlay: 0 12px 32px oklch(0 0 0 / 0.5), 0 28px 64px oklch(0 0 0 / 0.6);
+  /* Dark inverted section inside dark mode = slightly lifted ink */
+  --ie-ink-2: oklch(0.24 0.006 60);
+  --ie-ink-fg: oklch(0.955 0.004 82);
+  --ie-ink-muted: oklch(0.76 0.012 72);
+  --ie-ink-border: oklch(0.955 0.004 82 / 0.14);
+  --ie-ink-brand: var(--brand-hero);
+  --ie-section-contrast-bg: oklch(0.235 0.008 62);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "tnum" 1; /* tabular numerals for financial data */
+  }
+  /* Display type scale — editorial hierarchy */
+  h1, h2, h3 {
+    font-family: var(--font-display), Georgia, serif;
+    letter-spacing: -0.015em;
+  }
+  ::selection {
+    background: var(--brand-soft);
+    color: var(--brand-strong);
+  }
+  /* Focus visibility — never obscured (WCAG 2.2 AA) */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Reduced motion — remove non-essential animation */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Motion tokens: 120–240ms UI transitions (§9.5, V2) */
+  .transition-ui {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--ie-duration-base);
+    transition-timing-function: var(--ie-ease);
+  }
+  .transition-ui-fast {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--ie-duration-fast);
+    transition-timing-function: var(--ie-ease);
+  }
+  .transition-ui-slow {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--ie-duration-slow);
+    transition-timing-function: var(--ie-ease-out);
+  }
+
+  /* Favorite heart — tactile pop when saved (reduced-motion safe via global override) */
+  .ie-heart-pop {
+    animation: ie-heart-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes ie-heart-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.22); }
+    100% { transform: scale(1); }
+  }
+
+  /* §17 Active map marker — gentle expanding ink ring around the selected
+     price pill (box-shadow ring so it never fights the marker's scale
+     transform; killed under prefers-reduced-motion by the global override). */
+  .ie-marker-pulse {
+    animation: ie-marker-pulse 2s var(--ie-ease) infinite;
+  }
+  @keyframes ie-marker-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(51, 49, 45, 0.35); }
+    70% { box-shadow: 0 0 0 8px rgba(51, 49, 45, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(51, 49, 45, 0); }
+  }
+  .container-page {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  /* ============================================================
+     V2 UTILITIES (U02)
+     ============================================================ */
+
+  /* --- 9.4 Typography utilities --------------------------------------- */
+  .type-display-hero {
+    font-family: var(--ie-font-display);
+    font-size: var(--ie-type-display-hero);
+    line-height: var(--ie-type-display-hero-lh);
+    letter-spacing: var(--ie-type-display-hero-ls);
+    font-weight: 560;
+  }
+  .type-h1 {
+    font-family: var(--ie-font-display);
+    font-size: var(--ie-type-h1);
+    line-height: var(--ie-type-h1-lh);
+    letter-spacing: var(--ie-type-h1-ls);
+    font-weight: 560;
+  }
+  .type-h2 {
+    font-family: var(--ie-font-display);
+    font-size: var(--ie-type-h2);
+    line-height: var(--ie-type-h2-lh);
+    letter-spacing: var(--ie-type-h2-ls);
+    font-weight: 550;
+  }
+  .type-h3 {
+    font-family: var(--ie-font-display);
+    font-size: var(--ie-type-h3);
+    line-height: var(--ie-type-h3-lh);
+    letter-spacing: var(--ie-type-h3-ls);
+    font-weight: 550;
+  }
+  .type-body-lg {
+    font-size: var(--ie-type-body-lg);
+    line-height: var(--ie-type-body-lg-lh);
+  }
+  .type-body {
+    font-size: var(--ie-type-body);
+    line-height: var(--ie-type-body-lh);
+  }
+  .type-metadata {
+    font-size: var(--ie-type-metadata);
+    line-height: var(--ie-type-metadata-lh);
+    color: var(--muted-foreground);
+  }
+  .type-label {
+    font-size: var(--ie-type-label);
+    line-height: var(--ie-type-label-lh);
+    letter-spacing: var(--ie-type-label-ls);
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .type-data-value {
+    font-size: var(--ie-type-data-value);
+    line-height: var(--ie-type-data-value-lh);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .type-table-cell {
+    font-size: var(--ie-type-table-cell);
+    line-height: var(--ie-type-table-cell-lh);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Mobile equivalents for the fixed-size tokens (fluid ones shrink via clamp) */
+  @media (max-width: 767px) {
+    .type-data-value { font-size: 1.0625rem; }
+    .type-metadata { font-size: var(--ie-type-metadata); /* stays ≥13px by design */ }
+    .type-table-cell { font-size: 0.8125rem; /* stays 13px — financial tables keep precision */ }
+  }
+
+  /* V3 §18.1 — keep the hero headline in a 3–4 line band at 320–390px
+     (the 2.5rem clamp floor would otherwise wrap it into 5–7 awkward
+     lines). Floor stays ≥ 34px ≥ the 32px legibility minimum. */
+  @media (max-width: 400px) {
+    .type-display-hero {
+      font-size: clamp(2.125rem, 1.35rem + 4vw, 2.5rem);
+    }
+  }
+
+  /* --- 9.2 12-column editorial grid ----------------------------------- */
+  /* True 12-column grid with the same page gutters as .container-page.
+     Children opt in with col-span-* utilities; .grid-col-full spans all. */
+  .container-grid {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+    display: grid;
+    grid-template-columns: repeat(var(--ie-grid-columns), minmax(0, 1fr));
+    column-gap: var(--ie-grid-gutter);
+    row-gap: 0;
+  }
+  .grid-col-full {
+    grid-column: 1 / -1;
+  }
+  /* Full-bleed breakout from inside a container (for map/data moments, §9.2) */
+  .bleed {
+    width: 100vw;
+    max-width: 100vw;
+    margin-inline: calc(50% - 50vw);
+  }
+
+  /* --- Section rhythm + background variants (§9.2 mixed light/dark) --- */
+  .section { padding-block: var(--ie-section-pad); }
+  .section-sm { padding-block: var(--ie-section-pad-sm); }
+  .section-lg { padding-block: var(--ie-section-pad-lg); }
+  .section-plain {
+    background: var(--canvas);
+    color: var(--foreground);
+  }
+  .section-contrast {
+    background: var(--ie-section-contrast-bg);
+    color: var(--foreground);
+  }
+  /* Dark inverted section. Local semantic overrides cascade to descendants:
+     text-muted-foreground/border/background utilities all resolve AA-safe
+     against the ink canvas (fg 11.3:1, muted 4.9:1, brand-hero 7:1). */
+  .section-ink {
+    background: var(--ie-ink-2);
+    color: var(--ie-ink-fg);
+    --foreground: var(--ie-ink-fg);
+    --background: var(--ie-ink-2);
+    --muted-foreground: var(--ie-ink-muted);
+    --border: var(--ie-ink-border);
+    --input: var(--ie-ink-border);
+    --brand: var(--ie-ink-brand);
+    --brand-strong: var(--ie-ink-brand);
+    --brand-soft: oklch(0.32 0.03 65);
+    --brand-faint: oklch(0.26 0.02 65);
+    --secondary: oklch(0.26 0.008 60);
+    --secondary-foreground: var(--ie-ink-fg);
+    --accent: oklch(0.26 0.008 60);
+    --accent-foreground: var(--ie-ink-fg);
+  }
+  /* Text on ink sections that must stay ivory even when nested utilities set color */
+  .on-ink { color: var(--ie-ink-fg); }
+  .on-ink-muted { color: var(--ie-ink-muted); }
+
+  /* Thin editorial rules */
+  .rule-soft {
+    @apply border-t border-border/70;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  /* Custom scrollbar for dense lists */
+  .scroll-elegant {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted-foreground) transparent;
+    /* V3-B (§9 responsive gate): Chromium leaks the layout overflow of
+       non-shrinkable flex items inside overflow-x-auto strips into the
+       document scrollable overflow (real horizontal page scroll at ≤375px;
+       scrollWidth > clientWidth). Layout containment isolates the strip's
+       internal layout from the document — verified: page overflow 802px → 0.
+       Safe for absolutely-positioned chips/badges: the nearest positioned
+       ancestor still wins as their containing block. */
+    contain: layout;
+  }
+  .scroll-elegant::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scroll-elegant::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+    border-radius: 999px;
+  }
+  .scroll-elegant::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  /* V3-C (§36/§8 responsive mandate) — intentional horizontal scroller contract
+     for chip rows, wide tables and tab bars. Wraps the V3-B Chromium
+     containment fix into one reusable utility:
+     - overflow-x:auto — the element owns its overflow (scrolls, never leaks);
+     - contain:layout — Chromium leaks the layout overflow of non-shrinkable
+       table content inside overflow-x:auto wrappers into
+       documentElement.scrollWidth (real page-wide horizontal scroll at ≤430px;
+       verified live on /market/transactions: scrollWidth 603px → 320px with
+       containment, table still scrolls inside its wrapper);
+     - overscroll-behavior-x:contain — no scroll chaining to the page at edges;
+     - -webkit-overflow-scrolling:touch — legacy iOS momentum scrolling.
+     Compose with .scroll-elegant (thin scrollbar), .scroll-fade-x (edge fade
+     affordance) and Tailwind snap utilities (snap-x snap-mandatory + snap-start). */
+  .overflow-x-safe {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    contain: layout;
+  }
+
+  /* Kicker/eyebrow label */
+  .kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Precise financial data values (V2 §21.2) — monospace, tabular, tooltip-expandable */
+  .data-value {
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    letter-spacing: -0.01em;
+  }
+
+  /* ============================================================
+     DEV-C STYLING DETAIL POLISH (micro-refinements, token-only)
+     ============================================================ */
+
+  /* Media zoom-on-hover — soft-out 400ms, scale 1.03. Fully disabled under
+     reduced motion (see override at the bottom of this layer). */
+  .zoom-media {
+    transition: transform 400ms var(--ie-ease-out);
+  }
+  .group:hover .zoom-media {
+    transform: scale(1.03);
+  }
+
+  /* Skeleton shimmer — subtle sweep layered over the skeleton base; disables
+     the pulse animation on the same element. Direction flips in RTL; disabled
+     under reduced motion. */
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    animation: none;
+    background: var(--accent); /* same base as the shared Skeleton (bg-accent) */
+  }
+  .skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--background) 65%, transparent),
+      transparent
+    );
+    animation: ie-shimmer 1.8s var(--ie-ease) infinite;
+  }
+  @keyframes ie-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  [dir="rtl"] .skeleton-shimmer::after {
+    animation-direction: reverse;
+  }
+
+  /* Edge fade for horizontal scroll strips — signals overflow without chrome.
+     Mask direction flips in RTL so the fade always leads from the reading edge. */
+  .scroll-fade-x {
+    -webkit-mask-image: linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
+    mask-image: linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
+  }
+  [dir="rtl"] .scroll-fade-x {
+    -webkit-mask-image: linear-gradient(to left, transparent, black 20px, black calc(100% - 20px), transparent);
+    mask-image: linear-gradient(to left, transparent, black 20px, black calc(100% - 20px), transparent);
+  }
+
+  /* Kicker accent — short bronze dash preceding an eyebrow label (RTL flips). */
+  .kicker-accent {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .kicker-accent::before {
+    content: "";
+    width: 1.25rem;
+    height: 2px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--brand);
+  }
+
+  /* Reduced motion — the polish animations collapse to static presentation */
+  @media (prefers-reduced-motion: reduce) {
+    .zoom-media,
+    .group:hover .zoom-media {
+      transition: none;
+      transform: none;
+    }
+    .skeleton-shimmer::after {
+      animation: none;
+    }
+  }
+}
+
+/* Tactile press feedback for interactive elements (respects reduced motion) */
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled),
+  a[role="button"]:not(:disabled),
+  [data-tactile]:not(:disabled) {
+    transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  button:not(:disabled):active,
+  a[role="button"]:not(:disabled):active,
+  [data-tactile]:not(:disabled):active {
+    transform: scale(0.98);
+  }
+}
+
+/* ============================================================
+   PRINT STYLESHEET — shareable PDF output for property detail
+   and compare views (Q14 polish round). Screen chrome hidden,
+   ink-friendly palette, no page-break orphans.
+   ============================================================ */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: var(--ink) !important;
+    font-size: 11.5px;
+  }
+
+  /* Force brand color fidelity on badges/highlight bars even when the
+     browser's "background graphics" default is off. */
+  * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Suppress shadows/elevation — they render as muddy grey in print */
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg,
+  .shadow-xl,
+  .backdrop-blur {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Overlays/dialogs/lightboxes never belong on paper */
+  [role="dialog"],
+  dialog,
+  [data-radix-popper-content-wrapper] {
+    display: none !important;
+  }
+
+  /* Links: keep ink color, no underline soup */
+  a {
+    color: var(--ink) !important;
+    text-decoration: none !important;
+  }
+
+  /* Deterministic, non-interactive lists inside print output */
+  table {
+    border-collapse: collapse;
+  }
+  thead {
+    display: table-header-group; /* repeat header across pages */
+  }
+  tr,
+  img,
+  figure {
+    break-inside: avoid;
+  }
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+}

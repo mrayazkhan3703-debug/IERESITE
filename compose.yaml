@@ -1,0 +1,277 @@
+name: iere-local
+
+x-app-environment: &app-environment
+  APP_ENV: development
+  APP_VERSION: ${APP_VERSION:-local}
+  BUILD_REVISION: ${BUILD_REVISION:-unknown}
+  APP_URL: http://localhost:3000
+  TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+  IP_PSEUDONYM_KEY: ${IP_PSEUDONYM_KEY:-}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-iere}:${POSTGRES_PASSWORD:-iere_local_only}@postgres:5432/${POSTGRES_DB:-iere}
+  AUTH_MFA_ENCRYPTION_KEY: ${AUTH_MFA_ENCRYPTION_KEY:-6f8b51e0d3942ca764ad7190b235e8f1463c9a5078df2b61e4ac9035d7f28b16}
+  REDIS_URL: redis://redis:6379/0
+  STORAGE_PROVIDER: s3
+  S3_ENDPOINT: http://object-storage:8333
+  S3_PUBLIC_ENDPOINT: http://localhost:${S3_API_PORT:-8333}
+  S3_REGION: us-east-1
+  S3_BUCKET: ${S3_BUCKET:-iere-local}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-iere_local}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-iere_local_only}
+  S3_FORCE_PATH_STYLE: "true"
+  EMAIL_PROVIDER: smtp
+  EMAIL_FROM: no-reply@localhost
+  SMTP_HOST: mail-catcher
+  SMTP_PORT: "1025"
+  AI_PROVIDER: ${AI_PROVIDER:-mock}
+  AI_MODEL: ${AI_MODEL:-default}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+  AI_LIVE_ENABLED: ${AI_LIVE_ENABLED:-false}
+  AI_DAILY_REQUEST_LIMIT: ${AI_DAILY_REQUEST_LIMIT:-25}
+  AI_DAILY_TOKEN_LIMIT: ${AI_DAILY_TOKEN_LIMIT:-60000}
+  AI_MAX_PROMPT_CHARS: ${AI_MAX_PROMPT_CHARS:-48000}
+  AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+  AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-20000}
+  CRM_PROVIDER: ${CRM_PROVIDER:-localdev}
+  CRM_LIVE_ENABLED: ${CRM_LIVE_ENABLED:-false}
+  CRM_TOKEN_ENCRYPTION_KEY: ${CRM_TOKEN_ENCRYPTION_KEY:-}
+  GHL_CLIENT_ID: ${GHL_CLIENT_ID:-}
+  GHL_CLIENT_SECRET: ${GHL_CLIENT_SECRET:-}
+  GHL_INSTALL_URL: ${GHL_INSTALL_URL:-}
+  GHL_REDIRECT_URI: ${GHL_REDIRECT_URI:-}
+  GHL_LOCATION_ID: ${GHL_LOCATION_ID:-}
+  GHL_WEBHOOKS_ENABLED: ${GHL_WEBHOOKS_ENABLED:-false}
+  GHL_PIPELINE_ID: ${GHL_PIPELINE_ID:-}
+  GHL_PIPELINE_STAGE_ID: ${GHL_PIPELINE_STAGE_ID:-}
+  SEARCH_PROVIDER: postgres
+
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-iere}
+      POSTGRES_USER: ${POSTGRES_USER:-iere}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iere_local_only}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB && test \"$$(psql -U $$POSTGRES_USER -d $$POSTGRES_DB -tAc \"SELECT count(*) FROM pg_extension WHERE extname IN ('postgis','pg_trgm','vector')\")\" = \"3\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  redis:
+    image: redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  object-storage:
+    image: chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-iere_local}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-iere_local_only}
+      S3_BUCKET: ${S3_BUCKET:-iere-local}
+    ports:
+      - "${S3_API_PORT:-8333}:8333"
+    volumes:
+      - object-storage-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8333/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mail-catcher:
+    image: axllent/mailpit:v1.24.1@sha256:4873e5a441ed368f1e98a832f61257a033859f5e829542cd03fb772d2282ea4e
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      target: runtime
+    command: ["bun", "run", "db:migrate:deploy"]
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      target: runtime
+    command: ["bun", ".next/standalone/server.js"]
+    environment:
+      <<: *app-environment
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      SERVICE_NAME: web
+      JOB_SCHEDULER_ENABLED: "false"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      mail-catcher:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://localhost:3000/api/health');if(!r.ok)process.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  accessibility:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: docker/accessibility.Dockerfile
+    environment:
+      A11Y_BASE_URL: http://web-test:3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-iere}:${POSTGRES_PASSWORD:-iere_local_only}@postgres:5432/${POSTGRES_DB:-iere}
+    depends_on:
+      web-test:
+        condition: service_healthy
+
+  web-test:
+    profiles: ["test"]
+    # Human review uses the same forced-local build as browser tests.
+    # Never publish this test-only server beyond the loopback interface.
+    ports:
+      - "127.0.0.1:${TEST_WEB_PORT:-3002}:3000"
+    build:
+      context: .
+      target: runtime
+    command: ["bun", ".next/standalone/server.js"]
+    environment:
+      <<: *app-environment
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      SERVICE_NAME: web-test
+      JOB_SCHEDULER_ENABLED: "false"
+      AI_PROVIDER: mock
+      GEMINI_API_KEY: ""
+      AI_LIVE_ENABLED: "false"
+      CRM_PROVIDER: localdev
+      CRM_LIVE_ENABLED: "false"
+      GHL_CLIENT_ID: ""
+      GHL_CLIENT_SECRET: ""
+      GHL_INSTALL_URL: ""
+      GHL_REDIRECT_URI: ""
+      GHL_LOCATION_ID: ""
+      GHL_WEBHOOKS_ENABLED: "false"
+      GHL_PIPELINE_ID: ""
+      GHL_PIPELINE_STAGE_ID: ""
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      mail-catcher:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://localhost:3000/api/health');if(!r.ok)process.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  worker:
+    build:
+      context: .
+      target: runtime
+    command: ["bun", "run", "worker"]
+    environment:
+      <<: *app-environment
+      SERVICE_NAME: worker
+      JOB_SCHEDULER_ENABLED: "true"
+      WORKER_HEALTH_PORT: "3001"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      mail-catcher:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://localhost:3001/health');if(!r.ok)process.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  local-monitor:
+    profiles: ["monitor"]
+    build:
+      context: .
+      target: runtime
+    command: ["bun", "--no-env-file", "src/monitor.ts"]
+    environment:
+      SERVICE_NAME: local-monitor
+    depends_on:
+      worker:
+        condition: service_started
+      web:
+        condition: service_started
+      mail-catcher:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bun", "--no-env-file", "-e", "const r=await fetch('http://localhost:3002/health');if(!r.ok)process.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  monitor-test-catcher:
+    profiles: ["monitor-test"]
+    image: axllent/mailpit:v1.24.1@sha256:4873e5a441ed368f1e98a832f61257a033859f5e829542cd03fb772d2282ea4e
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  monitor-test:
+    profiles: ["monitor-test"]
+    build:
+      context: .
+      target: runtime
+    command: ["bun", "--no-env-file", "test", "./tests/local-alert-delivery.smtp.ts"]
+    depends_on:
+      monitor-test-catcher:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  object-storage-data:

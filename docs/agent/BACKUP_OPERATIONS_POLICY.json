@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "status": "OWNER_APPROVED_OPERATIONS_ONLY",
+  "approvedOn": "2026-09-27",
+  "intervalMinutes": 30,
+  "retentionDays": 30,
+  "checkpointBeforeMajorChanges": true,
+  "destination": {
+    "requireOffHost": true,
+    "requireEncryption": true,
+    "status": "BLOCKED_EXTERNAL",
+    "location": null,
+    "keyRecovery": "NOT_CONFIGURED",
+    "requestedTarget": {
+      "provider": "cloudflare-r2",
+      "bucket": "iere",
+      "region": "auto",
+      "configurationFile": "backup-config.private.json",
+      "status": "OWNER_SUPPLIED_NOT_LIVE_VERIFIED",
+      "purpose": "ENCRYPTED_BACKUPS_ONLY",
+      "privacyAttestation": "OWNER_CONFIRMED_NOT_LIVE_VERIFIED"
+    }
+  },
+  "automaticDeletion": "DISABLED_UNTIL_VERIFIED_PROTECTED_COPY",
+  "achievement": "NOT_VERIFIED"
+}

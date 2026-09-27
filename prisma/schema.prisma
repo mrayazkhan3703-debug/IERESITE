@@ -1,0 +1,2297 @@
+// Investment Experts — Canonical Real-Estate Data Model
+// Source of truth: Master Blueprint PART C (C001–C092).
+// Environment adaptations documented in docs/ARCHITECTURE_DECISIONS.md (ADR-002, ADR-009):
+//  - PostgreSQL-backed; string codes remain validated by zod at service boundary
+//  - Operational envelopes use JSONB; legacy presentation JSON remains typed text until migrated with its owner
+//  - Money: BigInt minor units (ISO-4217 `currency`); serialized as string (ADR-009)
+//  - Geo: numeric lat/lng plus PostGIS geography with explicit precision and provenance
+//  - Instants use timestamptz; calendar-only business dates use date
+//  - Opaque cuid ids + separate slug for SEO routes
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// C001–C007 Organizations, users, RBAC
+// ============================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  legalName String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  users          User[]
+  leads          Lead[]
+  auditLogs      AuditLog[]
+  crmSyncRecords CrmSyncRecord[]
+  ownedProperties Property[]   @relation("PropertyOwner")
+  ownedProjects   Project[]    @relation("ProjectOwner")
+  ownedDevelopers Developer[] @relation("DeveloperOwner")
+  ownedCommunities Community[] @relation("CommunityOwner")
+  invitations      UserInvitation[]
+}
+
+model User {
+  id             String    @id @default(cuid())
+  organizationId String?
+  email          String    @unique
+  emailVerified  DateTime? @db.Timestamptz(3)
+  passwordHash   String?
+  name           String?
+  isActive       Boolean   @default(true)
+  failedLogins   Int       @default(0)
+  lockedUntil    DateTime? @db.Timestamptz(3)
+  lastLoginAt    DateTime? @db.Timestamptz(3)
+  mfaSecretCiphertext String?
+  mfaEnabledAt     DateTime? @db.Timestamptz(3)
+  mfaRecoveryCodesJson String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization       Organization?              @relation(fields: [organizationId], references: [id])
+  profile            UserProfile?
+  roles              UserRole[]
+  sessions           Session[]
+  accountTokens      AccountToken[]
+  favorites          Favorite[]
+  savedSearches      SavedSearch[]
+  comparisons        Comparison[]
+  recentlyViewed     RecentlyViewed[]
+  notifications      Notification[]
+  notifSubs          NotificationSubscription[]
+  aiConversations    AiConversation[]
+  dataSubjectReqs    DataSubjectRequest[]
+  consents           Consent[]
+  agent              Agent?
+  auditLogs          AuditLog[]
+  portfolioHoldings  PortfolioHolding[]
+  portfolioDocuments PortfolioDocument[]
+  sentInvitations    UserInvitation[] @relation("UserInvitationInviter")
+
+  @@index([organizationId])
+}
+
+model UserProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  phone           String?
+  locale          String   @default("en")
+  currency        String   @default("AED")
+  marketingOptIn  Boolean  @default(false)
+  preferencesJson String? // JSON: {bedrooms, communities[], priceBand, ...}
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Role {
+  id              String           @id @default(cuid())
+  key             String           @unique // OWNER|ADMIN|MANAGER|CONTENT_EDITOR|AGENT|ANALYST|CUSTOMER|VIEWER
+  name            String
+  description     String?
+  rolePermissions RolePermission[]
+  users           UserRole[]
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  key             String           @unique // e.g. property:publish, lead:assign
+  description     String?
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId    String
+  roleId    String
+  grantedAt DateTime @default(now()) @db.Timestamptz(3)
+  grantedBy String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model UserInvitation {
+  id             String   @id @default(cuid())
+  email          String
+  organizationId String
+  roleKey        String
+  invitedBy      String
+  tokenHash      String   @unique
+  expiresAt      DateTime @db.Timestamptz(3)
+  acceptedAt     DateTime? @db.Timestamptz(3)
+  revokedAt      DateTime? @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inviter      User         @relation("UserInvitationInviter", fields: [invitedBy], references: [id], onDelete: Restrict)
+
+  @@index([email, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  userAgent String?
+  ipHash    String?
+  expiresAt DateTime @db.Timestamptz(3)
+  rotatedAt DateTime @default(now()) @db.Timestamptz(3)
+  mfaVerifiedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AccountToken {
+  id           String    @id @default(cuid())
+  userId       String
+  purpose      String    // VERIFY_EMAIL|RESET_PASSWORD|CHANGE_EMAIL|MFA_SETUP|MFA_LOGIN
+  tokenHash    String    @unique
+  pendingValue String?
+  expiresAt    DateTime  @db.Timestamptz(3)
+  usedAt       DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt])
+  @@index([expiresAt])
+}
+
+// ============================================================
+// C008–C011 Agents
+// ============================================================
+
+model Agent {
+  id                String   @id @default(cuid())
+  userId            String?  @unique
+  name              String
+  slug              String   @unique
+  jobTitle          String   @default("Property Consultant")
+  bio               String   @default("")
+  photoMediaId      String?
+  phoneE164         String?
+  whatsappE164      String?
+  email             String?
+  languagesJson     String? // JSON [{code, name, fluency}]
+  specialtiesJson   String? // JSON [specialty codes] (mirror join table)
+  communitiesJson   String? // JSON [community ids] (mirror for fast read)
+  yearsExperience   Int      @default(0)
+  active            Boolean  @default(true)
+  leadCapacityState String   @default("AVAILABLE") // AVAILABLE|LOW|HIGH — LEGACY (V3-02): unverified, UI must not display
+  leadCapacityNote  String?
+  sortWeight        Int      @default(0)
+  isDemoData        Boolean  @default(false)
+  sourceType        String   @default("INTERNAL")
+  /* V3-02 (V3 §11/§12) — verified team data, additive only:
+   * department: leadership|sales|marketing|hr|admin|other (team grouping)
+   * publicAdvisor: member appears on /agents (public advisory directory)
+   * phoneDisplay: human-readable display form of phoneE164
+   * photoUrl: direct static asset path (e.g. /images/team/member-01.jpg);
+   *   photoMediaId stays untouched for media-registry-managed photos. */
+  department        String? // leadership|sales|marketing|hr|admin|other
+  publicAdvisor     Boolean  @default(false)
+  phoneDisplay      String?
+  photoUrl          String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  user            User?            @relation(fields: [userId], references: [id])
+  listings        Listing[]
+  leadAssignments LeadAssignment[]
+  communities     AgentCommunity[]
+  languageRecords AgentLanguage[]
+  specialtyRecords AgentSpecialty[]
+  viewings        Viewing[]
+  bookings        Booking[]
+  ownedLeads      Lead[]
+
+  @@index([active])
+}
+
+model AgentLanguage {
+  id        String   @id @default(cuid())
+  agentId   String
+  code      String // ISO 639-1
+  name      String
+  fluency   String   @default("FLUENT") // BASIC|CONVERSATIONAL|FLUENT|NATIVE
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, code])
+}
+
+model AgentSpecialty {
+  id        String   @id @default(cuid())
+  agentId   String
+  specialty String // OFF_PLAN|LUXURY|INVESTMENT|SECONDARY|COMMERCIAL|RELOCATION...
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, specialty])
+}
+
+model AgentCommunity {
+  id          String   @id @default(cuid())
+  agentId     String
+  communityId String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, communityId])
+}
+
+// ============================================================
+// C012–C018 Contacts & Leads
+// ============================================================
+
+model Contact {
+  id          String   @id @default(cuid())
+  email       String?
+  phoneE164   String?
+  name        String?
+  dedupeKey   String   @unique // normalized email or phone
+  locale      String   @default("en")
+  firstSeenAt DateTime @default(now()) @db.Timestamptz(3)
+  lastSeenAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  leads               Lead[]
+  consents            LeadConsent[]
+  privacyConsents     Consent[]
+  dataSubjectRequests DataSubjectRequest[]
+
+  @@index([email])
+  @@index([phoneE164])
+}
+
+model Lead {
+  id                  String    @id @default(cuid())
+  organizationId      String?
+  contactId           String
+  intent              String    @default("BUY") // BUY|RENT|INVEST|SELL|LIST|VALUATION|CONSULT|GENERAL
+  status              String    @default("NEW") // NEW|ATTEMPTED|CONTACTED|QUALIFIED|NURTURE|WON|LOST|SPAM
+  sourceChannel       String    @default("WEBSITE") // WEBSITE|WHATSAPP|PHONE|AI_ADVISOR|REFERRAL|CAMPAIGN
+  primaryEntityType   String? // PROPERTY|PROJECT|COMMUNITY|DEVELOPER|AGENT|MARKET_REPORT|GUIDE
+  primaryEntityId     String?
+  primaryEntitySlug   String?
+  ownerAgentId        String?
+  assignedAt          DateTime? @db.Timestamptz(3)
+  message             String?
+  preferredLocale     String?
+  budgetMinMinor      BigInt?
+  budgetMaxMinor      BigInt?
+  currency            String    @default("AED")
+  dedupeKey           String? // idempotency for form resubmission
+  isDemoData          Boolean   @default(false)
+  /**
+   * U16 (§26) additive: structured seller/listing property details captured by
+   * the multi-step list-property funnel (location/building/type/beds/size/status…).
+   */
+  propertyDetailsJson String?
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  contact        Contact          @relation(fields: [contactId], references: [id])
+  ownerAgent     Agent?           @relation(fields: [ownerAgentId], references: [id])
+  context        LeadContext?
+  events         LeadEvent[]
+  assignments    LeadAssignment[]
+  scores         LeadScore[]
+  consents       LeadConsent[]
+  crmSyncRecords CrmSyncRecord[]
+  booking        Booking?
+  viewing        Viewing?
+  inquiries      Inquiry[]
+
+  @@index([status])
+  @@index([contactId])
+  @@index([createdAt])
+  @@index([dedupeKey])
+  @@index([organizationId, createdAt])
+}
+
+model LeadContext {
+  leadId           String  @id
+  landingUrl       String?
+  referrer         String?
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  utmContent       String?
+  utmTerm          String?
+  searchStateJson  String? // serialized SearchState at submission
+  sessionId        String?
+  locale           String  @default("en")
+  deviceClass      String? // MOBILE|TABLET|DESKTOP
+  pagePath         String?
+  aiConversationId String?
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+model LeadEvent {
+  id          String   @id @default(cuid())
+  leadId      String
+  eventType   String // CREATED|STATUS_CHANGED|ASSIGNED|NOTE|CRM_DELIVERED|CRM_FAILED|VIEWED|CONTACTED...
+  payloadJson String?
+  actorType   String   @default("SYSTEM") // SYSTEM|USER|AGENT|AI
+  actorId     String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadAssignment {
+  id         String   @id @default(cuid())
+  leadId     String
+  agentId    String
+  assignedAt DateTime @default(now()) @db.Timestamptz(3)
+  assignedBy String?
+  reason     String? // ROUND_ROBIN|SPECIALTY|AGENT_PROFILE|MANUAL|AI_HANDOFF
+  active     Boolean  @default(true)
+
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@index([leadId])
+}
+
+model LeadScore {
+  id           String   @id @default(cuid())
+  leadId       String
+  score        Int
+  band         String   @default("MEDIUM") // LOW|MEDIUM|HIGH
+  modelVersion String   @default("v1-deterministic")
+  reasonsJson  String? // JSON [{factor, weight}]
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadConsent {
+  id            String    @id @default(cuid())
+  leadId        String
+  contactId     String?
+  purpose       String    @default("LEAD_CONTACT") // LEAD_CONTACT|MARKETING|WHATSAPP|NEWSLETTER|ANALYTICS
+  status        String    @default("GRANTED") // GRANTED|DENIED|WITHDRAWN
+  policyVersion String    @default("2026-09-v1")
+  evidenceJson  String? // {formId, checkboxLabel, timestamp}
+  capturedAt    DateTime  @default(now()) @db.Timestamptz(3)
+  withdrawnAt   DateTime? @db.Timestamptz(3)
+
+  lead    Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id])
+
+  @@index([leadId])
+}
+
+// ============================================================
+// C019–C025 Canonical property core
+// ============================================================
+
+model Property {
+  id                String    @id @default(cuid())
+  ownerOrganizationId String?
+  projectId         String?
+  communityId       String
+  developerId       String?
+  title             String
+  slug              String    @unique
+  propertyType      String    @default("APARTMENT") // APARTMENT|VILLA|TOWNHOUSE|PENTHOUSE|DUPLEX|STUDIO|OFFICE|RETAIL|PLOT
+  subType           String?
+  bedrooms          Float     @default(0) // 0 = studio; 0.5 for " convert" odd cases
+  bathrooms         Float     @default(0)
+  builtUpAreaSqft   Float?
+  plotAreaSqft      Float?
+  furnishing        String? // FURNISHED|SEMI_FURNISHED|UNFURNISHED
+  view              String? // SEA|MARINA|SKYLINE|GOLF|PARK|COMMUNITY
+  floor             Int?
+  totalFloors       Int?
+  handoverQuarter   String? // for off-plan e.g. "Q4 2027"
+  titleDeedRef      String?
+  reraPermit        String? // Dubai RERA permit number (validation ready)
+  lat               Float
+  lng               Float
+  addressLine       String?
+  shortDescription  String?
+  description       String?
+  highlightsJson    String? // JSON string[]
+  publicationStatus String    @default("DRAFT") // DRAFT|PUBLISHED|ARCHIVED|UNPUBLISHED
+  sourceType        String    @default("INTERNAL") // INTERNAL|IMPORT|DEMO_SEED
+  sourceId          String? // external system key (idempotency)
+  sourceUpdatedAt   DateTime? @db.Timestamptz(3)
+  retrievedAt       DateTime? @db.Timestamptz(3)
+  sourceSnapshotJson String? // Latest normalized provider record, retained separately from Admin overrides
+  editorOverridesJson String? // Explicit editorial values that take precedence over source facts
+  locationPrecision String    @default("UNAVAILABLE") // EXACT|BUILDING|PROJECT|COMMUNITY_CENTROID|APPROXIMATE|UNAVAILABLE
+  locationSourceType String?
+  locationSourceId   String?
+  geo               Unsupported("geography(Point,4326)")?
+  contentHash       String? // change detection for imports
+  isDemoData        Boolean   @default(false)
+  deletedAt         DateTime? @db.Timestamptz(3)
+  createdBy         String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  project           Project?            @relation(fields: [projectId], references: [id])
+  community         Community           @relation(fields: [communityId], references: [id])
+  developer         Developer?          @relation(fields: [developerId], references: [id])
+  ownerOrganization Organization?       @relation("PropertyOwner", fields: [ownerOrganizationId], references: [id], onDelete: SetNull)
+  units             PropertyUnit[]
+  listings          Listing[]
+  priceHistory      PriceHistory[]
+  media             PropertyMedia[]
+  floorPlans        PropertyFloorPlan[]
+  documents         PropertyDocument[]
+  amenities         PropertyAmenity[]
+  favorites         Favorite[]
+  recentlyViewed    RecentlyViewed[]
+  comparisons       ComparisonItem[]
+  availabilities    Availability[]
+  viewings          Viewing[]
+  importRecords     ImportRecord[]
+  dataQualityIssues DataQualityIssue[]
+  portfolioHoldings PortfolioHolding[]
+
+  @@index([communityId])
+  @@index([projectId])
+  @@index([publicationStatus])
+  @@index([sourceType, sourceId])
+  @@index([ownerOrganizationId])
+  @@index([deletedAt])
+  @@index([geo], type: Gist)
+}
+
+model PropertyUnit {
+  id                 String   @id @default(cuid())
+  propertyId         String?
+  projectId          String?
+  unitNumber         String?
+  unitType           String   @default("APARTMENT")
+  bedrooms           Float    @default(0)
+  bathrooms          Float    @default(0)
+  areaSqft           Float?
+  priceMinor         BigInt?
+  currency           String   @default("AED")
+  availabilityStatus String   @default("AVAILABLE") // AVAILABLE|RESERVED|SOLD|RENTED|HELD
+  floor              Int?
+  aspect             String?
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  project  Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([propertyId])
+}
+
+model Listing {
+  id                   String    @id @default(cuid())
+  propertyId           String
+  listingType          String    @default("SALE") // SALE|RENT|SHORT_TERM
+  tenure               String? // FREEHOLD|LEASEHOLD
+  priceMinor           BigInt
+  priceQualifier       String? // e.g. "From", "Guide price"
+  currency             String    @default("AED")
+  rentFrequency        String? // YEARLY|MONTHLY|WEEKLY|DAILY (rent only)
+  serviceChargePerSqft Float?
+  sourceSnapshotJson   String? // Latest normalized provider listing facts
+  editorOverridesJson  String? // Explicit Admin overrides keyed by source field
+  availabilityStatus   String    @default("AVAILABLE") // AVAILABLE|RESERVED|SOLD|RENTED|HELD|WITHDRAWN
+  offPlan              Boolean   @default(false)
+  isFeatured           Boolean   @default(false)
+  isExclusive          Boolean   @default(false)
+  agentId              String?
+  publishedAt          DateTime? @db.Timestamptz(3)
+  expiresAt            DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+
+  property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  agent         Agent?                 @relation(fields: [agentId], references: [id])
+  statusHistory ListingStatusHistory[]
+  priceHistory  PriceHistory[]
+  importRecords ImportRecord[]
+
+  @@index([listingType, availabilityStatus])
+  @@index([propertyId])
+  @@index([isFeatured])
+}
+
+model ListingStatusHistory {
+  id         String   @id @default(cuid())
+  listingId  String
+  fromStatus String?
+  toStatus   String
+  reason     String?
+  changedBy  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+}
+
+model PriceHistory {
+  id         String   @id @default(cuid())
+  propertyId String
+  listingId  String?
+  priceMinor BigInt
+  currency   String   @default("AED")
+  sourceType String   @default("INTERNAL")
+  recordedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  listing  Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, recordedAt])
+}
+
+model Availability {
+  id         String    @id @default(cuid())
+  propertyId String
+  status     String // AVAILABLE|RESERVED|SOLD|RENTED|HELD|WITHDRAWN
+  note       String?
+  from       DateTime  @default(now()) @db.Timestamptz(3)
+  to         DateTime? @db.Timestamptz(3)
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// C026–C032 Projects, developers, communities, geo
+// ============================================================
+
+model Project {
+  id                           String    @id @default(cuid())
+  ownerOrganizationId          String?
+  developerId                  String
+  communityId                  String
+  name                         String
+  slug                         String    @unique
+  tagline                      String?
+  summary                      String?
+  description                  String?
+  status                       String    @default("OFF_PLAN") // OFF_PLAN|UNDER_CONSTRUCTION|READY|COMPLETED|CANCELLED|ON_HOLD
+  projectType                  String    @default("RESIDENTIAL") // RESIDENTIAL|MIXED_USE|HOSPITALITY|COMMERCIAL
+  launchDate                   DateTime? @db.Date
+  handoverDate                 DateTime? @db.Date
+  completionPercent            Float?
+  constructionStatus           String?
+  constructionSourceUrl        String?
+  constructionSourceVerifiedAt DateTime? @db.Timestamptz(3)
+  totalUnits                   Int?
+  startingPriceMinor           BigInt?
+  currency                     String    @default("AED")
+  lat                          Float
+  lng                          Float
+  brochureMediaId              String?
+  keyAmenitiesJson             String?
+  highlightsJson               String?
+  publicationStatus            String    @default("DRAFT") // DRAFT|PUBLISHED|ARCHIVED
+  sourceType                   String    @default("INTERNAL")
+  sourceId                     String?
+  sourceVerifiedAt             DateTime? @db.Timestamptz(3)
+  sourceUpdatedAt              DateTime? @db.Timestamptz(3)
+  retrievedAt                  DateTime? @db.Timestamptz(3)
+  locationPrecision            String    @default("UNAVAILABLE") // EXACT|BUILDING|PROJECT|COMMUNITY_CENTROID|APPROXIMATE|UNAVAILABLE
+  locationSourceType           String?
+  locationSourceId             String?
+  geo                          Unsupported("geography(Point,4326)")?
+  contentHash                  String?
+  isDemoData                   Boolean   @default(false)
+  deletedAt                    DateTime? @db.Timestamptz(3)
+  createdAt                    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt                    DateTime  @updatedAt @db.Timestamptz(3)
+
+  developer         Developer              @relation(fields: [developerId], references: [id])
+  community         Community              @relation(fields: [communityId], references: [id])
+  ownerOrganization Organization?          @relation("ProjectOwner", fields: [ownerOrganizationId], references: [id], onDelete: SetNull)
+  properties        Property[]
+  units             PropertyUnit[]
+  paymentPlans      PaymentPlan[]
+  media             ProjectMedia[]
+  amenities         ProjectAmenity[]
+  statusHistory     ProjectStatusHistory[]
+  importRecords     ImportRecord[]
+  documents         PropertyDocument[]
+  portfolioHoldings PortfolioHolding[]
+
+  @@index([developerId])
+  @@index([communityId])
+  @@index([status])
+  @@index([publicationStatus])
+  @@index([geo], type: Gist)
+  @@index([ownerOrganizationId])
+}
+
+model ProjectStatusHistory {
+  id         String   @id @default(cuid())
+  projectId  String
+  fromStatus String?
+  toStatus   String
+  reason     String?
+  changedBy  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Developer {
+  id                 String    @id @default(cuid())
+  ownerOrganizationId String?
+  name               String
+  slug               String    @unique
+  summary            String?
+  description        String?
+  websiteUrl         String?
+  logoMediaId        String?
+  headquarters       String?
+  foundedYear        Int?
+  verificationStatus String    @default("UNVERIFIED") // UNVERIFIED|PUBLIC_RECORDS|VERIFIED
+  lastVerifiedAt     DateTime? @db.Timestamptz(3)
+  sourceUpdatedAt    DateTime? @db.Timestamptz(3)
+  retrievedAt        DateTime? @db.Timestamptz(3)
+  sourceType         String    @default("INTERNAL")
+  isDemoData         Boolean   @default(false)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  projects   Project[]
+  properties Property[]
+  ownerOrganization Organization? @relation("DeveloperOwner", fields: [ownerOrganizationId], references: [id], onDelete: SetNull)
+
+  @@index([name])
+  @@index([ownerOrganizationId])
+}
+
+model Community {
+  id                   String   @id @default(cuid())
+  ownerOrganizationId  String?
+  parentLocationId     String?
+  name                 String
+  slug                 String   @unique
+  summary              String?
+  description          String?
+  areaType             String   @default("RESIDENTIAL") // RESIDENTIAL|BUSINESS|WATERFRONT|ISLAND|SUBURBAN|INDUSTRIAL
+  lat                  Float
+  lng                  Float
+  boundaryJson         String? // GeoJSON polygon (simplified)
+  radiusMeters         Int      @default(2500)
+  avgPricePerSqftMinor BigInt?
+  currency             String   @default("AED")
+  lifestyleTagsJson    String?
+  transportJson        String? // JSON [{type, name, distance}]
+  schoolsJson          String?
+  healthcareJson       String?
+  retailJson           String?
+  imageMediaId         String?
+  publicationStatus    String   @default("PUBLISHED")
+  sourceType           String   @default("INTERNAL")
+  sourceUpdatedAt      DateTime? @db.Timestamptz(3)
+  retrievedAt          DateTime? @db.Timestamptz(3)
+  locationPrecision    String   @default("UNAVAILABLE") // EXACT|COMMUNITY_CENTROID|APPROXIMATE|UNAVAILABLE
+  locationSourceType   String?
+  locationSourceId     String?
+  geo                  Unsupported("geography(Point,4326)")?
+  isDemoData           Boolean  @default(false)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+
+  parentLocation     Location?           @relation(fields: [parentLocationId], references: [id])
+  ownerOrganization Organization?        @relation("CommunityOwner", fields: [ownerOrganizationId], references: [id], onDelete: SetNull)
+  properties         Property[]
+  projects           Project[]
+  agents             AgentCommunity[]
+  boundary           LocationBoundary?
+  marketMetrics      MarketMetric[]
+  marketTransactions MarketTransaction[]
+  marketRents        MarketRent[]
+  buildings          Building[]
+
+  @@index([publicationStatus])
+  @@index([geo], type: Gist)
+  @@index([ownerOrganizationId])
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  parentId  String?
+  name      String
+  slug      String   @unique
+  level     String   @default("COMMUNITY") // EMIRATE|SECTOR|AREA|COMMUNITY|SUBCOMMUNITY
+  lat       Float?
+  lng       Float?
+  path      String? // materialized path for hierarchy
+  sourceType String   @default("INTERNAL")
+  sourceUpdatedAt DateTime? @db.Timestamptz(3)
+  retrievedAt DateTime? @db.Timestamptz(3)
+  locationPrecision String @default("UNAVAILABLE")
+  locationSourceType String?
+  locationSourceId String?
+  geo       Unsupported("geography(Point,4326)")?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  parent      Location?   @relation("LocationTree", fields: [parentId], references: [id])
+  children    Location[]  @relation("LocationTree")
+  communities Community[]
+  boundary    LocationBoundary?
+
+  @@index([parentId])
+  @@index([geo], type: Gist)
+}
+
+model LocationBoundary {
+  id          String   @id @default(cuid())
+  locationId  String?  @unique
+  communityId String?  @unique
+  geoJson     String // GeoJSON polygon string
+  boundaryGeo Unsupported("geography(Polygon,4326)")?
+  sourceType  String   @default("INTERNAL")
+  sourceUpdatedAt DateTime? @db.Timestamptz(3)
+  retrievedAt DateTime? @db.Timestamptz(3)
+  simplified  Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  community Community? @relation(fields: [communityId], references: [id])
+  location  Location?  @relation(fields: [locationId], references: [id])
+
+  @@index([boundaryGeo], type: Gist)
+}
+
+model Building {
+  id                   String   @id @default(cuid())
+  communityId          String
+  name                 String
+  slug                 String?
+  floors               Int?
+  yearBuilt            Int?
+  lat                  Float?
+  lng                  Float?
+  serviceChargePerSqft Float?
+  sourceType           String   @default("INTERNAL")
+  sourceUpdatedAt      DateTime? @db.Timestamptz(3)
+  retrievedAt          DateTime? @db.Timestamptz(3)
+  locationPrecision    String   @default("UNAVAILABLE")
+  locationSourceType   String?
+  locationSourceId     String?
+  geo                  Unsupported("geography(Point,4326)")?
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+
+  community Community @relation(fields: [communityId], references: [id])
+
+  @@index([communityId])
+  @@index([geo], type: Gist)
+}
+
+// ============================================================
+// C033–C038 Amenities & media
+// ============================================================
+
+model Amenity {
+  id       String  @id @default(cuid())
+  key      String  @unique // POOL|GYM|BEACH_ACCESS|...
+  name     String
+  category String  @default("BUILDING") // BUILDING|UNIT|OUTDOOR|SERVICE
+  icon     String?
+
+  propertyAmenities PropertyAmenity[]
+  projectAmenities  ProjectAmenity[]
+}
+
+model PropertyAmenity {
+  propertyId String
+  amenityId  String
+  note       String?
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenity  Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, amenityId])
+}
+
+model ProjectAmenity {
+  projectId String
+  amenityId String
+  note      String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  amenity Amenity @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, amenityId])
+}
+
+// Generic media asset registry (storage abstraction ADR — local FS here)
+model MediaAsset {
+  id           String   @id @default(cuid())
+  kind         String   @default("IMAGE") // IMAGE|VIDEO|FLOOR_PLAN|DOCUMENT|BROCHURE|LOGO
+  storageKey   String   @unique // path under public/uploads
+  url          String
+  mimeType     String
+  sizeBytes    Int
+  width        Int?
+  height       Int?
+  altText      String?
+  caption      String?
+  variantsJson String? // JSON {thumb, card, hero, webp...}
+  checksum     String?
+  exifStripped Boolean  @default(true)
+  isPrivate    Boolean  @default(false)
+  uploadedBy   String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  processingJobs     MediaProcessingJob[]
+  propertyMedia      PropertyMedia[]
+  projectMedia       ProjectMedia[]
+  floorPlans         PropertyFloorPlan[]
+  documents          PropertyDocument[]
+  portfolioDocuments PortfolioDocument[]
+
+  @@index([kind])
+  @@index([isPrivate])
+}
+
+model PropertyMedia {
+  id         String   @id @default(cuid())
+  propertyId String
+  mediaId    String
+  sortOrder  Int      @default(0)
+  isCover    Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  property Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  media    MediaAsset @relation(fields: [mediaId], references: [id])
+
+  @@index([propertyId, sortOrder])
+}
+
+model ProjectMedia {
+  id        String   @id @default(cuid())
+  projectId String
+  mediaId   String
+  section   String   @default("GALLERY") // GALLERY|PROGRESS|BROCHURE
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  project Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  media   MediaAsset @relation(fields: [mediaId], references: [id])
+
+  @@index([projectId, sortOrder])
+}
+
+model PropertyFloorPlan {
+  id         String   @id @default(cuid())
+  propertyId String
+  mediaId    String
+  bedrooms   Float?
+  areaSqft   Float?
+  priceMinor BigInt?
+  currency   String   @default("AED")
+  label      String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  property Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  media    MediaAsset @relation(fields: [mediaId], references: [id])
+
+  @@index([propertyId])
+}
+
+model PropertyDocument {
+  id            String   @id @default(cuid())
+  propertyId    String?
+  projectId     String?
+  mediaId       String
+  docType       String   @default("BROCHURE") // BROCHURE|FLOOR_PLAN_PACK|TITLE_DEED|ESCALATION|OTHER
+  label         String?
+  gated         Boolean  @default(false) // requires lead capture to download
+  downloadCount Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  property Property?  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  project  Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  media    MediaAsset @relation(fields: [mediaId], references: [id])
+
+  @@index([propertyId])
+  @@index([projectId])
+}
+
+// ============================================================
+// C039–C040 Payment plans
+// ============================================================
+
+model PaymentPlan {
+  id                 String    @id @default(cuid())
+  projectId          String
+  name               String    @default("Standard Payment Plan")
+  currency           String    @default("AED")
+  totalPercent       Float     @default(100)
+  postHandover       Boolean   @default(false)
+  sourceDocumentId   String?
+  verificationStatus String    @default("UNVERIFIED") // UNVERIFIED|PUBLISHED|VERIFIED
+  validFrom          DateTime? @db.Date
+  validTo            DateTime? @db.Date
+  notes              String?
+  isDefault          Boolean   @default(false)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  project      Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  installments PaymentPlanInstallment[]
+
+  @@index([projectId])
+}
+
+model PaymentPlanInstallment {
+  id              String   @id @default(cuid())
+  paymentPlanId   String
+  sequence        Int
+  label           String // "Booking", "During construction", "On handover"
+  percent         Float
+  dueOffsetMonths Int? // months from booking or handover (negative = post-handover)
+  amountMinor     BigInt? // optional absolute amount
+  currency        String   @default("AED")
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  paymentPlan PaymentPlan @relation(fields: [paymentPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentPlanId, sequence])
+}
+
+// ============================================================
+// C041–C043 Viewings, bookings, inquiries
+// ============================================================
+
+model Viewing {
+  id          String   @id @default(cuid())
+  leadId      String   @unique
+  agentId     String?
+  propertyId  String?
+  projectId   String?
+  scheduledAt DateTime @db.Timestamptz(3)
+  durationMin Int      @default(30)
+  channel     String   @default("IN_PERSON") // IN_PERSON|VIDEO_CALL|PHONE
+  status      String   @default("REQUESTED") // REQUESTED|CONFIRMED|COMPLETED|CANCELLED|NO_SHOW
+  notes       String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  lead     Lead      @relation(fields: [leadId], references: [id])
+  agent    Agent?    @relation(fields: [agentId], references: [id])
+  property Property? @relation(fields: [propertyId], references: [id])
+
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+model Booking {
+  id          String   @id @default(cuid())
+  leadId      String   @unique
+  bookingType String   @default("CONSULTATION") // CONSULTATION|VIEWING|CALLBACK
+  agentId     String?
+  scheduledAt DateTime @db.Timestamptz(3)
+  durationMin Int      @default(30)
+  channel     String   @default("OFFICE") // OFFICE|VIDEO|PHONE|WHATSAPP
+  topic       String?
+  status      String   @default("REQUESTED") // REQUESTED|CONFIRMED|COMPLETED|CANCELLED
+  reference   String   @unique
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  lead Lead @relation(fields: [leadId], references: [id])
+  agent Agent? @relation(fields: [agentId], references: [id])
+
+  @@index([scheduledAt])
+}
+
+model Inquiry {
+  id         String   @id @default(cuid())
+  leadId     String?
+  entityType String
+  entityId   String
+  message    String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+}
+
+// ============================================================
+// C044–C048 Saved state
+// ============================================================
+
+model Favorite {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propertyId])
+}
+
+model SavedSearch {
+  id              String    @id @default(cuid())
+  userId          String
+  name            String?
+  searchStateJson String // serialized canonical SearchState
+  alertConsent    Boolean   @default(false)
+  alertFrequency  String    @default("WEEKLY") // INSTANT|DAILY|WEEKLY|MONTHLY
+  lastMatchCount  Int       @default(0)
+  lastMatchedAt   DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Comparison {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items ComparisonItem[]
+
+  @@index([userId])
+}
+
+model ComparisonItem {
+  id           String @id @default(cuid())
+  comparisonId String
+  propertyId   String
+  sortOrder    Int    @default(0)
+
+  comparison Comparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([comparisonId, propertyId])
+}
+
+model RecentlyViewed {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String
+  viewedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propertyId])
+}
+
+// ============================================================
+// C049–C050 Notifications
+// ============================================================
+
+model NotificationSubscription {
+  id               String    @id @default(cuid())
+  userId           String
+  channel          String    @default("EMAIL") // EMAIL|WHATSAPP|SMS|BROWSER
+  purpose          String    @default("SAVED_SEARCH_MATCH") // SAVED_SEARCH_MATCH|PRICE_CHANGE|NEW_LISTINGS|VIEWING_UPDATES|MARKETING
+  consentGrantedAt DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel, purpose])
+}
+
+model Notification {
+  id             String    @id @default(cuid())
+  userId         String
+  kind           String    @default("SAVED_SEARCH_MATCH") // SAVED_SEARCH_MATCH|PRICE_CHANGE|VIEWING_CONFIRMED|LEAD_STATUS|SYSTEM
+  title          String
+  body           String
+  payloadJson    String?
+  readAt         DateTime? @db.Timestamptz(3)
+  deliveredAt    DateTime? @db.Timestamptz(3)
+  deliveryStatus String    @default("QUEUED") // QUEUED|SENT|FAILED|SKIPPED
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// ============================================================
+// C056–C057 Investor portfolio (V2 §25.6 — U15 additive)
+// ============================================================
+
+/**
+ * A property the signed-in user holds (or intends to track). propertyId is
+ * nullable so off-platform assets can be tracked with manual inputs; projectId
+ * is nullable and links off-plan holdings to a platform project for payment
+ * schedule (§25.4) and construction tracking (§25.5). All rows are strictly
+ * user-scoped (server-side session filter — V1 RBAC semantics).
+ */
+model PortfolioHolding {
+  id                   String    @id @default(cuid())
+  userId               String
+  propertyId           String?
+  projectId            String?
+  label                String
+  purchasePriceMinor   BigInt
+  purchaseDate         DateTime? @db.Date
+  rentAnnualMinor      BigInt?
+  sizeSqft             Float?
+  serviceChargePerSqft Float?
+  /**
+   * JSON: { balanceMinor?: string, monthlyPaymentMinor?: string, ratePct?: number, termYears?: number }
+   */
+  mortgageJson         String?
+  notes                String?
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property  Property?           @relation(fields: [propertyId], references: [id])
+  project   Project?            @relation(fields: [projectId], references: [id])
+  documents PortfolioDocument[]
+
+  @@index([userId])
+  @@index([propertyId])
+  @@index([projectId])
+}
+
+/**
+ * Owner-uploaded portfolio documents (§25.6): SPA / title deed / Oqood /
+ * receipts / floor plan / mortgage / tenancy. Media goes through the existing
+ * upload pipeline (magic-byte sniffing, size caps); authorization is strict —
+ * GET only ever returns the owner's own rows.
+ */
+model PortfolioDocument {
+  id           String   @id @default(cuid())
+  userId       String
+  holdingId    String?
+  category     String // SPA|TITLE_DEED|OQOOD|RECEIPT|FLOOR_PLAN|MORTGAGE|TENANCY
+  mediaAssetId String
+  label        String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holding PortfolioHolding? @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+  media   MediaAsset        @relation(fields: [mediaAssetId], references: [id])
+
+  @@index([userId])
+  @@index([holdingId])
+}
+
+// ============================================================
+// C051–C055 Sessions, search analytics, attribution
+// ============================================================
+
+model WebsiteSession {
+  id          String    @id @default(cuid())
+  sessionKey  String    @unique
+  firstSeenAt DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt  DateTime  @default(now()) @db.Timestamptz(3)
+  landingPath String?
+  referrer    String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  deviceClass String?
+  locale      String    @default("en")
+  ipHash      String?
+  closedAt    DateTime? @db.Timestamptz(3)
+
+  touchpoints AttributionTouchpoint[]
+  events      AnalyticsEvent[]
+
+  @@index([lastSeenAt])
+}
+
+model SearchQuery {
+  id             String   @id @default(cuid())
+  queryText      String
+  normalizedText String
+  resultCount    Int?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  searchEvents SearchEvent[]
+}
+
+/// Rebuildable public-search projection. Canonical property/listing tables remain
+/// the source of truth; worker/outbox handlers replace stale documents.
+model SearchDocument {
+  listingId                 String   @id
+  propertyId                String
+  slug                      String
+  title                     String
+  normalizedText            String
+  searchVector              Unsupported("tsvector")? @map("search_vector")
+  listingType               String
+  propertyType              String
+  bedrooms                  Float
+  bathrooms                 Float
+  areaSqft                  Float?
+  priceMinor                BigInt
+  currency                  String
+  priceQualifier            String?
+  rentFrequency             String?
+  availabilityStatus        String
+  offPlan                   Boolean
+  isFeatured                Boolean
+  isExclusive               Boolean
+  furnished                 Boolean
+  furnishing                String?
+  communityId               String
+  communityName             String
+  communitySlug             String
+  communityAreaType         String
+  communityAvgPsqft         Float?
+  communityYieldPct         Float?
+  projectId                 String?
+  projectName               String?
+  projectSlug               String?
+  projectStatus             String?
+  developerId               String?
+  developerName             String?
+  developerSlug             String?
+  agentId                   String?
+  agentSlug                 String?
+  amenities                 String[] @default([])
+  lat                       Float
+  lng                       Float
+  geo                       Unsupported("geography(Point,4326)")?
+  publishedAt               DateTime? @db.Timestamptz(3)
+  handoverQuarter           String?
+  view                      String?
+  coverUrl                  String?
+  coverAlt                  String?
+  coverWidth                Int?
+  coverHeight               Int?
+  paymentPlanDownPercent    Float?
+  paymentPlanPostHandover   Boolean?
+  isDemoData                Boolean
+  updatedAt                 DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([propertyId])
+  @@index([listingType, availabilityStatus])
+  @@index([communitySlug])
+  @@index([propertyType])
+  @@index([developerSlug])
+  @@index([priceMinor])
+  @@index([bedrooms])
+  @@index([publishedAt])
+}
+
+model SearchEvent {
+  id              String   @id @default(cuid())
+  sessionId       String?
+  userId          String?
+  queryId         String?
+  eventType       String   @default("SEARCH") // SEARCH|FILTER|SORT|AUTOCOMPLETE|NL_PARSE|RESULT_CLICK|MAP_MOVE
+  searchStateJson String?
+  resultCount     Int?
+  latencyMs       Int?
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  searchQuery SearchQuery? @relation(fields: [queryId], references: [id])
+
+  @@index([createdAt])
+  @@index([queryId])
+}
+
+model AttributionTouchpoint {
+  id                String   @id @default(cuid())
+  sessionId         String
+  leadId            String?
+  touchType         String   @default("LANDING") // LANDING|PAGE_VIEW|SEARCH|ENTITY_VIEW|FORM_START|FORM_SUBMIT|CALL_CLICK|WHATSAPP_CLICK|BROCHURE_DOWNLOAD
+  path              String?
+  entityContextJson String?
+  occurredAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  websiteSession WebsiteSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId])
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  utmCampaign String   @unique
+  name        String
+  utmSource   String?
+  utmMedium   String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+}
+
+// First-party analytics event store (PART J taxonomy)
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  sessionId   String?
+  userId      String?
+  name        String // taxonomy: search, filter, property_view, favorite, ... (PART J)
+  payloadJson String?
+  path        String?
+  locale      String   @default("en")
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  websiteSession WebsiteSession? @relation(fields: [sessionId], references: [id])
+
+  @@index([name, createdAt])
+  @@index([sessionId])
+}
+
+// ============================================================
+// C056–C064 Content & market intelligence
+// ============================================================
+
+model ContentEntry {
+  id                   String    @id @default(cuid())
+  contentType          String    @default("GUIDE") // GUIDE|ARTICLE|MARKET_REPORT|LANDING|FAQ_GROUP|LEGAL|TEAM|AREA_GUIDE
+  slug                 String    @unique
+  title                String
+  excerpt              String?
+  body                 String    @default("")
+  coverMediaId         String?
+  category             String?
+  tagsJson             String?
+  authorId             String?
+  locale               String    @default("en")
+  translationGroupId   String?
+  status               String    @default("DRAFT") // DRAFT|IN_REVIEW|PUBLISHED|RETIRED
+  reviewWorkflowState  String    @default("NONE") // NONE|PENDING_REVIEW|APPROVED|CHANGES_REQUESTED
+  sourceName           String?
+  sourceUrl            String?
+  sourceVerifiedAt     DateTime? @db.Timestamptz(3)
+  freshnessReviewDueAt DateTime? @db.Timestamptz(3)
+  readingMinutes       Int?
+  heroImageMediaId     String?
+  bodyJson             String? // structured blocks for rich rendering
+  seoMetadataId        String?
+  publishedAt          DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+
+  revisions ContentRevision[]
+  translationGroup ContentTranslationGroup? @relation(fields: [translationGroupId], references: [id], onDelete: SetNull)
+  seo       SeoMetadata?      @relation(fields: [seoMetadataId], references: [id])
+
+  @@index([contentType, status, locale])
+  @@index([publishedAt])
+  @@unique([translationGroupId, locale])
+}
+
+model ContentTranslationGroup {
+  id        String         @id @default(cuid())
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(3)
+  entries   ContentEntry[]
+}
+
+model ContentRevision {
+  id             String   @id @default(cuid())
+  contentEntryId String
+  version        Int
+  snapshotJson   String
+  editedBy       String?
+  changeNote     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  contentEntry ContentEntry @relation(fields: [contentEntryId], references: [id], onDelete: Cascade)
+
+  @@unique([contentEntryId, version])
+}
+
+model BlogPost {
+  id           String    @id @default(cuid())
+  slug         String    @unique
+  title        String
+  excerpt      String?
+  body         String
+  coverMediaId String?
+  authorName   String?
+  tagsJson     String?
+  status       String    @default("DRAFT")
+  publishedAt  DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+}
+
+model MarketReport {
+  id             String    @id @default(cuid())
+  slug           String    @unique
+  title          String
+  summary        String?
+  periodLabel    String? // "Q3 2026"
+  methodology    String?
+  dataSourceName String?
+  dataSourceUrl  String?
+  retrievedAt    DateTime? @db.Timestamptz(3)
+  body           String    @default("")
+  coverMediaId   String?
+  fileMediaId    String?
+  status         String    @default("DRAFT")
+  reviewWorkflowState String @default("NONE")
+  approvedBy     String?
+  isIllustrative Boolean   @default(true)
+  gated          Boolean   @default(true) // lead-gated download
+  downloadCount  Int       @default(0)
+  publishedAt    DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  revisions MarketReportRevision[]
+
+  @@index([status, publishedAt])
+}
+
+model MarketReportRevision {
+  id             String   @id @default(cuid())
+  marketReportId String
+  version        Int
+  snapshotJson   String
+  editedBy       String?
+  changeNote     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  marketReport MarketReport @relation(fields: [marketReportId], references: [id], onDelete: Cascade)
+
+  @@unique([marketReportId, version])
+  @@index([marketReportId, createdAt])
+}
+
+model MarketMetric {
+  id             String   @id @default(cuid())
+  communityId    String?
+  metricKey      String // MEDIAN_TRANS_PRICE|AVG_PRICE_PER_SQFT|AVG_RENT_1BR|TRANSACTION_COUNT|YIELD_PCT...
+  periodStart    DateTime @db.Date
+  periodEnd      DateTime @db.Date
+  valueNumeric   Float
+  unit           String   @default("AED") // AED|PERCENT|COUNT|AED_PER_SQFT
+  sourceName     String
+  sourceUrl      String?
+  methodology    String?
+  retrievedAt    DateTime @default(now()) @db.Timestamptz(3)
+  isIllustrative Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  community Community? @relation(fields: [communityId], references: [id])
+
+  @@unique([communityId, metricKey, periodStart])
+  @@index([metricKey, periodStart])
+}
+
+model MarketTransaction {
+  id                String   @id @default(cuid())
+  source            String   @default("DLD")
+  sourceRecordKey   String   @unique
+  transactionDate   DateTime @db.Date
+  areaName          String
+  communityId       String?
+  propertyType      String
+  amountMinor       BigInt
+  currency          String   @default("AED")
+  sizeSqft          Float?
+  pricePerSqftMinor BigInt?
+  projectName       String?
+  transactionType   String   @default("SALE") // SALE|MORTGAGE|GIFT
+  rawPayloadJson    String?
+  importRunId       String?
+  isIllustrative    Boolean  @default(false)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  community Community? @relation(fields: [communityId], references: [id])
+  importRun ImportRun? @relation(fields: [importRunId], references: [id])
+
+  @@index([transactionDate])
+  @@index([areaName])
+  @@index([communityId, transactionDate])
+}
+
+model MarketRent {
+  id              String   @id @default(cuid())
+  source          String   @default("DLD_RENTS")
+  sourceRecordKey String   @unique
+  contractDate    DateTime @db.Date
+  areaName        String
+  communityId     String?
+  propertyType    String
+  bedrooms        Float?
+  annualRentMinor BigInt
+  currency        String   @default("AED")
+  sizeSqft        Float?
+  rawPayloadJson  String?
+  importRunId     String?
+  isIllustrative  Boolean  @default(false)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  community Community? @relation(fields: [communityId], references: [id])
+  importRun ImportRun? @relation(fields: [importRunId], references: [id])
+
+  @@index([contractDate])
+  @@index([areaName])
+}
+
+model Testimonial {
+  id                String    @id @default(cuid())
+  clientName        String
+  clientRole        String?
+  quote             String
+  rating            Int?
+  verified          Boolean   @default(false) // NEVER fabricate: unverified stays false
+  verifiedAt        DateTime? @db.Timestamptz(3)
+  verificationEvidenceRef String?
+  propertyContextId String?
+  consentCapturedAt DateTime? @db.Timestamptz(3)
+  consentEvidenceRef String?
+  status            String    @default("PUBLISHED") // PUBLISHED|DRAFT|RETIRED; legacy rows retain existing visibility rules
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+
+  revisions TestimonialRevision[]
+
+  @@index([status, verified, consentCapturedAt])
+}
+
+model TestimonialRevision {
+  id             String   @id @default(cuid())
+  testimonialId  String
+  version        Int
+  snapshotJson   String
+  editedBy       String?
+  changeNote     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  testimonial Testimonial @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+
+  @@unique([testimonialId, version])
+  @@index([testimonialId, createdAt])
+}
+
+model Faq {
+  id        String   @id @default(cuid())
+  groupKey  String   @default("GENERAL") // GENERAL|BUYING|SELLING|OFF_PLAN|INVESTMENT|INTERNATIONAL|AI_ADVISOR
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  locale    String   @default("en")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([groupKey, isActive])
+}
+
+// ============================================================
+// C065–C067 SEO
+// ============================================================
+
+model SeoMetadata {
+  id                 String   @id @default(cuid())
+  routeKey           String   @unique // e.g. properties/dubai-marina-1br-sea-view
+  title              String?
+  description        String?
+  canonicalPath      String?
+  noindex            Boolean  @default(false)
+  ogImageMediaId     String?
+  structuredDataJson String?
+  priority           Float?
+  changefreq         String?
+  hreflangJson       String? // {"en": "...", "ar": "..."}
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+
+  contentEntries ContentEntry[]
+  revisions SeoMetadataRevision[]
+}
+
+model SeoMetadataRevision {
+  id             String   @id @default(cuid())
+  seoMetadataId  String
+  version        Int
+  snapshotJson   String
+  editedBy       String?
+  changeNote     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  seoMetadata SeoMetadata @relation(fields: [seoMetadataId], references: [id], onDelete: Cascade)
+
+  @@unique([seoMetadataId, version])
+  @@index([seoMetadataId, createdAt])
+}
+
+model Redirect {
+  id         String   @id @default(cuid())
+  fromPath   String   @unique
+  toPath     String
+  statusCode Int      @default(301)
+  isActive   Boolean  @default(true)
+  hits       Int      @default(0)
+  note       String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([isActive])
+}
+
+model SitemapEntry {
+  id         String   @id @default(cuid())
+  section    String   @default("static") // static|properties|projects|communities|developers|guides|insights|reports
+  path       String
+  priority   Float    @default(0.5)
+  changefreq String   @default("weekly")
+  noindex    Boolean  @default(false)
+  lastmod    DateTime @default(now()) @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([section, path])
+}
+
+// ============================================================
+// C068–C071 AI conversations
+// ============================================================
+
+model AiConversation {
+  id              String   @id @default(cuid())
+  userId          String?
+  sessionKey      String?  // SHA-256 hash of the HttpOnly anonymous AI-session cookie
+  locale          String   @default("en")
+  status          String   @default("ACTIVE") // ACTIVE|ENDED|HANDED_OFF|ABANDONED
+  topicSummary    String?
+  messageCount    Int      @default(0)
+  totalCostMicros Int      @default(0)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  user           User?             @relation(fields: [userId], references: [id])
+  messages       AiMessage[]
+  toolExecutions AiToolExecution[]
+  usage          AiUsage[]
+
+  @@index([createdAt])
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   @default("user") // user|assistant|system|tool
+  content        String
+  citationsJson  String? // [{sourceId, chunkId, label}]
+  toolCallsJson  String?
+  latencyMs      Int?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toolExecutions AiToolExecution[]
+
+  @@index([conversationId, createdAt])
+}
+
+model AiToolExecution {
+  id                 String   @id @default(cuid())
+  conversationId     String
+  messageId          String?
+  toolName           String
+  inputRedactedJson  String?
+  outputRedactedJson String?
+  status             String   @default("OK") // OK|ERROR|BLOCKED
+  latencyMs          Int
+  costMicros         Int      @default(0)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      AiMessage?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([toolName])
+}
+
+model AiUsage {
+  id               String   @id @default(cuid())
+  provider         String
+  model            String
+  kind             String   @default("CHAT") // CHAT|NL_SEARCH|RAG|EMBEDDING
+  status           String   @default("SUCCEEDED") // RESERVED|SUCCEEDED|FAILED
+  reservedTokens   Int      @default(0) // conservative budget units; not billed-cost evidence
+  promptTokens     Int?
+  completionTokens Int?
+  costMicros       Int?
+  errorCode        String?  // safe category only; never provider response text
+  conversationId   String?
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+}
+
+// ============================================================
+// C072–C075 RAG knowledge
+// ============================================================
+
+model RagSource {
+  id           String    @id @default(cuid())
+  sourceType   String    @default("INTERNAL_DOC") // INTERNAL_DOC|OFFICIAL|NEWS|REPORT|GUIDE
+  canonicalUrl String?
+  title        String
+  publisher    String?
+  version      String?
+  publishedAt  DateTime? @db.Timestamptz(3)
+  verifiedAt   DateTime? @db.Timestamptz(3)
+  trustTier    String    @default("INTERNAL") // INTERNAL|OFFICIAL|SECONDARY|UNVERIFIED
+  contentHash  String?
+  isActive     Boolean   @default(true)
+  isApproved   Boolean   @default(false)
+  freshnessReviewDueAt DateTime? @db.Timestamptz(3)
+  createdById  String?
+  updatedById  String?
+  approvedById String?
+  approvedAt   DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  documents RagDocument[]
+
+  @@index([trustTier])
+}
+
+model RagDocument {
+  id          String   @id @default(cuid())
+  sourceId    String
+  title       String
+  slug        String   @unique
+  content     String
+  format      String   @default("MD") // MD|TXT|HTML
+  locale      String   @default("en")
+  status      String   @default("DRAFT") // DRAFT|ACTIVE|SUPERSEDED|RETIRED
+  version     Int      @default(1)
+  contentHash String
+  createdById String?
+  updatedById String?
+  approvedById String?
+  approvedAt  DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  source        RagSource      @relation(fields: [sourceId], references: [id])
+  chunks        RagChunk[]
+  embeddingJobs EmbeddingJob[]
+  revisions     RagDocumentRevision[]
+
+  @@index([status])
+}
+
+model RagDocumentRevision {
+  id             String   @id @default(cuid())
+  documentId     String
+  version        Int
+  snapshotJson   String
+  editedBy       String?
+  changeNote     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  document RagDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
+  @@index([documentId, createdAt])
+}
+
+model RagChunk {
+  id            String   @id @default(cuid())
+  documentId    String
+  documentVersion Int    @default(1)
+  sequence      Int
+  content       String
+  tokenCount    Int      @default(0)
+  embeddingJson String? // local deterministic term-frequency vector (ADR-002)
+  embeddingVersion String?
+  keywordsJson  String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  document RagDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, documentVersion, sequence])
+}
+
+model EmbeddingJob {
+  id          String    @id @default(cuid())
+  documentId  String
+  status      String    @default("QUEUED") // QUEUED|PROCESSING|DONE|FAILED
+  chunksDone  Int       @default(0)
+  chunksTotal Int       @default(0)
+  error       String?
+  startedAt   DateTime? @db.Timestamptz(3)
+  finishedAt  DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  document RagDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+// ============================================================
+// C076–C082 Integrations & jobs
+// ============================================================
+
+model CrmSyncRecord {
+  id             String    @id @default(cuid())
+  organizationId String?
+  leadId         String
+  direction      String    @default("OUTBOUND") // OUTBOUND|INBOUND
+  provider       String
+  idempotencyKey String    @unique
+  payloadJson    Json      @db.JsonB
+  responseJson   String?
+  status         String    @default("PENDING") // PENDING|DELIVERED|RETRYING|FAILED|DEAD
+  attempts       Int       @default(0)
+  lastAttemptAt  DateTime? @db.Timestamptz(3)
+  nextRetryAt    DateTime? @db.Timestamptz(3)
+  lastError      String?
+  deliveredAt    DateTime? @db.Timestamptz(3)
+  externalId     String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  lead         Lead          @relation(fields: [leadId], references: [id])
+
+  @@index([status])
+  @@index([leadId])
+}
+
+model IntegrationConnection {
+  id            String    @id @default(cuid())
+  providerKey   String    @unique // crm|email|maps|search|ai|analytics
+  displayName   String
+  status        String    @default("NOT_CONFIGURED") // NOT_CONFIGURED|CONFIGURED|ACTIVE|ERROR
+  lastCheckedAt DateTime? @db.Timestamptz(3)
+  lastError     String?
+  configJson    String? // redacted, non-secret config only
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+}
+
+model GhlOAuthCredential {
+  locationId      String   @id
+  encryptedTokens String   @db.Text
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model GhlOAuthState {
+  stateHash   String   @id
+  userId      String
+  sessionId   String
+  redirectUri String
+  expiresAt   DateTime @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@index([sessionId, userId])
+}
+
+model WebhookEvent {
+  id                String    @id @default(cuid())
+  provider          String
+  providerEventId   String?   @db.VarChar(200)
+  eventType         String
+  locationId        String?
+  entityId          String?
+  signatureOk       Boolean   @default(false)
+  processingStatus  String    @default("RECEIVED") // RECEIVED|PROCESSED|IGNORED|FAILED
+  loopSuppressed    Boolean   @default(false)
+  payloadJson       Json
+  processedAt       DateTime? @db.Timestamptz(3)
+  error             String?
+  receivedAt        DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([provider, providerEventId])
+  @@index([provider, receivedAt])
+  @@index([provider, processingStatus, receivedAt])
+}
+
+model OutboxEvent {
+  id            String    @id @default(cuid())
+  aggregateType String // property|listing|project|lead|media|content|rag_document
+  aggregateId   String
+  eventType     String // property.updated|listing.published|lead.created|...
+  payloadJson   Json      @db.JsonB
+  publishedAt   DateTime? @db.Timestamptz(3)
+  attemptCount  Int       @default(0)
+  lastError     String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([publishedAt])
+  @@index([aggregateType, aggregateId])
+}
+
+model JobRun {
+  id             String    @id @default(cuid())
+  jobKey         String // search.index.upsert | crm.lead.deliver | imports.run | ...
+  payloadJson    Json      @db.JsonB
+  idempotencyKey String    @unique
+  status         String    @default("QUEUED") // QUEUED|RUNNING|SUCCEEDED|FAILED|TIMEOUT|DEAD
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  scheduledAt    DateTime  @default(now()) @db.Timestamptz(3)
+  startedAt      DateTime? @db.Timestamptz(3)
+  finishedAt     DateTime? @db.Timestamptz(3)
+  durationMs     Int?
+  error          String?
+  heartbeatAt    DateTime? @db.Timestamptz(3)
+  lockedBy       String?
+  lockedAt       DateTime? @db.Timestamptz(3)
+  leaseExpiresAt DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([status, scheduledAt])
+  @@index([status, leaseExpiresAt])
+  @@index([jobKey])
+}
+
+model DeadLetterEvent {
+  id           String    @id @default(cuid())
+  jobKey       String
+  sourceId     String? // outboxEventId | jobRunId
+  payloadJson  Json      @db.JsonB
+  error        String?
+  attempts     Int       @default(0)
+  replayedAt   DateTime? @db.Timestamptz(3)
+  resolvedNote String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([jobKey])
+  @@index([replayedAt])
+}
+
+model MediaProcessingJob {
+  id         String    @id @default(cuid())
+  mediaId    String
+  spec       String    @default("derivatives") // derivatives|extract-meta|strip-exif
+  status     String    @default("QUEUED") // QUEUED|RUNNING|SUCCEEDED|FAILED
+  error      String?
+  startedAt  DateTime? @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  media MediaAsset @relation(fields: [mediaId], references: [id])
+
+  @@index([status])
+}
+
+// ============================================================
+// C083–C086 Imports & data quality
+// ============================================================
+
+model ImportSource {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  sourceType String   @default("CSV") // CSV|JSON|API|XML
+  configJson String? // mapping config (non-secret)
+  url        String?
+  isActive   Boolean  @default(true)
+  notes      String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  runs ImportRun[]
+}
+
+model ImportRun {
+  id                 String    @id @default(cuid())
+  importSourceId     String
+  status             String    @default("QUEUED") // QUEUED|RUNNING|SUCCEEDED|PARTIAL|FAILED|DRY_RUN
+  inputFormat        String? // CSV|JSON; null for historical runs
+  importMode         String    @default("SNAPSHOT") // SNAPSHOT|INCREMENTAL|WEBHOOK|HYBRID
+  idempotencyKey     String?   @unique
+  dryRun             Boolean   @default(false)
+  adapterKey         String?
+  adapterVersion     Int?
+  sourceVersion      String?
+  snapshotRetrievedAt DateTime? @db.Timestamptz(3)
+  snapshotSha256     String?   @db.VarChar(64)
+  snapshotRef        String? // private object-store key; never a public URL
+  recordCursor       Int       @default(0)
+  chunkSize          Int       @default(250)
+  startedAt          DateTime? @db.Timestamptz(3)
+  finishedAt         DateTime? @db.Timestamptz(3)
+  recordsTotal       Int       @default(0)
+  recordsCreated     Int       @default(0)
+  recordsUpdated     Int       @default(0)
+  recordsSkipped     Int       @default(0)
+  recordsFailed      Int       @default(0)
+  duplicatesDetected Int       @default(0)
+  error              String?
+  triggeredBy        String?
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+
+  importSource ImportSource        @relation(fields: [importSourceId], references: [id])
+  records      ImportRecord[]
+  chunks       ImportRunChunk[]
+  transactions MarketTransaction[]
+  rents        MarketRent[]
+
+  @@index([importSourceId, createdAt])
+  @@index([status, createdAt])
+}
+
+model ImportRunChunk {
+  id                String    @id @default(cuid())
+  importRunId       String
+  chunkNumber       Int
+  firstRecordNumber Int
+  lastRecordNumber  Int
+  recordsCount      Int       @default(0)
+  status            String    @default("RUNNING") // RUNNING|SUCCEEDED|FAILED
+  checksum          String    @db.VarChar(64)
+  attempts          Int       @default(1)
+  leaseToken        String?
+  leaseExpiresAt    DateTime? @db.Timestamptz(3)
+  startedAt         DateTime  @default(now()) @db.Timestamptz(3)
+  completedAt       DateTime? @db.Timestamptz(3)
+  error             String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Restrict)
+  records   ImportRecord[]
+
+  @@unique([importRunId, chunkNumber])
+  @@index([importRunId, status, chunkNumber])
+  @@index([status, leaseExpiresAt])
+}
+
+model ImportRecord {
+  id          String   @id @default(cuid())
+  importRunId String
+  recordNumber Int? // one-based position in the immutable input snapshot
+  importRunChunkId String?
+  entityKind  String   @default("PROPERTY") // PROPERTY|PROJECT|AGENT|MARKET_TRANSACTION|MARKET_RENT
+  externalKey String?
+  propertyId  String? // resolved local entity once created
+  listingId   String?
+  projectId   String?
+  action      String   @default("CREATED") // CREATED|UPDATED|SKIPPED_DUPLICATE|SKIPPED_INVALID|FAILED|DRY_RUN
+  checksum    String?
+  issuesJson  String? // validation issues array
+  rawJson     String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  importRun ImportRun @relation(fields: [importRunId], references: [id])
+  importRunChunk ImportRunChunk? @relation(fields: [importRunChunkId], references: [id], onDelete: SetNull)
+  property  Property? @relation(fields: [propertyId], references: [id])
+  listing   Listing?  @relation(fields: [listingId], references: [id])
+  project   Project?  @relation(fields: [projectId], references: [id])
+
+  @@index([importRunId])
+  @@unique([importRunId, recordNumber])
+  @@index([entityKind, externalKey])
+  @@index([propertyId])
+  @@index([projectId])
+}
+
+model DataQualityIssue {
+  id         String    @id @default(cuid())
+  entityKind String
+  entityId   String?
+  severity   String    @default("WARNING") // INFO|WARNING|ERROR
+  ruleKey    String // price_outlier|missing_media|missing_coords|stale_price|bedroom_mismatch
+  message    String
+  status     String    @default("OPEN") // OPEN|RESOLVED|IGNORED
+  detectedAt DateTime  @default(now()) @db.Timestamptz(3)
+  resolvedAt DateTime? @db.Timestamptz(3)
+  resolvedBy String?
+  propertyId String?
+
+  property Property? @relation(fields: [propertyId], references: [id])
+
+  @@index([status, severity])
+  @@index([entityKind, entityId])
+}
+
+// ============================================================
+// C087–C088 Privacy
+// ============================================================
+
+model Consent {
+  id            String    @id @default(cuid())
+  subjectType   String    @default("VISITOR") // VISITOR|USER|CONTACT
+  userId        String?
+  contactId     String?
+  sessionKey    String?
+  purpose       String // ANALYTICS|MARKETING|NEWSLETTER|WHATSAPP|PERSONALIZATION|ESSENTIAL
+  status        String    @default("GRANTED") // GRANTED|DENIED|WITHDRAWN
+  policyVersion String    @default("2026-09-v1")
+  capturedAt    DateTime  @default(now()) @db.Timestamptz(3)
+  withdrawnAt   DateTime? @db.Timestamptz(3)
+  source        String    @default("COOKIE_BANNER") // COOKIE_BANNER|FORM_CHECKBOX|ACCOUNT_SETTINGS
+  evidenceJson  String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([subjectType, userId])
+  @@index([subjectType, contactId])
+  @@index([sessionKey])
+}
+
+model ExternalIdentity {
+  id                String   @id @default(cuid())
+  provider          String
+  entityKind        String
+  externalId        String
+  canonicalEntityId String
+  sourceUpdatedAt   DateTime? @db.Timestamptz(3)
+  retrievedAt       DateTime @default(now()) @db.Timestamptz(3)
+  metadataJson      String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([provider, entityKind, externalId])
+  @@index([entityKind, canonicalEntityId])
+}
+
+model DataSubjectRequest {
+  id           String    @id @default(cuid())
+  requestType  String    @default("EXPORT") // EXPORT|DELETE|RECTIFY|RESTRICT
+  status       String    @default("RECEIVED") // RECEIVED|IN_PROGRESS|COMPLETED|REJECTED
+  subjectEmail String
+  contactId    String?
+  userId       String?
+  requestNote  String?
+  resultJson   String?
+  handledBy    String?
+  completedAt  DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  user    User?    @relation(fields: [userId], references: [id])
+  contact Contact? @relation(fields: [contactId], references: [id])
+
+  @@index([status])
+}
+
+// ============================================================
+// C089–C091 Experimentation
+// ============================================================
+
+model FeatureFlag {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  description    String?
+  isEnabled      Boolean  @default(false)
+  rolloutPercent Int      @default(0)
+  rulesJson      String?
+  updatedBy      String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model Experiment {
+  id               String    @id @default(cuid())
+  key              String    @unique
+  name             String
+  hypothesis       String?
+  status           String    @default("DRAFT") // DRAFT|RUNNING|PAUSED|COMPLETED
+  variantsJson     String? // [{key, weight, description}]
+  primaryMetric    String?
+  guardMetricsJson String?
+  startedAt        DateTime? @db.Timestamptz(3)
+  endedAt          DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  assignments ExperimentAssignment[]
+}
+
+model ExperimentAssignment {
+  id           String   @id @default(cuid())
+  experimentId String
+  subjectKey   String // userId or sessionKey
+  variantKey   String
+  assignedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, subjectKey])
+}
+
+// ============================================================
+// C092 Audit log
+// ============================================================
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String?
+  actorType      String   @default("USER") // USER|SYSTEM|AI|IMPORT
+  actorId        String?
+  action         String // entity.action e.g. property.publish
+  resourceType   String
+  resourceId     String
+  beforeJson     String? // redacted snapshots
+  afterJson      String?
+  ipHash         String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  user         User?         @relation(fields: [actorId], references: [id])
+
+  @@index([resourceType, resourceId])
+  @@index([actorId])
+  @@index([createdAt])
+}

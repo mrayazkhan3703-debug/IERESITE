@@ -1,0 +1,3 @@
+# Mounted only into disposable shutdown-check containers, never the app root.
+preload = ["./tests/fixtures/worker-sigterm-preload.ts"]
+telemetry = false
