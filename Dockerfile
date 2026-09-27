@@ -16,6 +16,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=build --chown=bun:bun /app /app
+# COPY owns the contents, not the pre-existing WORKDIR. Non-root diagnostics
+# and runtime-generated caches must also be able to create files in /app.
+RUN chown bun:bun /app
 USER bun
 EXPOSE 3000 3001
 CMD ["bun", ".next/standalone/server.js"]
