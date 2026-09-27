@@ -235,7 +235,15 @@ let cached: AppConfig | null = null;
 
 /** Validate a supplied environment snapshot without mutating or caching process state. */
 export function parseConfig(env: Record<string, string | undefined>): AppConfig {
-  const parsed = schema.safeParse(env);
+  // Render and other hosts may expose unset optional variables as empty strings.
+  // Normalize those to undefined so schema defaults and optional fields work.
+  const normalized = Object.fromEntries(
+    Object.entries(env).map(([key, value]) => [
+      key,
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    ]),
+  );
+  const parsed = schema.safeParse(normalized);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `${i.path.join(".")}: ${i.message}`)
