@@ -85,7 +85,7 @@ async function verify() {
   const entrypoint = docker(["inspect", "-f", "{{json .Config.Entrypoint}}", workerId]);
   check(entrypoint === docker(["image", "inspect", "-f", "{{json .Config.Entrypoint}}", workerImage]), "Default image entrypoint matches Compose worker");
   const definitions = docker(["compose", "exec", "-T", "postgres", "pg_dump", "-U", "iere", "-d", "iere", "--schema-only", "--no-owner", "--no-privileges",
-    '--table=public."JobRun"', '--table=public."OutboxEvent"', '--table=public."DeadLetterEvent"']);
+    '--table=public."JobRun"', '--table=public."OutboxEvent"', '--table=public."DeadLetterEvent"', '--table=public."WorkerHeartbeat"']);
   let evidence;
   const cleanupErrors = [];
   try {
@@ -106,7 +106,7 @@ async function verify() {
     sql(`CREATE ROLE iere_shutdown LOGIN;
       GRANT CONNECT ON DATABASE iere_shutdown TO iere_shutdown;
       GRANT USAGE ON SCHEMA public TO iere_shutdown;
-      GRANT SELECT, INSERT, UPDATE ON "JobRun", "OutboxEvent", "DeadLetterEvent" TO iere_shutdown;
+      GRANT SELECT, INSERT, UPDATE ON "JobRun", "OutboxEvent", "DeadLetterEvent", "WorkerHeartbeat" TO iere_shutdown;
       INSERT INTO "JobRun" (id, "jobKey", "payloadJson", "idempotencyKey", status, "finishedAt", "updatedAt") VALUES
         ('fixture-sentinel', 'alerts.savedSearch.match', '{}', 'fixture-sentinel', 'SUCCEEDED', NOW(), NOW());
       INSERT INTO "JobRun" (id, "jobKey", "payloadJson", "idempotencyKey", "scheduledAt", "updatedAt") VALUES
