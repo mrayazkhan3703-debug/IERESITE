@@ -72,7 +72,7 @@ test("SIGTERM drains an active worker handler, releases its lease, and permits o
     await db.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
     // Copy table definitions only. No operational rows enter the test schema.
-    for (const table of ["JobRun", "OutboxEvent", "DeadLetterEvent"]) {
+    for (const table of ["JobRun", "OutboxEvent", "DeadLetterEvent", "WorkerHeartbeat"]) {
       await db.$executeRawUnsafe(`CREATE TABLE "${schema}"."${table}" (LIKE public."${table}" INCLUDING ALL)`);
     }
     const [scope] = await isolated.$queryRaw<Array<{ name: string }>>`SELECT current_schema() AS name`;

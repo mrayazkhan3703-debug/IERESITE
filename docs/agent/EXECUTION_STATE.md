@@ -2,10 +2,10 @@
 
 - Source baseline commit: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
 - Current branch: `codex/production-recovery-wave1`
-- Current HEAD at phase start: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
+- Current HEAD at phase start: `9389a1afd4c533776fbcd63a002874df4fd09bb3`
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
-- Last completed phase: Phase 00
-- Current phase status: COMPLETE
+- Last completed phase: Phase 00 (`9389a1afd4c533776fbcd63a002874df4fd09bb3`)
+- Current phase status: Phase 01 IN_PROGRESS
 - Last verified migration: `20260925000400_ghl_webhook_payload_hash_removal` (31/31 applied)
 - Last deployed revision: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
 
@@ -19,9 +19,9 @@
 
 ## In-progress work
 
-- Exact task: none; Phase 00 is checkpointed before Phase 01 begins.
-- Exact files/symbols being edited: none.
-- Remaining checklist: execute Phase 01 only.
+- Exact task: deploy a separate application-media R2 bucket and a real Render web + background-worker topology with database-visible worker health.
+- Exact files/symbols being edited: `render.yaml`, staging startup scripts, `WorkerHeartbeat` schema/migration, worker runtime, health/jobs APIs and deployment documentation/tests.
+- Remaining checklist: implement, run all phase gates, provision R2, configure/deploy Render, verify queue drain and live health, then checkpoint Phase 01.
 - Known failing condition: one Render web service only; 16 unpublished outbox events, zero job runs; application media objects are stored in backup bucket `iere`.
 
 ## Next phase

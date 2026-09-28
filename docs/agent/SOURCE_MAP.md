@@ -6,12 +6,13 @@ Baseline: `fb6ae2208d108d7cb57d8b52826201e85c608a61`. Search named symbols after
 
 | Concern | Canonical source | Baseline finding |
 |---|---|---|
-| Render topology | `render.yaml` | One Free Docker web service; staging web-only guard; worker disabled |
-| Web startup/migration gate | `scripts/start-staging-web.sh`, `Dockerfile` | Validates staging profile, runs `prisma migrate deploy`, then starts Next |
-| Worker entry | `src/worker.ts` | Requires scheduler enabled; DB probe; scheduler; `/health`; SIGTERM/SIGINT drain |
+| Render topology | `render.yaml` | Docker web plus dedicated Starter worker; shared revision, role-separated scheduler flags, 120-second worker shutdown |
+| Web/worker startup and migration gate | `scripts/start-staging-web.sh`, `scripts/start-staging-worker.sh`, `Dockerfile` | Both validate their role and run `prisma migrate deploy` before accepting traffic or jobs |
+| Worker entry | `src/worker.ts` | Requires scheduler enabled; DB probe; database heartbeat; scheduler; `/health`; SIGTERM/SIGINT drain |
+| Worker health | `src/server/jobs/worker-health.ts`, `WorkerHeartbeat` | Cross-process heartbeat persisted in PostgreSQL and read by public/admin health surfaces |
 | Scheduler/outbox | `src/server/jobs/outbox.ts` (`startScheduler`, `stopScheduler`, `jobQueueMetrics`, `schedulerStatus`) | Postgres-backed polling and durable job/DLQ path already exists |
-| Web health | `src/app/api/health/route.ts` | DB, search projection and runtime-mode health; currently reports web-only degradation |
-| Admin queue view | `src/app/api/admin/jobs/route.ts`, `src/server/jobs/admin-read-model.ts`, `src/views/admin/admin-view.tsx` `JobsSection` | Shows runs, pending outbox and unreplayed DLQ; runtime mode copy needs Phase 01 truthfulness |
+| Web health | `src/app/api/health/route.ts` | DB, search projection, deployment mode and dedicated-worker heartbeat health |
+| Admin queue view | `src/app/api/admin/jobs/route.ts`, `src/server/jobs/admin-read-model.ts`, `src/views/admin/admin-view.tsx` `JobsSection` | Shows worker heartbeat, runs, pending outbox and unreplayed DLQ |
 | Runtime config | `src/lib/config.ts` | Typed APP/STAGING/auth/search/AI/CRM/email/job/storage configuration |
 | Database connection cap | `src/lib/db.ts` | Adds connection-limit protection for Supabase session pooler |
 | Object storage | `src/server/storage/object-store.ts`, `src/server/media/pipeline.ts` | S3-compatible private bucket; public media is proxied by app; R2 region must be `auto` |

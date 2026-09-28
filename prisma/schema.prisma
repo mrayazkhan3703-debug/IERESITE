@@ -2002,6 +2002,22 @@ model JobRun {
   @@index([jobKey])
 }
 
+/// Database-visible liveness for the dedicated queue worker. The web process
+/// reads this record instead of claiming that its own in-process scheduler is
+/// evidence that the separately deployed worker is healthy.
+model WorkerHeartbeat {
+  serviceName   String    @id
+  instanceId    String?
+  status        String    @default("STARTING") // STARTING|RUNNING|STOPPING|STOPPED
+  buildRevision String?
+  startedAt     DateTime  @default(now()) @db.Timestamptz(3)
+  heartbeatAt   DateTime  @default(now()) @db.Timestamptz(3)
+  stoppedAt     DateTime? @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([status, heartbeatAt])
+}
+
 model DeadLetterEvent {
   id           String    @id @default(cuid())
   jobKey       String

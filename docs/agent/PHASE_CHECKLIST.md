@@ -2,8 +2,8 @@
 
 | Phase | Status | Checkpoint | Verification |
 |---|---|---|---|
-| 00 Baseline and forensic state | COMPLETE | Wave 1 Phase 00 commit | `VERIFICATION_LOG.md` 2026-09-28 |
-| 01 Online web + worker topology | NOT_STARTED | — | — |
+| 00 Baseline and forensic state | COMPLETE | `9389a1afd4c533776fbcd63a002874df4fd09bb3` | `VERIFICATION_LOG.md` 2026-09-28 |
+| 01 Online web + worker topology | IN_PROGRESS | — | — |
 | 02 P0 browser/runtime repair | NOT_STARTED | — | Baseline console errors recorded |
 | 03 Admin 2.0 shell | NOT_STARTED | — | — |
 | 04 Media Library 2.0 | NOT_STARTED | — | — |

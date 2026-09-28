@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { indexStatus } from "@/server/search/service";
 import { getConfig } from "@/lib/config";
+import { readWorkerHealth } from "@/server/jobs/worker-health";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const config = getConfig();
   const webOnlyPreview = config.APP_ENV === "staging" && config.STAGING_WEB_ONLY;
+  const workerExpected = config.APP_ENV !== "development" && !webOnlyPreview;
   const started = Date.now();
   let dbOk = false;
   let dbLatencyMs: number | null = null;
@@ -21,19 +23,34 @@ export async function GET() {
   }
 
   const index = await indexStatus().catch(() => ({ provider: "local", size: 0, built: false }));
+  const worker = dbOk && workerExpected
+    ? await readWorkerHealth().catch(() => ({
+        ok: false,
+        serviceName: "iere-staging-worker",
+        status: "UNAVAILABLE",
+        heartbeatAt: null,
+        heartbeatAgeMs: null,
+        instanceId: null,
+        buildRevision: null,
+      }))
+    : null;
   const degraded: string[] = [];
   if (!dbOk) degraded.push("database");
   if (!index.built) degraded.push("search-index-not-yet-built");
   if (webOnlyPreview) degraded.push("worker-disabled-web-only-preview");
+  if (workerExpected && !worker?.ok) degraded.push("worker-heartbeat-stale-or-missing");
 
   const body = {
-    status: degraded.includes("database") || webOnlyPreview ? "degraded" : "ok",
+    status: degraded.length > 0 ? "degraded" : "ok",
     service: "investment-experts-web",
     env: process.env.APP_ENV ?? "development",
     checks: {
       database: { ok: dbOk, latencyMs: dbLatencyMs },
       searchIndex: { ok: index.built, ...index },
-      jobRunner: { mode: webOnlyPreview ? "disabled-web-only-preview" : "dedicated-worker" },
+      jobRunner: {
+        mode: webOnlyPreview ? "disabled-web-only-preview" : workerExpected ? "dedicated-worker" : "local-development",
+        worker,
+      },
     },
     degraded,
     uptimeSec: Math.round(process.uptime()),

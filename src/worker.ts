@@ -2,6 +2,13 @@ import { getConfig } from "@/lib/config";
 import { db } from "@/lib/db";
 import { jobQueueMetrics, schedulerStatus, startScheduler, stopScheduler } from "@/server/jobs/outbox";
 import { createServer } from "node:http";
+import {
+  markWorkerStarted,
+  markWorkerStopped,
+  markWorkerStopping,
+  touchWorkerHeartbeat,
+  WORKER_HEARTBEAT_INTERVAL_MS,
+} from "@/server/jobs/worker-health";
 
 const config = getConfig();
 
@@ -10,7 +17,17 @@ if (!config.JOB_SCHEDULER_ENABLED) {
 }
 
 await db.$queryRaw`SELECT 1`;
+await markWorkerStarted();
 startScheduler();
+
+let heartbeatWrite: Promise<unknown> | null = null;
+const heartbeatTimer = setInterval(() => {
+  if (heartbeatWrite) return;
+  heartbeatWrite = touchWorkerHeartbeat()
+    .catch((error) => console.error("[worker] heartbeat write failed", error))
+    .finally(() => { heartbeatWrite = null; });
+}, WORKER_HEARTBEAT_INTERVAL_MS);
+heartbeatTimer.unref();
 
 const server = createServer(async (request, response) => {
     if (request.url !== "/health") {
@@ -59,10 +76,14 @@ let shutdownPromise: Promise<void> | null = null;
 const shutdown = () => {
   if (shutdownPromise) return;
   shutdownPromise = (async () => {
+    clearInterval(heartbeatTimer);
+    if (heartbeatWrite) await heartbeatWrite;
+    await markWorkerStopping().catch((error) => console.error("[worker] failed to mark stopping", error));
     await stopScheduler();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
     });
+    await markWorkerStopped().catch((error) => console.error("[worker] failed to mark stopped", error));
     await db.$disconnect();
   })();
   void shutdownPromise.catch((error) => {

@@ -4,6 +4,7 @@ import { requirePermission, HttpError } from "@/server/auth";
 import { db } from "@/lib/db";
 import { indexStatus } from "@/server/search/service";
 import { schedulerStatus } from "@/server/jobs/outbox";
+import { readWorkerHealth } from "@/server/jobs/worker-health";
 import { crmReconciliation } from "@/server/crm/adapter";
 import { hasGrantedPermission } from "@/server/authz-policy";
 import { leadRecordScope } from "@/server/domain/resource-policy";
@@ -37,6 +38,7 @@ export const GET = apiHandler(async () => {
     eventCounts,
     openQualityIssues,
     activeUsers,
+    worker,
   ] = await Promise.all([
     db.lead.count({ where: leadScope }),
     db.lead.count({ where: { AND: [leadScope, { status: "NEW" }] } }),
@@ -53,6 +55,7 @@ export const GET = apiHandler(async () => {
     db.analyticsEvent.groupBy({ by: ["name"], _count: true, orderBy: { _count: { name: "desc" } }, take: 12 }),
     db.dataQualityIssue.count({ where: { status: "OPEN" } }),
     db.user.count({ where: userScope }),
+    readWorkerHealth(),
   ]);
 
   const recentLeads = await db.lead.findMany({
@@ -83,7 +86,7 @@ export const GET = apiHandler(async () => {
     },
     crm,
     searchIndex: index,
-    jobs: { scheduler: jobs, statusCounts: jobStats },
+    jobs: { scheduler: jobs, worker, statusCounts: jobStats },
     topEvents: eventCounts.map((e) => ({ name: e.name, count: e._count })),
     recentLeads: recentLeads.map((l) => ({
       id: l.id,
