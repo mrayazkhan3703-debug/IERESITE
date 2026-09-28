@@ -65,9 +65,7 @@ try {
   const network = own("network", ["network", "create", "--internal", "--label", label, `iere-backup-${token}`]);
   if (docker(["network", "inspect", "-f", "{{.Internal}}", network]) !== "true") throw new Error("Fixture network is not internal");
   const database = own("container", ["create", "--label", label, "--network", network, "--network-alias", "backup-fixture-db",
-    // PostgreSQL's initialized cluster and a recovered dump can exceed 64 MiB
-    // on hosted runners before the synthetic row check completes.
-    "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,noexec,size=256m", "-e", "POSTGRES_USER=backup_fixture", "-e", "POSTGRES_DB=backup_fixture",
+    "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,noexec,size=64m", "-e", "POSTGRES_USER=backup_fixture", "-e", "POSTGRES_DB=backup_fixture",
     "-e", "POSTGRES_HOST_AUTH_METHOD=trust", "--user", "0:0", "--entrypoint", "docker-entrypoint.sh", image, "postgres"]);
   const storage = own("container", ["create", "--label", label, "--network", network, "--network-alias", "backup-fixture-store",
     "--tmpfs", "/data:rw,nosuid,noexec,size=256m", "-e", "AWS_ACCESS_KEY_ID=backup_fixture", "-e", "AWS_SECRET_ACCESS_KEY=synthetic_fixture_only",
@@ -103,6 +101,9 @@ try {
   // Query the recovered archive in a clean synthetic database, not working PostgreSQL.
   const recovered = resolve(directory, "restored/restored/database.dump");
   const restoreContainer = own("container", ["create", "--label", label, "--network", network,
+    // The archive is created on the bind mount as the runner user. Keep the
+    // restore process on that identity so pg_restore can read its 0600 file.
+    "--user", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
     "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,noexec,size=1m",
     "--mount", `type=bind,source=${recovered},target=/database.dump,readonly`,
     "--entrypoint", "pg_restore", image, "-h", "backup-fixture-db", "-U", "backup_fixture", "-d", "backup_fixture", "--clean", "--if-exists", "/database.dump"]);
