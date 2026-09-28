@@ -65,7 +65,9 @@ try {
   const network = own("network", ["network", "create", "--internal", "--label", label, `iere-backup-${token}`]);
   if (docker(["network", "inspect", "-f", "{{.Internal}}", network]) !== "true") throw new Error("Fixture network is not internal");
   const database = own("container", ["create", "--label", label, "--network", network, "--network-alias", "backup-fixture-db",
-    "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,noexec,size=64m", "-e", "POSTGRES_USER=backup_fixture", "-e", "POSTGRES_DB=backup_fixture",
+    // PostgreSQL's initialized cluster and a recovered dump can exceed 64 MiB
+    // on hosted runners before the synthetic row check completes.
+    "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,noexec,size=256m", "-e", "POSTGRES_USER=backup_fixture", "-e", "POSTGRES_DB=backup_fixture",
     "-e", "POSTGRES_HOST_AUTH_METHOD=trust", "--user", "0:0", "--entrypoint", "docker-entrypoint.sh", image, "postgres"]);
   const storage = own("container", ["create", "--label", label, "--network", network, "--network-alias", "backup-fixture-store",
     "--tmpfs", "/data:rw,nosuid,noexec,size=256m", "-e", "AWS_ACCESS_KEY_ID=backup_fixture", "-e", "AWS_SECRET_ACCESS_KEY=synthetic_fixture_only",
