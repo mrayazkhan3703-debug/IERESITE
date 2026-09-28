@@ -101,6 +101,11 @@ async function verify() {
     const sql = (query) => docker(["exec", "-i", postgres, "psql", "-U", "iere_fixture_admin", "-d", "iere_shutdown", "-At", "-v", "ON_ERROR_STOP=1"], query);
     stage = "queue definition import";
     sql(definitions);
+    // pg_dump preserves the production heartbeat table's RLS flag. The
+    // disposable fixture uses a deliberately non-owner role and has no app
+    // policies, so disable RLS here to exercise the same owner-visible writes
+    // used by the deployed worker instead of silently filtering its upsert.
+    sql('ALTER TABLE "WorkerHeartbeat" DISABLE ROW LEVEL SECURITY;');
     check(sql('SELECT count(*) FROM "JobRun";') === "0", "Only queue definitions copied; no operational rows");
     stage = "queue-only role and synthetic jobs";
     sql(`CREATE ROLE iere_shutdown LOGIN;
