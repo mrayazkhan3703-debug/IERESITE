@@ -13,8 +13,8 @@ const owned = [];
 let directory;
 const evidence = [];
 let volumeBaseline;
-function docker(args, input) {
-  const result = spawnSync("docker", args, { cwd: root, input, encoding: "utf8", timeout: 60_000, maxBuffer: 1024 * 1024 });
+function docker(args, input, timeoutMs = 60_000) {
+  const result = spawnSync("docker", args, { cwd: root, input, encoding: "utf8", timeout: timeoutMs, maxBuffer: 1024 * 1024 });
   if (result.error || result.status !== 0) {
     let context = "";
     if (args[0] === "start" && args[1] === "-a") {
@@ -104,7 +104,9 @@ try {
     "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,noexec,size=1m",
     "--mount", `type=bind,source=${recovered},target=/database.dump,readonly`,
     "--entrypoint", "pg_restore", image, "-h", "backup-fixture-db", "-U", "backup_fixture", "-d", "backup_fixture", "--clean", "--if-exists", "/database.dump"]);
-  docker(["start", "-a", restoreContainer]);
+  // pg_restore can exceed the normal one-minute command ceiling on a busy
+  // hosted runner even though the disposable restore is still progressing.
+  docker(["start", "-a", restoreContainer], undefined, 120_000);
   if (docker(["inspect", "-f", "{{.State.ExitCode}}", restoreContainer]) !== "0") throw new Error("Synthetic recovered database restore failed");
   const restoredRow = docker(["exec", database, "psql", "-U", "backup_fixture", "-d", "backup_fixture", "-Atc", "SELECT count(*) FROM synthetic_checkpoint WHERE id=1 AND label='SYNTHETIC ONLY'"]);
   if (restoredRow !== "1") throw new Error("Recovered synthetic database row missing");
