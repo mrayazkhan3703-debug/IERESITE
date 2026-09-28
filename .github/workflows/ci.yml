@@ -119,6 +119,9 @@ jobs:
           docker run --rm --network none --entrypoint bun iere-local-backup-tools --no-env-file test tests/backup-adapter.test.ts tests/r2-backup-verification.test.ts tests/backup-operations-report.test.ts
           node scripts/verify-backup-adapter.mjs
 
+      - name: Seed deterministic browser fixtures
+        run: docker compose exec -T web bun run seed
+
       - name: Browser accessibility and responsive-image smoke
         run: docker compose --profile test run --build --rm -v "${{ github.workspace }}/test-results:/app/test-results" accessibility
 
