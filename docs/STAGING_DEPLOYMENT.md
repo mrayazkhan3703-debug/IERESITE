@@ -6,6 +6,10 @@ Status: **STAGING ONLINE — TESTABLE** only after both Render services report t
 
 The web service, Supabase migration and separate application-media bucket are deployed. The paid Render background worker is owner-deferred, so the environment does not yet meet the status above. `/api/health` intentionally reports `degraded` with `worker-heartbeat-stale-or-missing`; queued outbox work is preserved and must not be described as processed. The next safe action is to provision the Blueprint worker on Render Starter, then execute release-gate steps 4-7 below.
 
+## Latest verified web revision — 2026-09-29
+
+Render web is live on `9964a870d6f413b48d2cb810d0f09dbb8b0224d2`. `/api/health`, `/communities`, `/properties/map`, and `/admin/content` returned HTTP 200 after deployment. The health status stays degraded until the separately billed background worker is enabled.
+
 ## Runtime topology
 
 | Capability | Staging runtime | State and boundary |
