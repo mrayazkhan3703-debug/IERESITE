@@ -162,7 +162,7 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   const floorAsset = usedResult.media.find((asset) => asset.id === mediaIds[1]);
   expect(floorAsset?.usageCount).toBeGreaterThanOrEqual(2);
   expect(floorAsset?.usageGraph.map((use) => use.type)).toEqual(expect.arrayContaining(["PROPERTY_GALLERY", "PROPERTY_FLOOR_PLAN"]));
-  const blockedDelete = await page.request.delete("/api/media", { data: { mediaAssetIds: [mediaIds[1]] } });
+  const blockedDelete = await page.request.delete("/api/media", { headers: { "x-requested-with": "fetch" }, data: { mediaAssetIds: [mediaIds[1]] } });
   expect(blockedDelete.status()).toBe(207);
   expect((await blockedDelete.json()).blocked).toBe(1);
 
