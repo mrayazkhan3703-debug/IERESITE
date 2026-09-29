@@ -95,6 +95,8 @@ export function resolveSpaRoute(path: string): RouteContract | null {
 async function resolveSpaRoutePageBase(path: string): Promise<RouteContract | null> {
   const contract = resolveSpaRoute(path);
   if (!contract) return null;
+  const normalizedPath = path.length > 1 ? path.replace(/\/$/, "") : path;
+  const isExactRoute = Object.hasOwn(EXACT_ROUTES, normalizedPath);
 
   const parts = path.split("/").filter(Boolean);
   const slug = parts.at(-1);
@@ -104,7 +106,7 @@ async function resolveSpaRoutePageBase(path: string): Promise<RouteContract | nu
     const entity = await getProjectDetailV2(slug);
     return entity ? { title: entity.name, description: entity.summary ?? entity.tagline } : null;
   }
-  if (parts.length === 2 && parts[0] === "properties") {
+  if (!isExactRoute && parts.length === 2 && parts[0] === "properties") {
     const entity = await getPropertyDetailV2(slug);
     if (!entity) return null;
     const description = entity.shortDescription ?? `${entity.propertyType} in ${entity.community.name}. ${entity.bedrooms === 0 ? "Studio" : `${entity.bedrooms} bedroom`}, ${entity.bathrooms} bath${entity.builtUpAreaSqft ? `, ${entity.builtUpAreaSqft.toLocaleString("en-US")} sqft` : ""}.`;
