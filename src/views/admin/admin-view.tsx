@@ -26,7 +26,7 @@ import { SeoMetadataSection } from "@/views/admin/seo-metadata-section";
 import { formatMoney, formatNumber, formatDate } from "@/lib/money";
 import {
   Users, Building2, Download, RefreshCcw, BarChart3, ScrollText, Flag,
-  AlertTriangle, Database, Activity, LogOut, CheckCircle2, XCircle, Clock, Loader2, ShieldCheck,
+  AlertTriangle, Database, Activity, CheckCircle2, XCircle, Clock, Loader2, ShieldCheck,
   Boxes, FileSearch, BookOpenCheck, Gauge, FolderKanban, MapPin, Landmark, BriefcaseBusiness, Newspaper, Images, MessageSquareQuote, Link2, Globe2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,7 @@ import { OverviewSection } from "@/features/admin/overview-section";
 import { PublicMediaPicker } from "@/features/admin/shared/public-media-picker";
 import { confirmDiscardChanges, useUnsavedChanges } from "@/features/admin/shared/admin-primitives";
 import { MapLocationPicker } from "@/features/admin/shared/map-location-picker";
+import { AdminShell } from "@/features/admin/admin-shell";
 
 function isPublicMediaUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/uploads/") || value.startsWith("/api/media/"));
@@ -62,55 +63,9 @@ export default function AdminView() {
   }
 
   const can = (section: AdminSection) => canViewAdminSection(section, user.roles);
-  const accessibleSections = ADMIN_SECTIONS.filter((candidate) => can(candidate.key));
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)]">
-      <aside className="hidden w-56 shrink-0 border-r border-border/70 bg-sand/30 lg:block" aria-label="Admin sections">
-        <div className="sticky top-20 p-4">
-          <p className="kicker px-2 pb-2">Console</p>
-          <nav className="space-y-0.5">
-            {accessibleSections.map((s) => (
-              <Link
-                key={s.key}
-                to={`/admin/${s.key}`}
-                aria-current={section === s.key ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-ui",
-                  section === s.key ? "bg-brand-soft text-brand-strong" : "text-foreground/75 hover:bg-secondary"
-                )}
-              >
-                <s.icon className="h-4 w-4" aria-hidden />
-                {s.label}
-              </Link>
-            ))}
-          </nav>
-          <div className="mt-6 border-t border-border/70 pt-4">
-            <p className="px-3 text-xs text-muted-foreground">{user.email}</p>
-            <p className="mt-0.5 px-3 text-[10px] font-semibold uppercase tracking-wide text-brand-strong">{user.roles.join(" · ")}</p>
-            <Button variant="ghost" size="sm" className="mt-3 w-full justify-start gap-2 text-muted-foreground" onClick={async () => { await logout(); navigate("/"); }}>
-              <LogOut className="h-4 w-4" aria-hidden /> Sign out
-            </Button>
-          </div>
-        </div>
-      </aside>
-
-      <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
-        <div className="mb-4 flex gap-2 overflow-x-auto scroll-elegant pb-1 lg:hidden">
-          {accessibleSections.map((s) => (
-            <Link
-              key={s.key}
-              to={`/admin/${s.key}`}
-              className={cn(
-                "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-ui",
-                section === s.key ? "border-brand bg-brand-soft text-brand-strong" : "border-border text-muted-foreground"
-              )}
-            >
-              {s.label}
-            </Link>
-          ))}
-        </div>
-
+    <AdminShell user={user} activeSection={section} onSignOut={logout}>
         {section === "overview" && <OverviewSection />}
         {section === "leads" && <LeadsSection />}
         {section === "properties" && <PropertiesSection canCreate={hasRole(user, ["OWNER"]) || (hasRole(user, ["ADMIN"]) && Boolean(user.organizationId))} canReindex={hasRole(user, ["OWNER", "ADMIN"])} />}
@@ -136,8 +91,7 @@ export default function AdminView() {
         {section === "analytics" && <AnalyticsSection />}
         {section === "audit" && <AuditSection />}
         {section === "flags" && <FlagsSection canEdit={hasRole(user, ["OWNER", "ADMIN"])} />}
-      </main>
-    </div>
+    </AdminShell>
   );
 }
 
