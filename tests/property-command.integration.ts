@@ -359,6 +359,11 @@ describe("transactional property command", () => {
       highlights: ["Updated fact"],
     });
     expect(restoredListing.priceMinor).toBe(290_000_000n);
-    expect(restoredListing.editorOverridesJson).toBeNull();
+    expect(JSON.parse(restoredListing.editorOverridesJson ?? "{}")).toMatchObject({
+      tenure: "LEASEHOLD",
+      offPlan: true,
+      isExclusive: true,
+    });
+    expect(JSON.parse(restoredListing.editorOverridesJson ?? "{}")).not.toHaveProperty("priceAed");
   });
 });
