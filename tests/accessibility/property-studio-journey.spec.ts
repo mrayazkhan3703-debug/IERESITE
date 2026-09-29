@@ -55,7 +55,7 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   await page.getByRole("option", { name: "SALE" }).click();
   await dialog.getByLabel("Listing availability").click();
   await page.getByRole("option", { name: "AVAILABLE" }).click();
-  await dialog.getByLabel("Community", { exact: true }).click();
+  await dialog.getByRole("combobox", { name: "Community", exact: true }).click();
   await page.getByRole("option", { name: /Synthetic Property Studio Community/ }).click();
   const createResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/properties" && response.request().method() === "POST");
   await dialog.getByRole("button", { name: "Create draft property" }).click();
