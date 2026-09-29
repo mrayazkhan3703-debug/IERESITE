@@ -47,6 +47,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Scale, ArrowRight, Building2, MapPin, Sparkles } from "lucide-react";
+import { CommunityImage } from "@/components/community-image";
 
 function listingCardDto(p: EntityListingLite, community: { id: string; name: string; slug: string }, isDemoData: boolean) {
   return {
@@ -147,11 +148,7 @@ export default function CommunityDetailView({ slug }: { slug: string }) {
       {/* Hero */}
       <section className="relative">
         <div className="absolute inset-0">
-          {data.image ? (
-            <img src={data.image.url} alt={data.image.altText ?? `${data.name}, Dubai`} className="h-full w-full object-cover" />
-          ) : (
-            <img src={`/images/communities/${slug}.jpg`} alt={`${data.name}, Dubai`} className="h-full w-full object-cover" />
-          )}
+          <CommunityImage slug={data.slug} imageUrl={data.image?.url} alt={data.image?.altText ?? `${data.name}, Dubai`} className="h-full w-full object-cover" loading="eager" />
           <div className="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/45 to-ink/25" />
         </div>
         <div className="container-page relative pt-16 pb-10 sm:pt-24 sm:pb-14">

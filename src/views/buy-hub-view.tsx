@@ -128,7 +128,7 @@ export function HubView({
       </section>
 
       {/* Community chips */}
-      <section className="container-page py-8" aria-label="Popular communities">
+      <section className="container-page min-h-[266px] py-8 sm:min-h-[160px] lg:min-h-[112px]" aria-label="Popular communities">
         <div className="flex flex-wrap gap-2">
           {communities.map((c) => (
             <Link
@@ -144,7 +144,7 @@ export function HubView({
       </section>
 
       {/* Results */}
-      <section className="container-page pb-16" aria-label="Listings">
+      <section className="container-page min-h-[320px] pb-16" aria-label="Listings">
         <SectionHeading
           kicker="Curated selection"
           title={isRent ? "Latest rentals" : isOffPlan ? "Off-plan highlights" : "Featured for sale"}
@@ -156,13 +156,13 @@ export function HubView({
             </Button>
           }
         />
-        {data === null ? (
-          <GridSkeleton />
+        {data === null ? <GridSkeleton /> : data.results.length === 0 ? (
+          <div className="grid min-h-[240px] place-items-center rounded-xl border border-border/60 bg-card/50 px-5 text-center text-sm text-muted-foreground">
+            Listings are loading for this market. Check back soon or browse all properties.
+          </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {data.results.slice(0, 9).map((l: ListingCardDTO) => (
-              <PropertyCard key={l.id} listing={l} />
-            ))}
+            {data.results.slice(0, 9).map((l: ListingCardDTO) => <PropertyCard key={l.id} listing={l} />)}
           </div>
         )}
         {isOffPlan && (

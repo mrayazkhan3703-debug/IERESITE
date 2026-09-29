@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" role="img" aria-label="Dubai community illustration">
+  <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#e9dfcf"/><stop offset="1" stop-color="#c8aa84"/></linearGradient></defs>
+  <rect width="1200" height="750" fill="url(#sky)"/>
+  <path fill="#8f5a2b" opacity=".22" d="M0 590h1200v160H0zM120 590V390h150v200m35 0V300h110v290m40 0V420h170v170m45 0V250h130v340m42 0V370h155v220m36 0V450h110v140"/>
+  <path fill="#8f5a2b" opacity=".4" d="M0 650h1200v100H0z"/>
+</svg>

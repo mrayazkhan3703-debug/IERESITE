@@ -76,7 +76,7 @@ test("CONTENT_EDITOR creates a revisioned draft in the visual CMS without publis
     sameSite: "Lax",
   }]);
 
-  await page.goto("/admin?section=content");
+  await page.goto("/admin/content");
   const authResponse = await page.request.get("/api/auth/me");
   expect(authResponse.status()).toBe(200);
   expect(await authResponse.json()).toMatchObject({ user: { id: userId, roles: ["CONTENT_EDITOR"] } });

@@ -3,7 +3,7 @@
 | Phase | Status | Checkpoint | Verification |
 |---|---|---|---|
 | 00 Baseline and forensic state | COMPLETE | `9389a1afd4c533776fbcd63a002874df4fd09bb3` | `VERIFICATION_LOG.md` 2026-09-28 |
-| 01 Online web + worker topology | IN_PROGRESS | — | — |
+| 01 Online web + worker topology | BLOCKED | `72b849ae9d367ba35629af7425d3f3b669e44f03` | `VERIFICATION_LOG.md` 2026-09-28; owner deferred USD 7/month worker |
 | 02 P0 browser/runtime repair | NOT_STARTED | — | Baseline console errors recorded |
 | 03 Admin 2.0 shell | NOT_STARTED | — | — |
 | 04 Media Library 2.0 | NOT_STARTED | — | — |

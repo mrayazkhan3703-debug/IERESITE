@@ -265,8 +265,6 @@ export default function MapView() {
       await import("leaflet/dist/leaflet.css").catch(() => {});
       if (cancelled || !mapElRef.current || mapRef.current) return;
       LRef.current = L;
-      delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
-      L.Icon.Default.mergeOptions(LEAFLET_DEFAULT_ICONS);
       const map = L.map(mapElRef.current, {
         center: initialCenter,
         zoom: initialZoom,
@@ -315,12 +313,22 @@ export default function MapView() {
       const b = map.getBounds();
       bboxRef.current = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
       setBboxTick((n) => n + 1);
-    })();
+    })().catch(() => {
+      if (!cancelled) setTilesFailed(true);
+    });
     return () => {
       cancelled = true;
       if (urlTimer.current) clearTimeout(urlTimer.current);
+      urlTimer.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
+      LRef.current = null;
+      propsLayerRef.current = null;
+      projectsLayerRef.current = null;
+      communitiesLayerRef.current = null;
+      activityLayerRef.current = null;
+      rentLayerRef.current = null;
+      bboxRef.current = null;
     };
   }, []);
 
@@ -446,10 +454,10 @@ export default function MapView() {
       const item = single ? results.find((result) => result.id === cluster.listingId || result.slug === cluster.slug) ?? null : null;
       const isSelected = item != null && selected?.kind === "property" && selected.listing?.slug === item.slug;
 
-      let icon: L.DivIcon | L.Icon.Default;
+      let icon: L.DivIcon | L.Icon;
       let priceLabel: string | null = null;
       if (single && markerMode === "pin" && !isSelected) {
-        icon = new L.Icon.Default();
+        icon = L.icon(LEAFLET_DEFAULT_ICONS);
       } else if (single) {
         const minor = item?.price.minor ?? cluster.priceMinor;
         priceLabel = minor ? formatAEDPrecise(fromMinor(minor)) : "◦";
@@ -469,26 +477,23 @@ export default function MapView() {
 
       const marker = L.marker([cluster.lat, cluster.lng], { icon, keyboard: true });
       marker.on("add", () => {
-        setTimeout(() => {
-          const el = marker.getElement();
-          if (!el) return;
-          el.setAttribute("role", "button");
-          el.setAttribute(
-            "aria-label",
-            single
-              ? `${item?.title ?? cluster.title ?? t("map.layers.properties", locale)} — ${t("map.preview.viewProperty", locale)}`
-              : t("map.marker.cluster", locale).replace("{n}", formatNumber(cluster.count))
-          );
-          el.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (single) {
-              if (item) setSelected({ kind: "property", listing: item });
-              else if (cluster.slug) navigate(`/properties/${cluster.slug}`);
-            } else {
-              mapRef.current?.setView([cluster.lat, cluster.lng], Math.min(18, (mapRef.current?.getZoom() ?? 11) + 2));
-            }
-          });
-        }, 0);
+        const el = marker.getElement();
+        el?.setAttribute("role", "button");
+        el?.setAttribute(
+          "aria-label",
+          single
+            ? `${item?.title ?? cluster.title ?? t("map.layers.properties", locale)} — ${t("map.preview.viewProperty", locale)}`
+            : t("map.marker.cluster", locale).replace("{n}", formatNumber(cluster.count))
+        );
+      });
+      marker.on("click", (event) => {
+        L.DomEvent.stopPropagation(event);
+        if (single) {
+          if (item) setSelected({ kind: "property", listing: item });
+          else if (cluster.slug) navigate(`/properties/${cluster.slug}`);
+        } else {
+          mapRef.current?.setView([cluster.lat, cluster.lng], Math.min(18, (mapRef.current?.getZoom() ?? 11) + 2));
+        }
       });
       marker.addTo(layer);
     }
@@ -524,15 +529,13 @@ export default function MapView() {
         { direction: "top", offset: [0, -6] }
       );
       marker.on("add", () => {
-        setTimeout(() => {
-          const el = marker.getElement();
-          el?.setAttribute("role", "button");
-          el?.setAttribute("aria-label", `${p.name} — ${t("map.preview.viewProject", locale)}`);
-          el?.addEventListener("click", (e) => {
-            e.stopPropagation();
-            setSelected({ kind: "project", project: p });
-          });
-        }, 0);
+        const el = marker.getElement();
+        el?.setAttribute("role", "button");
+        el?.setAttribute("aria-label", `${p.name} — ${t("map.preview.viewProject", locale)}`);
+      });
+      marker.on("click", (event) => {
+        L.DomEvent.stopPropagation(event);
+        setSelected({ kind: "project", project: p });
       });
       marker.addTo(layer);
     }

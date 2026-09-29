@@ -9,6 +9,7 @@ import { formatMoney, formatNumber } from "@/lib/money";
 import { events } from "@/lib/analytics-tracker";
 import type { CommunityCardDTO } from "@/lib/types";
 import { MapPin } from "lucide-react";
+import { CommunityImage } from "@/components/community-image";
 
 export default function CommunitiesView() {
   const [communities, setCommunities] = React.useState<CommunityCardDTO[] | null>(null);
@@ -53,21 +54,7 @@ export default function CommunitiesView() {
               className="group overflow-hidden rounded-xl border border-border/70 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-200 hover:-translate-y-1 hover:border-brand/40 hover:shadow-[0_12px_32px_-8px_rgba(0,0,0,0.12)]"
             >
               <div className="relative aspect-[16/10] overflow-hidden bg-sand">
-                {c.image?.url ? (
-                  <img
-                    src={c.image.url}
-                    alt={`${c.name}, Dubai`}
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                  />
-                ) : (
-                  <img
-                    src={`/images/communities/${c.slug}.jpg`}
-                    alt={`${c.name}, Dubai`}
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                  />
-                )}
+                <CommunityImage slug={c.slug} imageUrl={c.image?.url} alt={`${c.name}, Dubai`} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
                 {/* soft separation between photo and content */}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/15 to-transparent" aria-hidden />
                 <div className="absolute bottom-2.5 left-3 flex items-center gap-1.5 text-[11px] font-medium text-white/95 drop-shadow-sm">

@@ -25,109 +25,26 @@ import { RedirectsSection } from "@/views/admin/redirects-section";
 import { SeoMetadataSection } from "@/views/admin/seo-metadata-section";
 import { formatMoney, formatNumber, formatDate } from "@/lib/money";
 import {
-  LayoutDashboard, Users, Building2, Download, RefreshCcw, BarChart3, ScrollText, Flag,
+  Users, Building2, Download, RefreshCcw, BarChart3, ScrollText, Flag,
   AlertTriangle, Database, Activity, LogOut, CheckCircle2, XCircle, Clock, Loader2, ShieldCheck,
   Boxes, FileSearch, BookOpenCheck, Gauge, FolderKanban, MapPin, Landmark, BriefcaseBusiness, Newspaper, Images, MessageSquareQuote, Link2, Globe2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MetricState } from "@/lib/data-state";
-
-type AdminSection =
-  | "overview" | "leads" | "properties" | "projects" | "communities" | "developers" | "agents" | "users" | "content" | "faqs" | "market-reports" | "knowledge-base" | "testimonials" | "redirects" | "seo-metadata" | "media" | "units" | "imports" | "crm" | "jobs"
-  | "analytics" | "audit" | "flags" | "evidence" | "data-quality";
+import { ADMIN_SECTIONS, adminSectionFromLocation, canViewAdminSection, type AdminSection } from "@/features/admin/admin-sections";
+import { OverviewSection } from "@/features/admin/overview-section";
+import { PublicMediaPicker } from "@/features/admin/shared/public-media-picker";
+import { confirmDiscardChanges, useUnsavedChanges } from "@/features/admin/shared/admin-primitives";
+import { MapLocationPicker } from "@/features/admin/shared/map-location-picker";
 
 function isPublicMediaUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/uploads/") || value.startsWith("/api/media/"));
 }
 
-function PublicMediaPicker({
-  label,
-  value,
-  onChange,
-  allowedKinds = ["IMAGE"],
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  allowedKinds?: string[];
-}) {
-  const [assets, setAssets] = React.useState<Record<string, unknown>[] | null>(null);
-  const [loadFailed, setLoadFailed] = React.useState(false);
-  const kindsKey = allowedKinds.join(",");
-  React.useEffect(() => {
-    let active = true;
-    const kinds = new Set(kindsKey.split(","));
-    api.get<{ media: Record<string, unknown>[] }>("/api/media?take=100")
-      .then(async ({ media }) => {
-        const available = media.filter((asset) => asset.isPrivate === false && kinds.has(String(asset.kind)));
-        if (value && !available.some((asset) => asset.id === value)) {
-          try {
-            const existing = await api.get<Record<string, unknown>>(`/api/media/${encodeURIComponent(value)}`);
-            if (existing.isPrivate !== true && kinds.has(String(existing.kind))) available.unshift(existing);
-          } catch {
-            // A stale or private selection is not reintroduced into the public picker.
-          }
-        }
-        if (active) setAssets(available);
-      })
-      .catch(() => {
-        if (active) { setAssets([]); setLoadFailed(true); }
-      });
-    return () => { active = false; };
-  }, [value, kindsKey]);
-
-  const selected = assets?.find((asset) => asset.id === value);
-  return (
-    <div className="space-y-2">
-      <label className="block space-y-1.5 text-sm font-medium">{label}
-        <Select value={value || "none"} onValueChange={(next) => onChange(next === "none" ? "" : next)}>
-          <SelectTrigger><SelectValue placeholder="No public asset selected" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">No asset selected</SelectItem>
-            {assets?.map((asset) => <SelectItem key={String(asset.id)} value={String(asset.id)}>{String(asset.altText || asset.id)} · {String(asset.kind)}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </label>
-      {loadFailed ? <p className="text-xs text-destructive">Public Media Library options could not be loaded.</p> : null}
-      {assets?.length === 0 && !loadFailed ? <p className="text-xs text-muted-foreground">No public assets of this type are available.</p> : null}
-      {selected && isPublicMediaUrl(selected.url) && selected.kind === "IMAGE" && <div className="max-w-xs overflow-hidden rounded-lg border border-border/70"><Image src={selected.url} alt={String(selected.altText ?? "")} width={480} height={270} unoptimized className="h-32 w-full object-cover" /></div>}
-      {selected && isPublicMediaUrl(selected.url) && selected.kind !== "IMAGE" && <a className="text-xs underline" href={selected.url} target="_blank" rel="noopener noreferrer">Open selected public document</a>}
-    </div>
-  );
-}
-
-const SECTIONS: { key: AdminSection; label: string; icon: React.ElementType }[] = [
-  { key: "overview", label: "Overview", icon: LayoutDashboard },
-  { key: "leads", label: "Leads", icon: Users },
-  { key: "properties", label: "Properties", icon: Building2 },
-  { key: "projects", label: "Projects", icon: FolderKanban },
-  { key: "communities", label: "Communities", icon: MapPin },
-  { key: "developers", label: "Developers", icon: Landmark },
-  { key: "agents", label: "Team", icon: BriefcaseBusiness },
-  { key: "users", label: "Users & access", icon: ShieldCheck },
-  { key: "content", label: "Content", icon: Newspaper },
-  { key: "faqs", label: "FAQs", icon: Newspaper },
-  { key: "market-reports", label: "Market reports", icon: FileSearch },
-  { key: "knowledge-base", label: "AI Knowledge", icon: BookOpenCheck },
-  { key: "testimonials", label: "Testimonials", icon: MessageSquareQuote },
-  { key: "redirects", label: "Redirects", icon: Link2 },
-  { key: "seo-metadata", label: "SEO metadata", icon: Globe2 },
-  { key: "media", label: "Media Library", icon: Images },
-  { key: "units", label: "Units", icon: Boxes },
-  { key: "imports", label: "Imports & Quality", icon: Download },
-  { key: "evidence", label: "Evidence", icon: FileSearch },
-  { key: "data-quality", label: "Data Quality", icon: Gauge },
-  { key: "crm", label: "CRM Sync", icon: RefreshCcw },
-  { key: "jobs", label: "Jobs & DLQ", icon: Activity },
-  { key: "analytics", label: "Analytics", icon: BarChart3 },
-  { key: "audit", label: "Audit Log", icon: ScrollText },
-  { key: "flags", label: "Feature Flags", icon: Flag },
-];
-
 export default function AdminView() {
   const loc = useRoute();
   const { user, loading, logout } = useAuth();
-  const section = (loc.query.section as AdminSection) ?? "overview";
+  const section = adminSectionFromLocation(loc.path, loc.query.section);
 
   usePageMeta({ title: "Admin Console", noindex: true });
 
@@ -144,13 +61,8 @@ export default function AdminView() {
     );
   }
 
-  const can = (s: AdminSection) =>
-    s === "crm" ? hasRole(user, ["OWNER", "ADMIN"]) :
-    s === "users" ? hasRole(user, ["OWNER", "ADMIN"]) :
-    s === "agents" ? hasRole(user, ["OWNER", "ADMIN", "MANAGER", "CONTENT_EDITOR"]) :
-    s === "leads" ? hasRole(user, ["OWNER", "ADMIN", "AGENT"]) :
-    s === "analytics" || s === "audit" || s === "evidence" || s === "data-quality" ? hasRole(user, ["OWNER", "ADMIN", "ANALYST"]) :
-    hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"]);
+  const can = (section: AdminSection) => canViewAdminSection(section, user.roles);
+  const accessibleSections = ADMIN_SECTIONS.filter((candidate) => can(candidate.key));
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)]">
@@ -158,11 +70,10 @@ export default function AdminView() {
         <div className="sticky top-20 p-4">
           <p className="kicker px-2 pb-2">Console</p>
           <nav className="space-y-0.5">
-            {SECTIONS.filter((s) => can(s.key)).map((s) => (
+            {accessibleSections.map((s) => (
               <Link
                 key={s.key}
-                to="/admin"
-                query={{ section: s.key }}
+                to={`/admin/${s.key}`}
                 aria-current={section === s.key ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-ui",
@@ -186,11 +97,10 @@ export default function AdminView() {
 
       <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
         <div className="mb-4 flex gap-2 overflow-x-auto scroll-elegant pb-1 lg:hidden">
-          {SECTIONS.filter((s) => can(s.key)).map((s) => (
+          {accessibleSections.map((s) => (
             <Link
               key={s.key}
-              to="/admin"
-              query={{ section: s.key }}
+              to={`/admin/${s.key}`}
               className={cn(
                 "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-ui",
                 section === s.key ? "border-brand bg-brand-soft text-brand-strong" : "border-border text-muted-foreground"
@@ -337,96 +247,7 @@ function UsersSection({ isOwner, canManage }: { isOwner: boolean; canManage: boo
   );
 }
 
-/* ------------------------------ Overview -------------------------------- */
-
-function OverviewSection() {
-  const [data, setData] = React.useState<Record<string, unknown> | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    api.get<Record<string, unknown> | null>("/api/admin/overview").then(setData).catch(() => setError("Overview unavailable"));
-  }, []);
-
-  if (error) return <ErrorState message={error} onRetry={() => location.reload()} />;
-  if (!data) return <LoadingState rows={4} />;
-
-  const k = data.kpis as Record<string, number>;
-  const crm = data.crm as Record<string, number | string>;
-  const recentLeads = (data.recentLeads as Record<string, string>[] | undefined) ?? [];
-
-  const kpiCards = [
-    { label: "Leads (total)", value: formatNumber(k.leadsTotal), sub: `${formatNumber(k.leadsNew)} new · ${formatNumber(k.leadsThisWeek)} this week` },
-    { label: "Published properties", value: formatNumber(k.propertiesPublished), sub: `${formatNumber(k.propertiesDraft)} drafts` },
-    { label: "Projects", value: formatNumber(k.projectsCount), sub: "published" },
-    { label: "Open quality issues", value: formatNumber(k.openQualityIssues), sub: "needs review" },
-    { label: "Outbox pending", value: formatNumber(k.outboxPending), sub: "events to drain" },
-    { label: "Dead letters", value: formatNumber(k.dlqCount), sub: "needs replay" },
-    { label: "AI usage", value: `${formatNumber(k.aiCalls ?? 0)} calls`, sub: `${formatNumber(Math.round((k.aiCostMicros ?? 0) / 100) / 10000)} indicative cost units` },
-    { label: "Registered users", value: formatNumber(k.activeUsers), sub: "accounts" },
-  ];
-
-  return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="font-display text-2xl font-semibold">Operations overview</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Platform health, pipeline and business KPIs (Q33 observability).</p>
-      </header>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpiCards.map((c) => (
-          <div key={c.label} className="rounded-xl border border-border/70 bg-card p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{c.label}</p>
-            <p className="num mt-1.5 font-display text-2xl font-semibold">{c.value}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{c.sub}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-border/70 bg-card p-5">
-          <h2 className="kicker mb-3">CRM pipeline</h2>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            {[
-              ["Total leads", crm.totalLeads],
-              ["Delivered", crm.delivered],
-              ["Pending / retrying", crm.pending],
-              ["Dead", crm.dead],
-              ["Unreconciled", crm.unreconciled],
-              ["Provider", crm.provider],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="flex items-baseline justify-between border-b border-border/40 pb-1.5">
-                <span className="text-muted-foreground">{String(label)}</span>
-                <span className="num font-semibold">{String(value)}</span>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Local adapter remains the default; live provider readiness must be verified separately.
-          </p>
-        </div>
-        <div className="rounded-xl border border-border/70 bg-card p-5">
-          <h2 className="kicker mb-3">Recent leads</h2>
-          <div className="space-y-2">
-            {recentLeads.map((l) => (
-              <div key={l.id} className="flex items-center justify-between gap-3 border-b border-border/40 pb-2 text-sm last:border-0">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{l.contactName ?? "—"} <span className="text-xs text-muted-foreground">· {l.intent}</span></p>
-                  <p className="truncate text-xs text-muted-foreground">{l.contactEmail ?? l.contactPhone ?? ""}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <StatusBadge status={l.status} />
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">{l.ownerAgent ?? "unassigned"}</p>
-                </div>
-              </div>
-            ))}
-            {recentLeads.length === 0 && <p className="text-sm text-muted-foreground">No leads yet — submit an enquiry on the public site.</p>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+/* ------------------------------ Leads ----------------------------------- */
 /* ------------------------------ Leads ----------------------------------- */
 
 function LeadsSection() {
@@ -876,8 +697,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
               <div className="space-y-1.5"><label className="block text-sm font-medium">Listing availability<Select value={form.availability || undefined} onValueChange={(availability) => setForm({ ...form, availability })}><SelectTrigger><SelectValue placeholder="Select availability" /></SelectTrigger><SelectContent>{["AVAILABLE", "RESERVED", "SOLD", "RENTED", "HELD", "WITHDRAWN"].map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></label>{sourceControl("availabilityStatus")}</div>
               {creating && <>
                 <label className="block space-y-1.5 text-sm font-medium">Community<Select value={form.communityId || undefined} onValueChange={(communityId) => setForm({ ...form, communityId })}><SelectTrigger><SelectValue placeholder="Select a community" /></SelectTrigger><SelectContent>{communities.map((community) => <SelectItem key={String(community.id)} value={String(community.id)}>{String(community.name)} ({String(community.publicationStatus)})</SelectItem>)}</SelectContent></Select></label>
-                <label className="block space-y-1.5 text-sm font-medium">Latitude<Input type="number" min="-90" max="90" step="any" required value={form.lat} onChange={(e) => setForm({ ...form, lat: e.target.value })} /></label>
-                <label className="block space-y-1.5 text-sm font-medium">Longitude<Input type="number" min="-180" max="180" step="any" required value={form.lng} onChange={(e) => setForm({ ...form, lng: e.target.value })} /></label>
+                <MapLocationPicker lat={form.lat} lng={form.lng} onLatitudeChange={(lat) => setForm({ ...form, lat })} onLongitudeChange={(lng) => setForm({ ...form, lng })} />
                 <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["BUILDING", "PROJECT", "COMMUNITY_CENTROID", "APPROXIMATE", "EXACT"].map((precision) => <SelectItem key={precision} value={precision}>{precision.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
               </>}
             </div>
@@ -1028,8 +848,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
               {creating && <>
                 <label className="block space-y-1.5 text-sm font-medium">Developer<Select value={form.developerId || undefined} onValueChange={(developerId) => setForm({ ...form, developerId })}><SelectTrigger><SelectValue placeholder="Select a developer" /></SelectTrigger><SelectContent>{relations.developers.map((developer) => <SelectItem key={String(developer.id)} value={String(developer.id)}>{String(developer.name)}{developer.verificationStatus === "UNVERIFIED" ? " (unverified)" : ""}</SelectItem>)}</SelectContent></Select></label>
                 <label className="block space-y-1.5 text-sm font-medium">Community<Select value={form.communityId || undefined} onValueChange={(communityId) => setForm({ ...form, communityId })}><SelectTrigger><SelectValue placeholder="Select a community" /></SelectTrigger><SelectContent>{relations.communities.map((community) => <SelectItem key={String(community.id)} value={String(community.id)}>{String(community.name)} ({String(community.publicationStatus)})</SelectItem>)}</SelectContent></Select></label>
-                <label className="block space-y-1.5 text-sm font-medium">Latitude<Input required type="number" min="-90" max="90" step="any" value={form.lat} onChange={(event) => setForm({ ...form, lat: event.target.value })} /></label>
-                <label className="block space-y-1.5 text-sm font-medium">Longitude<Input required type="number" min="-180" max="180" step="any" value={form.lng} onChange={(event) => setForm({ ...form, lng: event.target.value })} /></label>
+                <MapLocationPicker lat={form.lat} lng={form.lng} onLatitudeChange={(lat) => setForm({ ...form, lat })} onLongitudeChange={(lng) => setForm({ ...form, lng })} />
                 <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["PROJECT", "COMMUNITY_CENTROID", "APPROXIMATE", "BUILDING", "EXACT"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
               </>}
               <label className="block space-y-1.5 text-sm font-medium">Project type<Select value={form.projectType} onValueChange={(projectType) => setForm({ ...form, projectType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["RESIDENTIAL", "MIXED_USE", "HOSPITALITY", "COMMERCIAL"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>
@@ -1143,8 +962,7 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">Area type<Select value={form.areaType} onValueChange={(areaType) => setForm({ ...form, areaType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["RESIDENTIAL", "BUSINESS", "WATERFRONT", "ISLAND", "SUBURBAN", "INDUSTRIAL"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>
               {creating ? <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["COMMUNITY_CENTROID", "APPROXIMATE", "EXACT"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label> : <label className="block space-y-1.5 text-sm font-medium">Publication<Select value={form.publicationStatus} onValueChange={(publicationStatus) => setForm({ ...form, publicationStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["DRAFT", "PUBLISHED", "ARCHIVED", "UNPUBLISHED"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>}
-              <label className="block space-y-1.5 text-sm font-medium">Latitude<Input required type="number" min="-90" max="90" step="any" value={form.lat} onChange={(event) => setForm({ ...form, lat: event.target.value })} /></label>
-              <label className="block space-y-1.5 text-sm font-medium">Longitude<Input required type="number" min="-180" max="180" step="any" value={form.lng} onChange={(event) => setForm({ ...form, lng: event.target.value })} /></label>
+              <MapLocationPicker lat={form.lat} lng={form.lng} onLatitudeChange={(lat) => setForm({ ...form, lat })} onLongitudeChange={(lng) => setForm({ ...form, lng })} />
             </div>
             <PublicMediaPicker label="Public community cover image" value={form.imageMediaId} onChange={(imageMediaId) => setForm({ ...form, imageMediaId })} />
             <label className="block space-y-1.5 text-sm font-medium">Summary<Textarea maxLength={2000} value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} /></label>
@@ -1395,6 +1213,9 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
   const [translationCandidateId, setTranslationCandidateId] = React.useState("");
   const [translationSaving, setTranslationSaving] = React.useState(false);
   const [form, setForm] = React.useState({ contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN" as "MARKDOWN" | "BLOCKS", blocks: [] as ContentBlock[], coverMediaId: "", submitForReview: false });
+  const pristine = React.useRef(JSON.stringify({ contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN", blocks: [], coverMediaId: "", submitForReview: false }));
+  const dirty = (creating || editing !== null) && JSON.stringify(form) !== pristine.current;
+  useUnsavedChanges(dirty);
 
   const load = React.useCallback(() => {
     const query = new URLSearchParams();
@@ -1414,22 +1235,26 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
   }, [canEdit]);
 
   const openCreate = () => {
+    const blank = { contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN" as const, blocks: [] as ContentBlock[], coverMediaId: "", submitForReview: false };
     setEditing(null);
     setCreating(true);
     setPreview(false);
-    setForm({ contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN", blocks: [], coverMediaId: "", submitForReview: false });
+    pristine.current = JSON.stringify(blank);
+    setForm(blank);
   };
   const openEditor = (entry: Record<string, unknown>) => {
     setEditing(entry);
     setCreating(false);
     setPreview(false);
     const blocks = parseContentBlocks(entry.blocks) ?? [];
-    setForm({
+    const nextForm = {
       contentType: String(entry.contentType ?? "GUIDE"), locale: String(entry.locale ?? "en"),
       slug: String(entry.slug ?? ""), title: String(entry.title ?? ""), excerpt: String(entry.excerpt ?? ""),
-      category: String(entry.category ?? ""), body: String(entry.body ?? ""), bodyMode: blocks.length ? "BLOCKS" : "MARKDOWN", blocks, submitForReview: false,
+      category: String(entry.category ?? ""), body: String(entry.body ?? ""), bodyMode: blocks.length ? "BLOCKS" as const : "MARKDOWN" as const, blocks, submitForReview: false,
       coverMediaId: String(entry.coverMediaId ?? ""),
-    });
+    };
+    pristine.current = JSON.stringify(nextForm);
+    setForm(nextForm);
   };
 
   const addBlock = (type: ContentBlock["type"]) => {
@@ -1493,6 +1318,7 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
       }
       setCreating(false);
       setEditing(null);
+      pristine.current = JSON.stringify(form);
       setPreview(false);
       load();
     } catch (error) {
@@ -1663,7 +1489,7 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
       )}
       <p className="text-xs text-muted-foreground">Showing {String(entries?.length ?? 0)} entries (maximum 50).</p>
 
-      {canEdit && <Dialog open={creating || editing !== null} onOpenChange={(open) => { if (!open) { setCreating(false); setEditing(null); setPreview(false); } }}>
+      {canEdit && <Dialog open={creating || editing !== null} onOpenChange={(open) => { if (!open && confirmDiscardChanges(dirty)) { setCreating(false); setEditing(null); setPreview(false); } }}>
         <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader><DialogTitle>{creating ? "Create content draft" : "Edit content draft"}</DialogTitle><DialogDescription>Every save creates an immutable revision. Editing published copy immediately removes it from public status and places it into review; this editor cannot approve or publish content.</DialogDescription></DialogHeader>
           {preview ? (
@@ -1702,7 +1528,7 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
               </section>
               {!creating && <div className="rounded-lg border border-border/70 p-3 text-xs text-muted-foreground">Source: {String(editing?.sourceName ?? "not recorded")}{Boolean(editing?.sourceUrl) && (/^https?:\/\//i.test(String(editing?.sourceUrl)) ? <> · <a className="underline" href={String(editing?.sourceUrl)} target="_blank" rel="noopener noreferrer">View source</a></> : <> · recorded URL omitted because it is not HTTP(S)</>)}{Boolean(editing?.sourceVerifiedAt) && <> · verified {formatDate(String(editing?.sourceVerifiedAt))}</>}</div>}
               {!creating && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.submitForReview} onChange={(event) => setForm({ ...form, submitForReview: event.target.checked })} /> Submit changes for review</label>}
-              <DialogFooter><Button type="button" variant="outline" onClick={() => { setCreating(false); setEditing(null); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft" : "Save revision"}</Button></DialogFooter>
+              <DialogFooter><Button type="button" variant="outline" onClick={() => { if (confirmDiscardChanges(dirty)) { setCreating(false); setEditing(null); } }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft" : "Save revision"}</Button></DialogFooter>
             </form>
           )}
         </DialogContent>

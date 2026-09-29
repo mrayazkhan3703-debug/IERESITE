@@ -15,6 +15,7 @@ import { t, type Locale } from "@/lib/i18n";
 import { formatNumber, formatMoney } from "@/lib/money";
 import { formatPctPrecise } from "@/lib/format-precise";
 import type { CommunityCardDTO, ProjectCardDTO } from "@/lib/types";
+import { CommunityImage } from "@/components/community-image";
 import type { CommunityMetricSet } from "@/components/home/use-home-data";
 
 export function CommunityIntelligence({
@@ -79,13 +80,7 @@ export function CommunityIntelligence({
                   className="group overflow-hidden rounded-xl border border-border/70 bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg"
                 >
                   <div className="relative aspect-[16/8] overflow-hidden bg-sand">
-                    <img
-                      src={c.image?.url ?? `/images/communities/${c.slug}.jpg`}
-                      alt={`${c.name}, Dubai`}
-                      loading="lazy"
-                      decoding="async"
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-                    />
+                    <CommunityImage slug={c.slug} imageUrl={c.image?.url} alt={`${c.name}, Dubai`} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]" />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/70 to-transparent px-3.5 pb-2.5 pt-10">
                       <h3 className="font-display text-base font-semibold text-white">{c.name}</h3>
                     </div>

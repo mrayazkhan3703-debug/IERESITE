@@ -2,6 +2,10 @@
 
 Status: **STAGING ONLINE — TESTABLE** only after both Render services report the same Git revision, /api/health reports a current worker heartbeat, and the outbox drain check passes. This environment remains outside production certification until the later browser, security, accessibility and full journey phases pass.
 
+## Current deployment state — 2026-09-28
+
+The web service, Supabase migration and separate application-media bucket are deployed. The paid Render background worker is owner-deferred, so the environment does not yet meet the status above. `/api/health` intentionally reports `degraded` with `worker-heartbeat-stale-or-missing`; queued outbox work is preserved and must not be described as processed. The next safe action is to provision the Blueprint worker on Render Starter, then execute release-gate steps 4-7 below.
+
 ## Runtime topology
 
 | Capability | Staging runtime | State and boundary |
