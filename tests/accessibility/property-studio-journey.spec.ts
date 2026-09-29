@@ -52,9 +52,9 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   await dialog.getByLabel("Longitude", { exact: true }).fill("55.1");
   await dialog.getByLabel("Price (AED)").fill("2500000");
   await dialog.getByLabel("Listing type").click();
-  await page.getByRole("option", { name: "SALE" }).click();
+  await page.getByRole("option", { name: "SALE", exact: true }).click();
   await dialog.getByLabel("Listing availability").click();
-  await page.getByRole("option", { name: "AVAILABLE" }).click();
+  await page.getByRole("option", { name: "AVAILABLE", exact: true }).click();
   await dialog.getByRole("combobox", { name: "Community", exact: true }).click();
   await page.getByRole("option", { name: /Synthetic Property Studio Community/ }).click();
   const createResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/properties" && response.request().method() === "POST");
@@ -71,7 +71,7 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   await editor.getByLabel("Highlights").fill("Waterfront\nBalcony");
   await editor.getByRole("group", { name: "Amenities" }).getByText("Synthetic Pool").click();
   await editor.getByLabel("Publication status").click();
-  await page.getByRole("option", { name: "PUBLISHED" }).click();
+  await page.getByRole("option", { name: "PUBLISHED", exact: true }).click();
   const updateResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/properties" && response.request().method() === "PATCH");
   await editor.getByRole("button", { name: "Save changes" }).click();
   expect((await updateResponse).status()).toBe(200);
