@@ -37,7 +37,11 @@ test("all concrete static EN/AR modules retain server locale and canonical/priva
       const html = await response.text();
       expect(response.status).toBe(200);
       expect(html.includes(`<html lang="${prefix ? "ar" : "en"}" dir="${prefix ? "rtl" : "ltr"}"`)).toBe(true);
-      expect(html.includes(`rel="canonical" href="http://localhost:3000${requested === "/" ? "" : requested}"`)).toBe(true);
+      const expectedCanonical = `rel="canonical" href="http://localhost:3000${requested === "/" ? "" : requested}"`;
+      if (!html.includes(expectedCanonical)) {
+        const actualCanonical = html.match(/<link rel="canonical" href="([^"]+)"/i)?.[1] ?? "missing";
+        throw new Error(`Canonical mismatch for ${requested}: expected http://localhost:3000${requested === "/" ? "" : requested}, received ${actualCanonical}`);
+      }
       expect(html.includes(`name="robots" content="${noindex ? "noindex, nofollow" : "index, follow"}"`)).toBe(true);
     }
   }
