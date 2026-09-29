@@ -105,7 +105,7 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   expect(created.status()).toBe(201);
   const createdProperty = await created.json() as { id: string };
 
-  const row = page.getByRole("row").filter({ hasText: "Synthetic Property Studio Listing" });
+  const row = page.getByRole("row").filter({ hasText: title });
   await expect(row).toContainText("DRAFT");
   await row.getByRole("button", { name: "Edit" }).click();
   const editor = page.getByRole("dialog");
