@@ -65,6 +65,8 @@ export default function PropertyDetailView({
   const [notFound, setNotFound] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [communityDetail, setCommunityDetail] = React.useState<CommunityDetailLite | null>(null);
+  const lastRefreshedIso = data?.listingUpdatedAt ?? data?.updatedAt ?? null;
+  const [relativeLastRefreshed, setRelativeLastRefreshed] = React.useState<string | null>(null);
   const leadForm = useLeadForm();
   const loc = useRoute();
   const locale = localeOf(loc.locale);
@@ -162,6 +164,12 @@ export default function PropertyDetailView({
     };
   }, [data?.community.slug]);
 
+  // Relative labels depend on the current clock. Render a deterministic date
+  // for SSR and the first client pass, then enhance it after hydration.
+  React.useEffect(() => {
+    setRelativeLastRefreshed(relativeTime(lastRefreshedIso));
+  }, [lastRefreshedIso]);
+
   /* Rent benchmark for this listing's community/bedrooms (drives modeled surfaces) */
   const rentBenchmark = useRentBenchmark(data?.community.name ?? null, data?.bedrooms ?? null);
 
@@ -248,8 +256,10 @@ export default function PropertyDetailView({
     </div>
   );
 
-  const lastRefreshedIso = data.listingUpdatedAt ?? data.updatedAt;
-  const lastRefreshed = relativeTime(lastRefreshedIso);
+  const lastRefreshedFallback = lastRefreshedIso
+    ? formatDate(lastRefreshedIso, locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
+    : null;
+  const lastRefreshed = relativeLastRefreshed ?? lastRefreshedFallback;
   const handover = data.handoverQuarter ?? (data.project?.handoverDate ? formatDate(data.project.handoverDate) : null);
 
   return (
@@ -441,7 +451,7 @@ export default function PropertyDetailView({
                 {summaryRow(
                   t("property.summary.lastRefreshed", locale),
                   lastRefreshed ? (
-                    <span title={formatDate(lastRefreshedIso)}>{lastRefreshed}</span>
+                    <span title={lastRefreshedFallback ?? undefined}>{lastRefreshed}</span>
                   ) : (
                     <UnavailableValue label={t("property.summary.lastRefreshed", locale)} />
                   )
