@@ -71,7 +71,7 @@ export function PriceHistoryV2({
   const chartData = React.useMemo(
     () =>
       deduped.map((p) => ({
-        label: new Date(p.date).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
+        label: formatDate(p.date, "en-GB", { month: "short", year: "2-digit", timeZone: "Asia/Dubai" }),
         price: Number(p.priceMinor) / 100,
         full: fullValueTooltip(Number(p.priceMinor) / 100),
       })),

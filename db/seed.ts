@@ -10,6 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "crypto";
 import { TEAM_MEMBERS, ADVISORY_DESK } from "./team-data";
 import { ROLE_PERMISSION_MANIFEST } from "../src/server/authz-policy";
+import { rebuildIndex } from "../src/server/search/service";
 
 const db = new PrismaClient();
 
@@ -287,6 +288,10 @@ async function main() {
 
   const marker = await db.importSource.findFirst({ where: { name: "DEMO_SEED" } });
   if (marker && !process.argv.includes("--refresh")) {
+    // The database is canonical and the search index is a rebuildable projection.
+    // A seed may run after the web process has already built an empty index, so
+    // even the idempotent fast path must restore the projection from current rows.
+    await rebuildIndex();
     console.log("Seed marker found — skipping (use `bun run db:reset` to reseed, or `bun run db/seed.ts --refresh` to upsert new content additively).");
     return;
   }
@@ -748,6 +753,8 @@ async function main() {
   }
 
   console.log("Seed complete:");
+  const index = await rebuildIndex();
+  console.log(`Search index rebuilt with ${index.count} public listings.`);
   const counts = {
     communities: await db.community.count(),
     developers: await db.developer.count(),

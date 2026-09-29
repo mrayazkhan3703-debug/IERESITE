@@ -6,7 +6,7 @@ import { ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Inbox } from "lucide-react";
-import { formatMoney } from "@/lib/money";
+import { formatDate, formatMoney } from "@/lib/money";
 import type { PriceDTO, ProvenanceChip } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -179,7 +179,7 @@ export function ProvenanceBadge({ chip }: { chip: ProvenanceChip }) {
   const verified = chip.sourceType === "VERIFIED" || chip.verifiedAt;
   return (
     <span
-      title={`${chip.sourceName ?? chip.sourceType}${chip.verifiedAt ? ` · verified ${new Date(chip.verifiedAt).toLocaleDateString()}` : ""}`}
+      title={`${chip.sourceName ?? chip.sourceType}${chip.verifiedAt ? ` · verified ${formatDate(chip.verifiedAt, "en-AE", { timeZone: "Asia/Dubai" })}` : ""}`}
       className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
     >
       {verified ? "Verified source" : "Source"} {chip.sourceName ? `· ${chip.sourceName}` : ""}

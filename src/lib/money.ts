@@ -67,7 +67,13 @@ export function formatDate(d: string | Date | null | undefined, locale = "en-AE"
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(locale, opts ?? { year: "numeric", month: "short", day: "numeric" }).format(date);
+  return new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    ...opts,
+    timeZone: opts?.timeZone ?? "Asia/Dubai",
+  }).format(date);
 }
 
 /** Price-per-sqft from minor units */

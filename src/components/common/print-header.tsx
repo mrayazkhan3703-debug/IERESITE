@@ -27,15 +27,18 @@ export function PrintHeader({
   /** Canonical public origin supplied by the server so hydration stays stable. */
   origin?: string;
 }) {
-  const printedAt = React.useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }).format(new Date()),
-    [],
-  );
+  // The print date is intentionally client-only. A server and browser can be
+  // on opposite sides of midnight, which would otherwise change a text node
+  // during hydration even though this masthead is only visible when printed.
+  const [printedAt, setPrintedAt] = React.useState("");
+  React.useEffect(() => {
+    setPrintedAt(new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "Asia/Dubai",
+    }).format(new Date()));
+  }, []);
   return (
     <div className={cn("hidden print:block", className)} aria-hidden={true}>
       <div className="flex items-end justify-between border-b-2 border-ink pb-2">
