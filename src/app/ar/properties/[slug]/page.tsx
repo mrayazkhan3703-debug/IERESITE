@@ -24,10 +24,11 @@ export default async function ArabicPropertyPage({ params }: ArabicPropertyPageP
   const { slug } = await params;
   const property = await loadProperty(slug);
   if (!property) notFound();
+  const printOrigin = new URL(process.env.APP_URL ?? "https://ieresite.onrender.com").origin;
 
   return (
     <AppShell>
-      <PropertyDetailView slug={property.slug} initialData={property} manageMetadata={false} />
+      <PropertyDetailView slug={property.slug} initialData={property} manageMetadata={false} printOrigin={printOrigin} />
     </AppShell>
   );
 }

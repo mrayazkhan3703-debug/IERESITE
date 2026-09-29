@@ -15,6 +15,7 @@ export function PrintHeader({
   isDemoData,
   note,
   className,
+  origin = "https://ieresite.onrender.com",
 }: {
   title: string;
   /** Canonical hash URL of the record, e.g. /#/properties/<slug> */
@@ -23,6 +24,8 @@ export function PrintHeader({
   /** Optional advisory line (e.g. print-orientation hint) */
   note?: string;
   className?: string;
+  /** Canonical public origin supplied by the server so hydration stays stable. */
+  origin?: string;
 }) {
   const printedAt = React.useMemo(
     () =>
@@ -33,8 +36,6 @@ export function PrintHeader({
       }).format(new Date()),
     [],
   );
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://investment-experts.example";
-
   return (
     <div className={cn("hidden print:block", className)} aria-hidden={true}>
       <div className="flex items-end justify-between border-b-2 border-ink pb-2">

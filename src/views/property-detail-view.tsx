@@ -55,11 +55,13 @@ export default function PropertyDetailView({
   initialData = null,
   manageMetadata = true,
   previewMode = false,
+  printOrigin = "https://ieresite.onrender.com",
 }: {
   slug: string;
   initialData?: PropertyDetailV2 | null;
   manageMetadata?: boolean;
   previewMode?: boolean;
+  printOrigin?: string;
 }) {
   const [data, setData] = React.useState<PropertyDetailV2 | null>(initialData);
   const [notFound, setNotFound] = React.useState(false);
@@ -266,7 +268,7 @@ export default function PropertyDetailView({
     <div className="pb-16 md:pb-8">
       {/* Print-only masthead (branded, with canonical URL + demo disclosure) */}
       <div className="container-page pt-4">
-        <PrintHeader title={data.title} url={`/properties/${slug}`} isDemoData={data.isDemoData} />
+        <PrintHeader title={data.title} url={`/properties/${slug}`} isDemoData={data.isDemoData} origin={printOrigin} />
       </div>
 
       {/* Breadcrumbs */}

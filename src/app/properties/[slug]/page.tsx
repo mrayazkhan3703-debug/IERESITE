@@ -28,7 +28,8 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
   const cspNonce = (await headers()).get("x-nonce") ?? undefined;
 
   const canonicalPath = `/properties/${property.slug}`;
-  const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const baseUrl = process.env.APP_URL ?? "https://ieresite.onrender.com";
+  const printOrigin = new URL(baseUrl).origin;
   const absolute = (path: string) => new URL(path, baseUrl).toString();
   const schemas = [
     {
@@ -95,7 +96,7 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }}
         />
       ))}
-      <PropertyDetailView slug={property.slug} initialData={property} manageMetadata={false} />
+      <PropertyDetailView slug={property.slug} initialData={property} manageMetadata={false} printOrigin={printOrigin} />
     </AppShell>
   );
 }

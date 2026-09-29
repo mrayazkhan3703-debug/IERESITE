@@ -28,6 +28,7 @@ export default async function PropertyPreviewPage({ params }: PreviewPageProps) 
   const { slug } = await params;
   const property = await loadPreview(slug);
   if (!property) notFound();
+  const printOrigin = new URL(process.env.APP_URL ?? "https://ieresite.onrender.com").origin;
 
   return (
     <AppShell>
@@ -37,7 +38,7 @@ export default async function PropertyPreviewPage({ params }: PreviewPageProps) 
           <a className="font-semibold underline underline-offset-4" href="/admin/properties">Back to Property Studio</a>
         </div>
       </aside>
-      <PropertyDetailView slug={property.slug} initialData={property} manageMetadata={false} previewMode />
+      <PropertyDetailView slug={property.slug} initialData={property} manageMetadata={false} previewMode printOrigin={printOrigin} />
     </AppShell>
   );
 }
