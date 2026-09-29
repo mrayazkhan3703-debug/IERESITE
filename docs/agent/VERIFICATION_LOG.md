@@ -43,3 +43,13 @@ Concise, append-only evidence. No secret values are recorded here.
 - PASS — Local production build, TypeScript check and ESLint pass. Hosted run `36563171372` (commit `9964a870d6f413b48d2cb810d0f09dbb8b0224d2`) passes Docker setup, migration checks, lint, typecheck, unit/contract, PostgreSQL/HTTP integration, worker shutdown/retry, SMTP recovery, object/archive and encrypted backup verification, all browser checks and candidate performance budgets.
 - PASS — Render deployed commit `9964a870d6f413b48d2cb810d0f09dbb8b0224d2`; `/api/health`, `/communities`, `/properties/map`, and `/admin/content` respond HTTP 200. Health remains degraded because the owner-deferred worker has no heartbeat.
 - BLOCKED — Phase 01 remains blocked by the owner’s instruction to skip the USD 7/month Render worker. No worker was provisioned and no queue-drain claim is made.
+
+## 2026-09-29 — Phases 04 and 05 complete
+
+- PASS — Hosted GitHub Actions run `36595810822` on source checkpoint `768d447e73c5af0c40564aa9fa749c6addb799f9` completed successfully. Both workflow jobs passed, including static checks, 33/33 migration verification, database/HTTP integration, worker/container recovery, media object and backup recovery, browser accessibility/responsive-image journeys, local browser delivery measurement and candidate performance budgets.
+- PASS — Arabic property-detail hydration journey passes after stabilizing server/client date formatting. Property Studio create/edit/preview/publish and media/property attachment journeys pass in the browser suite.
+- PASS — Render deployment `dep-datu623bc2fs73buvun0` is live at `https://ieresite.onrender.com` on the same source checkpoint.
+- PASS — Live route smoke returned HTTP 200 for `/`, `/properties`, `/properties/map`, `/admin`, `/admin/media`, `/admin/properties`, `/api/health` and `/api/search?limit=9`; no server exception page surfaced.
+- PASS — Live `/api/health`: database `ok=true`, PostgreSQL search index `ok=true` and built with size 3. Live search returns 3 demo-labelled listings.
+- BLOCKED — Health reports `worker-heartbeat-stale-or-missing`. Phase 01 remains blocked by the owner’s deferral of the USD 7/month Render worker; no worker was provisioned and no outbox drain is claimed.
+- LIMITATION — This staging site still contains demo inventory. Automated storage journeys pass, but no manual live upload to the production R2 bucket was performed; real property content and a separate storage production-readiness review remain outstanding.

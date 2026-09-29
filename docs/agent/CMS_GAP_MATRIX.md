@@ -4,7 +4,7 @@ Baseline API/editor coverage compared with the canonical Prisma domain.
 
 | Domain | Existing baseline | Production gap | Target phase |
 |---|---|---|---|
-| Properties | GET/POST/PATCH; narrow basic form | Rich physical/commercial/compliance fields, relations, multi-listing, media, SEO and lifecycle | 05 |
+| Properties | Admin Studio create/edit/preview/publish/unpublish, property fields, price history/audit, SEO metadata, galleries, floor plans and documents | Production inventory is still demo data; worker-backed outbox processing remains blocked in Phase 01 | 05 |
 | Projects | GET/POST/PATCH basics | Launch/handover/progress evidence, plans/installments, documents, galleries and units | 06 |
 | Communities | GET/POST/PATCH | Lifestyle/geo/media/market/provenance editor and publish quality gates | 07 |
 | Developers | GET/POST/PATCH | Verified identity/source, logo/media, relations and lifecycle | 07 |
@@ -14,7 +14,7 @@ Baseline API/editor coverage compared with the canonical Prisma domain.
 | Site settings/nav | Mostly source constants | Audited contact presentation, menus, CTA/social/default media and safe module ordering | 08 |
 | Careers | Hard-coded illustrative roles | Job-opening model/editor, review/publish/close and public read model | 09 |
 | International | Large source-controlled editorial blocks | Sourced, date-reviewed CMS sections and curated guide references | 09 |
-| Media | Upload/list/metadata patch | Bulk upload, picker, attachments, order/cover, usage, safe replace/archive/delete | 04 |
+| Media | Upload, searchable/filterable library, metadata, public picker, usage graph, gallery attach/reorder/cover, property floor plans/documents, protected unused-asset deletion | Bulk upload and replace/archive workflows remain; live manual upload was not separately exercised | 04 |
 | Market | Reports/import/data-quality pieces | Source registry, actual file mapping/validation/apply, freshness and metric rebuild | 10 |
 | Search/map | Provider APIs and public views | Operational reindex diagnostics, stable map, URL/list sync and exclusion reasons | 02/11/15 |
 | AI/RAG | Gateway/chat/tools and partial RAG Admin | Provider readiness, bounded test, retrieval/index health and usage/error diagnostics | 12 |

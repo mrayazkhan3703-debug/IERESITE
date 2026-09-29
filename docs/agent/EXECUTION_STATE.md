@@ -2,12 +2,12 @@
 
 - Source baseline commit: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
 - Current branch: `codex/production-recovery-wave1`
-- Current source checkpoint: `9964a870d6f413b48d2cb810d0f09dbb8b0224d2`
+- Current source checkpoint: `768d447e73c5af0c40564aa9fa749c6addb799f9`
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
-- Last completed phase: Phase 03 (`9964a870d6f413b48d2cb810d0f09dbb8b0224d2`)
-- Current phase status: Phases 02 and 03 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
-- Last verified migration: `20260928000100_worker_heartbeat` (32/32 applied)
-- Last verified implementation deployment: `9964a870d6f413b48d2cb810d0f09dbb8b0224d2` (web only; phases 02–03)
+- Last completed phase: Phase 05 (`768d447e73c5af0c40564aa9fa749c6addb799f9`)
+- Current phase status: Phases 02–05 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
+- Last verified migration: `20260929000100_media_original_filename` (33/33 applied in hosted CI)
+- Last verified implementation deployment: `768d447e73c5af0c40564aa9fa749c6addb799f9` (web only; phases 02–05)
 
 ## Completed phase evidence
 
@@ -26,11 +26,20 @@
 - Remaining checklist: owner authorizes the recurring worker cost; create the worker; verify live heartbeat; verify web/worker revision parity; drain the 16 baseline pending outbox events; record job/DLQ counts.
 - Known blocker: the only available Render background-worker plan shown by the dashboard is Starter at USD 7/month. The owner instructed the agent to skip it for now. Live `/api/health` therefore truthfully reports `worker-heartbeat-stale-or-missing`; no queue-drain claim is made.
 
+## Completed phases 04 and 05
+
+- Phase 04: Media Library 2.0. Phase 05: Property Studio. Source checkpoint `768d447e73c5af0c40564aa9fa749c6addb799f9`.
+- Hosted CI run `36595810822` passes both workflow jobs, including 33/33 migrations, lint, typecheck, unit/contract and PostgreSQL/HTTP integration, worker shutdown/retry, SMTP recovery, object archive restore, encrypted S3 adapter recovery, all browser accessibility/responsive-image journeys, Arabic property-detail hydration, and candidate local performance budgets.
+- Render deploy `dep-datu623bc2fs73buvun0` is live on the same source checkpoint. Live HTTP 200 smoke: `/`, `/properties`, `/properties/map`, `/admin`, `/admin/media`, `/admin/properties`, `/api/health`, `/api/search?limit=9`.
+- Live database and search-index checks pass; the public search returns 3 clearly demo-labelled listings. Health remains degraded only for `worker-heartbeat-stale-or-missing`; the USD 7/month background worker remains owner-deferred and no queue-drain claim is made.
+- Media workflows include upload, filtering/search, usage graph, picker, gallery ordering/cover, property floor plans/documents and guarded unused-media deletion. Automated storage journeys pass; a manual upload against the production R2 bucket was not performed.
+- Property Studio supports create/edit/preview/publish lifecycle, metadata/SEO, audited price history, media assets, and synchronous search projection refresh without relying on the unavailable worker.
+- This is a staging service and its demo inventory is not real owner-approved listing data. Phases 06 onward remain NOT_STARTED.
+
 ## Next phase
 
-- Phase 04: Media Library 2.0.
-- Phase 05: Property Studio.
-- Read first: `src/views/admin/admin-view.tsx`, `src/features/admin/`, `src/app/api/media/`, `src/server/storage/`, `docs/agent/CMS_GAP_MATRIX.md`, `docs/agent/DESIGN_REFERENCE.md`.
+- Phase 06: Project/payment plan/units Studio.
+- Read first: `docs/agent/PHASE_CHECKLIST.md`, `docs/agent/CMS_GAP_MATRIX.md`, `docs/agent/DESIGN_REFERENCE.md`, `src/features/admin/`, and the relevant project and unit APIs.
 
 ## Rollback
 
