@@ -259,7 +259,10 @@ export default function PropertyDetailView({
   );
 
   const lastRefreshedFallback = lastRefreshedIso
-    ? formatDate(lastRefreshedIso, locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
+    // Keep this SSR text stable across Node and Chromium ICU builds. The page
+    // label is localized separately; formatting the date in Arabic here made
+    // the server and browser disagree on localized month/number text.
+    ? formatDate(lastRefreshedIso, "en-AE", { year: "numeric", month: "short", day: "numeric", timeZone: "Asia/Dubai" })
     : null;
   const lastRefreshed = relativeLastRefreshed ?? lastRefreshedFallback;
   const handover = data.handoverQuarter ?? (data.project?.handoverDate ? formatDate(data.project.handoverDate) : null);
