@@ -21,7 +21,7 @@ export const GET = apiHandler(async (req) => {
       where,
       orderBy: { updatedAt: "desc" },
       take: 50,
-      include: { community: { select: { name: true } }, developer: { select: { name: true } } },
+      include: { community: { select: { name: true } }, developer: { select: { name: true } }, media: { where: { section: "GALLERY" }, orderBy: { sortOrder: "asc" }, include: { media: { select: { url: true, altText: true } } } } },
     }),
     db.project.count({ where }),
   ]);
@@ -38,6 +38,7 @@ export const GET = apiHandler(async (req) => {
       status: project.status,
       publicationStatus: project.publicationStatus,
       brochureMediaId: project.brochureMediaId,
+      gallery: project.media.map((item) => ({ mediaId: item.mediaId, sortOrder: item.sortOrder, url: item.media.url, altText: item.media.altText })),
       developer: project.developer.name,
       community: project.community.name,
       startingPriceMinor: project.startingPriceMinor?.toString() ?? null,

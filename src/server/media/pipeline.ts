@@ -11,6 +11,7 @@ import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
 import { deletePrivateObject, deletePublicObject, getPublicObject, putPrivateObject, putPublicObject } from "@/server/storage/object-store";
+import { HttpError } from "@/server/auth";
 
 const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
 
@@ -47,7 +48,7 @@ export interface StoredMedia {
   storageKey: string;
 }
 
-export async function storeUpload(file: File, opts?: { altText?: string; uploadedBy?: string; private?: boolean }): Promise<StoredMedia> {
+export async function storeUpload(file: File, opts?: { altText?: string; uploadedBy?: string; private?: boolean; kind?: "IMAGE" | "LOGO" | "FLOOR_PLAN" | "DOCUMENT" | "BROCHURE" }): Promise<StoredMedia> {
   const config = (await import("@/lib/config")).getConfig();
   const maxBytes = config.MEDIA_MAX_UPLOAD_MB * 1024 * 1024;
   if (file.size > maxBytes) {
@@ -59,6 +60,14 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
   const allowed = ALLOWED.get(mime);
   if (!sniffed || !allowed) {
     throw new Error("Unsupported file type (allowed: JPEG, PNG, WebP, AVIF, PDF)");
+  }
+  const checksum = crypto.createHash("sha256").update(buf).digest("hex");
+  const duplicate = await db.mediaAsset.findFirst({ where: { checksum, isPrivate: false }, select: { id: true } });
+  if (duplicate) throw new HttpError(409, `This file matches existing asset ${duplicate.id}; reuse it from the Media Library instead of uploading a duplicate.`, "DUPLICATE_MEDIA");
+  const kind = opts?.kind ?? allowed.kind as "IMAGE" | "DOCUMENT";
+  const imageKind = ["IMAGE", "LOGO", "FLOOR_PLAN"].includes(kind);
+  if ((mime.startsWith("image/") && !imageKind) || (mime === "application/pdf" && !["DOCUMENT", "BROCHURE", "FLOOR_PLAN"].includes(kind))) {
+    throw new Error("Choose an asset kind compatible with the uploaded file.");
   }
 
   const id = crypto.randomUUID();
@@ -80,7 +89,7 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
   let height: number | null = null;
   let variants: Record<string, string> | null = null;
 
-  if (allowed.kind === "IMAGE" && !opts?.private) {
+  if (mime.startsWith("image/") && !opts?.private) {
     const dims = await imageDimensions(buf);
     width = dims?.width ?? null;
     height = dims?.height ?? null;
@@ -97,7 +106,7 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
     media = await db.mediaAsset.create({
       data: {
         id,
-        kind: allowed.kind,
+        kind,
         storageKey: key,
         url: opts?.private ? `private-object://${key}` : objectStorage ? publicMediaUrl(id) : `/uploads/${key}`,
         mimeType: mime,
@@ -105,8 +114,8 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
         width,
         height,
         altText: opts?.altText ?? null,
-        checksum: crypto.createHash("sha256").update(buf).digest("hex"),
-        exifStripped: allowed.kind === "IMAGE",
+        checksum,
+        exifStripped: mime.startsWith("image/"),
         isPrivate: opts?.private ?? false,
         uploadedBy: opts?.uploadedBy ?? null,
         variantsJson: variants ? JSON.stringify(variants) : null,
@@ -179,7 +188,7 @@ export async function processMediaJob(mediaId: string, signal?: AbortSignal): Pr
   // Deletion may win the race with outbox delivery; there is no derivative
   // work left for an asset that no longer exists. Private uploads also never
   // create public display variants.
-  if (!media || media.isPrivate || media.kind !== "IMAGE") return;
+  if (!media || media.isPrivate || !media.mimeType.startsWith("image/")) return;
   const objectStorage = media.storageKey.startsWith("public/media/");
   const buf = objectStorage
     ? await getPublicObject(media.storageKey)

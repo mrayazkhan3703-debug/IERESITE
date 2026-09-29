@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import type { SessionUser } from "@/server/auth";
 import { createPropertyCommand, updatePropertyCommand } from "@/server/domain/property-command";
 import { runImport } from "@/server/ingestion/pipeline";
+import { attachGalleryMedia, removeGalleryMedia, updateGalleryMedia } from "@/server/domain/media-gallery-command";
+import { deleteUnusedMedia } from "@/server/domain/media-command";
 
 const prefix = `property-command-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const ids = {
@@ -16,7 +18,9 @@ const ids = {
   activeListing: `${prefix}-active-listing`,
   publicMedia: `${prefix}-public-media`,
   privateMedia: `${prefix}-private-media`,
+  galleryMedia: `${prefix}-gallery-media`,
   importSource: `${prefix}-import-source`,
+  amenity: `${prefix}-amenity`,
 };
 const createdSlug = `${prefix}-created`;
 const actor: SessionUser = {
@@ -50,9 +54,10 @@ async function cleanup() {
   await db.property.deleteMany({ where: { id: ids.property } });
   await db.listing.deleteMany({ where: { id: ids.activeListing } });
   await db.property.deleteMany({ where: { id: ids.activeProperty } });
-  await db.mediaAsset.deleteMany({ where: { id: { in: [ids.publicMedia, ids.privateMedia] } } });
+  await db.mediaAsset.deleteMany({ where: { id: { in: [ids.publicMedia, ids.privateMedia, ids.galleryMedia] } } });
   await db.community.deleteMany({ where: { id: ids.community } });
   await db.developer.deleteMany({ where: { id: ids.developer } });
+  await db.amenity.deleteMany({ where: { id: ids.amenity } });
   await db.organization.deleteMany({ where: { id: ids.organization } });
   await db.user.deleteMany({ where: { id: ids.user } });
 }
@@ -65,8 +70,10 @@ beforeAll(async () => {
   await db.mediaAsset.createMany({ data: [
     { id: ids.publicMedia, storageKey: `${prefix}/public.jpg`, url: "/api/media/public/content", mimeType: "image/jpeg", sizeBytes: 256, kind: "IMAGE", isPrivate: false },
     { id: ids.privateMedia, storageKey: `${prefix}/private.jpg`, url: "private-object://test", mimeType: "image/jpeg", sizeBytes: 256, kind: "IMAGE", isPrivate: true },
+    { id: ids.galleryMedia, storageKey: `${prefix}/gallery.jpg`, url: "/api/media/gallery/content", mimeType: "image/jpeg", sizeBytes: 256, kind: "IMAGE", isPrivate: false },
   ] });
   await db.developer.create({ data: { id: ids.developer, name: "Command Test Developer", slug: `${prefix}-developer` } });
+  await db.amenity.create({ data: { id: ids.amenity, key: `${prefix}-POOL`, name: "Test pool", category: "BUILDING" } });
   await db.community.create({
     data: {
       id: ids.community,
@@ -145,6 +152,26 @@ describe("transactional property command", () => {
       priceAed: 120_000,
       availabilityStatus: "AVAILABLE",
       coverMediaId: ids.publicMedia,
+      developerId: ids.developer,
+      subType: "Corner unit",
+      builtUpAreaSqft: 1180,
+      plotAreaSqft: 1400,
+      furnishing: "FURNISHED",
+      view: "MARINA",
+      floor: 7,
+      totalFloors: 20,
+      handoverQuarter: "Q4 2027",
+      addressLine: "Known address",
+      shortDescription: "A short verified listing summary.",
+      reraPermit: "RERA-TEST-001",
+      titleDeedRef: "DEED-TEST-001",
+      highlights: ["Waterfront", "Balcony"],
+      tenure: "FREEHOLD",
+      priceQualifier: "Guide price",
+      serviceChargePerSqft: 14.5,
+      offPlan: true,
+      isExclusive: true,
+      amenityIds: [ids.amenity],
     }, "127.0.0.1");
     const [property, listing, priceHistory, statusHistory, media, audit, event] = await Promise.all([
       db.property.findUniqueOrThrow({ where: { id: result.id } }),
@@ -161,10 +188,16 @@ describe("transactional property command", () => {
     expect(property.locationPrecision).toBe("BUILDING");
     expect(property.isDemoData).toBe(false);
     expect(property.createdBy).toBe(ids.user);
+    expect(property.developerId).toBe(ids.developer);
+    expect(property.subType).toBe("Corner unit");
+    expect(property.highlightsJson).toBe(JSON.stringify(["Waterfront", "Balcony"]));
     expect(listing.listingType).toBe("RENT");
     expect(listing.rentFrequency).toBe("YEARLY");
     expect(listing.priceMinor).toBe(12_000_000n);
     expect(listing.publishedAt).toBeNull();
+    expect(listing.tenure).toBe("FREEHOLD");
+    expect(listing.serviceChargePerSqft).toBe(14.5);
+    expect((await db.propertyAmenity.findFirst({ where: { propertyId: result.id, amenityId: ids.amenity } }))?.amenityId).toBe(ids.amenity);
     expect(priceHistory?.sourceType).toBe("INTERNAL");
     expect(statusHistory?.toStatus).toBe("AVAILABLE");
     expect(statusHistory?.changedBy).toBe(ids.user);
@@ -190,6 +223,16 @@ describe("transactional property command", () => {
       title: "Verified command property",
       priceAed: 2_600_000,
       coverMediaId: ids.publicMedia,
+      shortDescription: "Editorial summary",
+      builtUpAreaSqft: 1325,
+      furnishing: "SEMI_FURNISHED",
+      highlights: ["Updated fact"],
+      listingType: "RENT",
+      rentFrequency: "MONTHLY",
+      tenure: "LEASEHOLD",
+      offPlan: true,
+      isExclusive: true,
+      amenityIds: [ids.amenity],
     }, "127.0.0.1");
 
     expect(result.ok).toBe(true);
@@ -201,12 +244,26 @@ describe("transactional property command", () => {
       db.outboxEvent.findFirst({ where: { aggregateId: ids.property }, orderBy: { createdAt: "desc" } }),
     ]);
     expect(property.title).toBe("Verified command property");
+    expect(property.shortDescription).toBe("Editorial summary");
+    expect(property.builtUpAreaSqft).toBe(1325);
     expect((await db.propertyMedia.findFirst({ where: { propertyId: ids.property, isCover: true } }))?.mediaId).toBe(ids.publicMedia);
     expect(property.updatedAt.toISOString()).toBe(result.updatedAt);
     expect(listing.priceMinor).toBe(260_000_000n);
+    expect(listing.listingType).toBe("RENT");
+    expect(listing.rentFrequency).toBe("MONTHLY");
+    expect(listing.tenure).toBe("LEASEHOLD");
     expect(history).toHaveLength(1);
     expect(audit?.action).toBe("property.update");
     expect(event?.eventType).toBe("property.updated");
+
+    const attached = await attachGalleryMedia(actor, "property", ids.property, [ids.publicMedia, ids.galleryMedia], "127.0.0.1");
+    expect(attached.mediaIds).toEqual([ids.publicMedia, ids.galleryMedia]);
+    await expect(deleteUnusedMedia(actor, ids.publicMedia, null)).rejects.toMatchObject({ status: 409, code: "MEDIA_IN_USE" });
+    const reordered = await updateGalleryMedia(actor, "property", ids.property, [ids.galleryMedia, ids.publicMedia], ids.publicMedia, null);
+    expect(reordered.coverMediaId).toBe(ids.publicMedia);
+    expect((await db.propertyMedia.findFirstOrThrow({ where: { propertyId: ids.property, mediaId: ids.galleryMedia } })).sortOrder).toBe(0);
+    const removed = await removeGalleryMedia(actor, "property", ids.property, [ids.galleryMedia], null);
+    expect(removed.mediaIds).toEqual([ids.publicMedia]);
 
     await expect(updatePropertyCommand(actor, {
       propertyId: ids.property,

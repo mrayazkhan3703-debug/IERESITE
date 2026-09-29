@@ -19,7 +19,7 @@ export const GET = apiHandler(async (req, ctx: { params: Promise<{ id: string }>
   }
 
   const requestedVariant = new URL(req.url).searchParams.get("variant");
-  if (requestedVariant && (!variants.has(requestedVariant) || asset.kind !== "IMAGE")) {
+  if (requestedVariant && (!variants.has(requestedVariant) || !asset.mimeType.startsWith("image/"))) {
     return NextResponse.json({ error: "Media variant not found" }, { status: 404 });
   }
   const key = requestedVariant ? `${asset.storageKey}.${requestedVariant}.webp` : asset.storageKey;

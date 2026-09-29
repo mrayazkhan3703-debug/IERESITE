@@ -256,7 +256,7 @@ export async function getPropertyDetail(slug: string): Promise<PropertyDetail | 
       priceMinor: fp.priceMinor?.toString() ?? null,
       media: mediaDto(fp.media),
     })),
-    documents: property.documents.map((d) => ({ id: d.id, label: d.label, docType: d.docType, gated: d.gated, url: d.media.url })),
+    documents: property.documents.map((d) => ({ id: d.id, label: d.label, docType: d.docType, gated: d.gated, url: d.gated ? "" : d.media.url })),
     amenities: property.amenities.map((a) => ({ key: a.amenity.key, name: a.amenity.name, category: a.amenity.category })),
     priceHistory: property.priceHistory.map((ph) => ({ priceMinor: ph.priceMinor.toString(), recordedAt: ph.recordedAt.toISOString(), sourceType: ph.sourceType })),
     paymentPlan: plan
@@ -392,7 +392,7 @@ export async function getProjectDetail(slug: string) {
         .sort((a, b) => a.sequence - b.sequence)
         .map((i) => ({ sequence: i.sequence, label: i.label, percent: i.percent, dueOffsetMonths: i.dueOffsetMonths })),
     })),
-    documents: project.documents.map((d) => ({ id: d.id, label: d.label, docType: d.docType, gated: d.gated, url: d.media.url })),
+    documents: project.documents.map((d) => ({ id: d.id, label: d.label, docType: d.docType, gated: d.gated, url: d.gated ? "" : d.media.url })),
     units: units.map((u) => ({
       id: u.id,
       unitNumber: u.unitNumber,
@@ -1083,7 +1083,7 @@ export async function getProjectDetailV2(slug: string): Promise<ProjectDetailV2 
         .sort((a, b) => a.sequence - b.sequence)
         .map((i) => ({ sequence: i.sequence, label: i.label, percent: i.percent, dueOffsetMonths: i.dueOffsetMonths })),
     })),
-    documents: project.documents.map((d) => ({ id: d.id, label: d.label, docType: d.docType, gated: d.gated, url: d.media.url })),
+    documents: project.documents.map((d) => ({ id: d.id, label: d.label, docType: d.docType, gated: d.gated, url: d.gated ? "" : d.media.url })),
     units: units.map((u) => ({
       id: u.id,
       unitNumber: u.unitNumber,

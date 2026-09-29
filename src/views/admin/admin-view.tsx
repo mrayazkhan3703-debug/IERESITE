@@ -36,10 +36,17 @@ import { OverviewSection } from "@/features/admin/overview-section";
 import { PublicMediaPicker } from "@/features/admin/shared/public-media-picker";
 import { confirmDiscardChanges, useUnsavedChanges } from "@/features/admin/shared/admin-primitives";
 import { MapLocationPicker } from "@/features/admin/shared/map-location-picker";
+import { MediaGalleryEditor } from "@/features/admin/shared/media-gallery-editor";
+import { PropertyAssetEditor } from "@/features/admin/shared/property-asset-editor";
 import { AdminShell } from "@/features/admin/admin-shell";
 
 function isPublicMediaUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/uploads/") || value.startsWith("/api/media/"));
+}
+
+function datetimeLocalValue(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
 export default function AdminView() {
@@ -408,17 +415,27 @@ function LeadsSection() {
 
 /* ------------------------------ Properties ------------------------------- */
 
+const emptyPropertyForm = () => ({
+  title: "", slug: "", description: "", shortDescription: "", type: "APARTMENT", subType: "", bedrooms: "0", bathrooms: "0",
+  builtUpAreaSqft: "", plotAreaSqft: "", furnishing: "", view: "", floor: "", totalFloors: "", handoverQuarter: "",
+  addressLine: "", reraPermit: "", titleDeedRef: "", highlights: "", priceAed: "", priceQualifier: "", tenure: "",
+  serviceChargePerSqft: "", expiresAt: "", offPlan: false, exclusive: false, availability: "AVAILABLE", status: "DRAFT", featured: false,
+  coverMediaId: "", communityId: "", projectId: "", developerId: "", agentId: "", amenityIds: [] as string[],
+  lat: "", lng: "", locationPrecision: "BUILDING", listingType: "", rentFrequency: "",
+});
+
 function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canReindex: boolean }) {
   type SourceField = "title" | "description" | "propertyType" | "bedrooms" | "bathrooms" | "priceAed" | "availabilityStatus";
   const [data, setData] = React.useState<{ properties: Record<string, unknown>[]; total: number } | null>(null);
   const [communities, setCommunities] = React.useState<Record<string, unknown>[]>([]);
+  const [propertyOptions, setPropertyOptions] = React.useState<{ projects: Record<string, unknown>[]; developers: Record<string, unknown>[]; agents: Record<string, unknown>[]; amenities: Record<string, unknown>[] }>({ projects: [], developers: [], agents: [], amenities: [] });
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [reindexing, setReindexing] = React.useState(false);
   const [resetSourceFields, setResetSourceFields] = React.useState<SourceField[]>([]);
-  const [form, setForm] = React.useState({ title: "", slug: "", description: "", type: "APARTMENT", bedrooms: "0", bathrooms: "0", priceAed: "", availability: "AVAILABLE", status: "DRAFT", featured: false, coverMediaId: "", communityId: "", lat: "", lng: "", locationPrecision: "BUILDING", listingType: "", rentFrequency: "" });
+  const [form, setForm] = React.useState(emptyPropertyForm);
 
   const load = React.useCallback(() => {
     api.get<{ properties: Record<string, unknown>[]; total: number }>(`/api/admin/properties${q ? `?q=${encodeURIComponent(q)}` : ""}`)
@@ -431,8 +448,11 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   React.useEffect(() => {
     if (!canCreate) return;
     let active = true;
-    api.get<{ communities: Record<string, unknown>[] }>("/api/admin/communities")
-      .then((result) => { if (active) setCommunities(result.communities); })
+    Promise.all([
+      api.get<{ communities: Record<string, unknown>[] }>("/api/admin/communities"),
+      api.get<typeof propertyOptions>("/api/admin/properties/options"),
+    ])
+      .then(([result, options]) => { if (active) { setCommunities(result.communities); setPropertyOptions(options); } })
       .catch(() => { if (active) setCommunities([]); });
     return () => { active = false; };
   }, [canCreate]);
@@ -441,7 +461,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
     setEditing(null);
     setCreating(true);
     setResetSourceFields([]);
-    setForm({ title: "", slug: "", description: "", type: "APARTMENT", bedrooms: "0", bathrooms: "0", priceAed: "", availability: "", status: "DRAFT", featured: false, coverMediaId: "", communityId: "", lat: "", lng: "", locationPrecision: "BUILDING", listingType: "", rentFrequency: "" });
+    setForm({ ...emptyPropertyForm(), availability: "" });
   };
 
   const patch = async (property: Record<string, unknown>, patchBody: Record<string, unknown>) => {
@@ -461,19 +481,33 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
     setCreating(false);
     setEditing(property);
     setResetSourceFields([]);
-    setForm({
+    setForm({ ...emptyPropertyForm(),
       title: String(property.title ?? ""),
       slug: String(property.slug ?? ""),
       description: String(property.description ?? ""),
+      shortDescription: String(property.shortDescription ?? ""),
       type: String(property.type ?? "APARTMENT"),
+      subType: String(property.subType ?? ""),
       bedrooms: String(property.bedrooms ?? 0),
       bathrooms: String(property.bathrooms ?? 0),
+      builtUpAreaSqft: String(property.builtUpAreaSqft ?? ""),
+      plotAreaSqft: String(property.plotAreaSqft ?? ""),
+      furnishing: String(property.furnishing ?? ""), view: String(property.view ?? ""),
+      floor: String(property.floor ?? ""), totalFloors: String(property.totalFloors ?? ""),
+      handoverQuarter: String(property.handoverQuarter ?? ""), addressLine: String(property.addressLine ?? ""),
+      reraPermit: String(property.reraPermit ?? ""), titleDeedRef: String(property.titleDeedRef ?? ""),
+      highlights: Array.isArray(property.highlights) ? property.highlights.join("\n") : "",
       priceAed: property.priceMinor ? String(Number(property.priceMinor) / 100) : "",
-      availability: String(property.availability ?? "AVAILABLE"),
+      priceQualifier: String(property.priceQualifier ?? ""), tenure: String(property.tenure ?? ""),
+      serviceChargePerSqft: String(property.serviceChargePerSqft ?? ""), offPlan: Boolean(property.offPlan), exclusive: Boolean(property.isExclusive),
+      expiresAt: property.expiresAt ? datetimeLocalValue(String(property.expiresAt)) : "",
+      availability: String(property.availability ?? "AVAILABLE"), listingType: String(property.listingType ?? "SALE"), rentFrequency: String(property.rentFrequency ?? ""),
       status: String(property.publicationStatus ?? "DRAFT"),
       featured: Boolean(property.isFeaturedNow),
       coverMediaId: String(property.coverMediaId ?? ""),
-      communityId: "", lat: "", lng: "", locationPrecision: "BUILDING", listingType: "", rentFrequency: "",
+      communityId: String(property.communityId ?? ""), projectId: String(property.projectId ?? ""), developerId: String(property.developerId ?? ""), agentId: String(property.agentId ?? ""),
+      amenityIds: Array.isArray(property.amenityIds) ? property.amenityIds.map(String) : [],
+      lat: String(property.lat ?? ""), lng: String(property.lng ?? ""), locationPrecision: String(property.locationPrecision ?? "BUILDING"),
     });
   };
 
@@ -510,9 +544,21 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
     </div>;
   };
 
+  const linkedCommunity = communities.find((community) => String(community.id) === form.communityId);
+  const propertyReadiness = [
+    { label: "Title and property type are present", ready: Boolean(form.title.trim() && form.type.trim()) },
+    { label: "Latitude and longitude are valid", ready: Number.isFinite(Number(form.lat)) && Number(form.lat) >= -90 && Number(form.lat) <= 90 && Number.isFinite(Number(form.lng)) && Number(form.lng) >= -180 && Number(form.lng) <= 180 && Boolean(form.lat.trim() && form.lng.trim()) },
+    { label: "A published community is linked", ready: linkedCommunity?.publicationStatus === "PUBLISHED" },
+    { label: "A positive price and public listing status are set", ready: Number(form.priceAed) > 0 && form.availability !== "WITHDRAWN" },
+    { label: "Rental frequency is set when applicable", ready: form.listingType !== "RENT" || Boolean(form.rentFrequency) },
+    { label: "Listing expiry is still in the future", ready: !form.expiresAt || new Date(form.expiresAt).getTime() > Date.now() },
+  ];
+  const sourceAgeDays = editing?.retrievedAt ? Math.floor((Date.now() - new Date(String(editing.retrievedAt)).getTime()) / 86_400_000) : null;
+
   const saveEditor = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editing && !creating) return;
+    if (!form.lat.trim() || !form.lng.trim()) { toast.error("Enter or pick both latitude and longitude before saving."); return; }
     setSaving(true);
     try {
       if (creating) {
@@ -524,6 +570,17 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           listingType: form.listingType, rentFrequency: form.rentFrequency || null,
           priceAed: Number(form.priceAed), availabilityStatus: form.availability,
           coverMediaId: form.coverMediaId || null,
+          projectId: form.projectId || null, developerId: form.developerId || null,
+          subType: form.subType || null, builtUpAreaSqft: form.builtUpAreaSqft ? Number(form.builtUpAreaSqft) : null,
+          plotAreaSqft: form.plotAreaSqft ? Number(form.plotAreaSqft) : null, furnishing: form.furnishing || null, view: form.view || null,
+          floor: form.floor !== "" ? Number(form.floor) : null, totalFloors: form.totalFloors ? Number(form.totalFloors) : null,
+          handoverQuarter: form.handoverQuarter || null, addressLine: form.addressLine || null, shortDescription: form.shortDescription || null,
+          reraPermit: form.reraPermit || null, titleDeedRef: form.titleDeedRef || null,
+          highlights: form.highlights.split("\n").map((line) => line.trim()).filter(Boolean),
+          tenure: form.tenure || null, priceQualifier: form.priceQualifier || null,
+          serviceChargePerSqft: form.serviceChargePerSqft ? Number(form.serviceChargePerSqft) : null,
+          offPlan: form.offPlan, isExclusive: form.exclusive, agentId: form.agentId || null, amenityIds: form.amenityIds,
+          expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
         });
         toast.success("Property created as a draft");
         setCreating(false);
@@ -540,6 +597,19 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           availabilityStatus: form.availability,
           isFeatured: form.featured,
           coverMediaId: form.coverMediaId || null,
+          subType: form.subType || null, builtUpAreaSqft: form.builtUpAreaSqft ? Number(form.builtUpAreaSqft) : null,
+          plotAreaSqft: form.plotAreaSqft ? Number(form.plotAreaSqft) : null, furnishing: form.furnishing || null, view: form.view || null,
+          floor: form.floor !== "" ? Number(form.floor) : null, totalFloors: form.totalFloors ? Number(form.totalFloors) : null,
+          handoverQuarter: form.handoverQuarter || null, addressLine: form.addressLine || null, shortDescription: form.shortDescription || null,
+          reraPermit: form.reraPermit || null, titleDeedRef: form.titleDeedRef || null,
+          highlights: form.highlights.split("\n").map((line) => line.trim()).filter(Boolean),
+          projectId: form.projectId || null, developerId: form.developerId || null,
+          tenure: form.tenure || null, priceQualifier: form.priceQualifier || null,
+          serviceChargePerSqft: form.serviceChargePerSqft ? Number(form.serviceChargePerSqft) : null,
+          offPlan: form.offPlan, isExclusive: form.exclusive, agentId: form.agentId || null, amenityIds: form.amenityIds,
+          expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+          communityId: form.communityId, lat: Number(form.lat), lng: Number(form.lng), locationPrecision: form.locationPrecision,
+          listingType: form.listingType, rentFrequency: form.rentFrequency || null,
           ...(resetSourceFields.length ? { resetSourceFields } : {}),
         });
         if (saved) { setEditing(null); setResetSourceFields([]); }
@@ -637,25 +707,53 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
             <DialogDescription>{creating ? "New properties are internal drafts. Enter known listing and location facts only; coordinates are attributed to manual Admin input and are not externally verified." : "Changes are version checked and recorded with an audit entry. Publishing validates the linked public listing and community."}</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={saveEditor}>
+            {!creating && editing && <section className="space-y-2 rounded-lg border border-border/70 bg-secondary/20 p-3" aria-label="Property publish readiness">
+              <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">Publish readiness</h3><p className="text-xs text-muted-foreground">The API rechecks these requirements when you save. A blocked publish leaves the property unchanged.</p></div>{editing.publicationStatus === "PUBLISHED" && <a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/properties/${encodeURIComponent(String(editing.slug))}`} target="_blank" rel="noopener noreferrer">Open saved public page</a>}</div>
+              <ul className="grid gap-1 text-xs sm:grid-cols-2">{propertyReadiness.map((item) => <li key={item.label} className={item.ready ? "text-success" : "text-muted-foreground"}>{item.ready ? "✓" : "○"} {item.label}</li>)}</ul>
+              {editing.sourceType === "IMPORT" && sourceAgeDays !== null && Number.isFinite(sourceAgeDays) && sourceAgeDays > 90 && <p className="text-xs font-medium text-warning">Imported source is {sourceAgeDays} days old. Verify current listing facts before publishing.</p>}
+            </section>}
             <div className="space-y-1.5"><label className="block text-sm font-medium">Title<Input value={form.title} maxLength={200} required onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>{sourceControl("title")}</div>
             {creating && <label className="block space-y-1.5 text-sm font-medium">URL slug<Input value={form.slug} maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" required onChange={(e) => setForm({ ...form, slug: e.target.value })} /></label>}
             <div className="space-y-1.5"><label className="block text-sm font-medium">Description<Textarea value={form.description} maxLength={10000} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>{sourceControl("description")}</div>
+            <label className="block space-y-1.5 text-sm font-medium">Short description<Textarea value={form.shortDescription} maxLength={2000} rows={2} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} /></label>
             <div className="grid gap-3 sm:grid-cols-2">
               {creating ? <label className="block space-y-1.5 text-sm font-medium">Property type<Select value={form.type} onValueChange={(type) => setForm({ ...form, type })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["APARTMENT", "VILLA", "TOWNHOUSE", "PENTHOUSE", "DUPLEX", "STUDIO", "OFFICE", "RETAIL", "PLOT"].map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></label> : <div className="space-y-1.5"><label className="block text-sm font-medium">Property type<Input value={form.type} maxLength={60} required onChange={(e) => setForm({ ...form, type: e.target.value })} /></label>{sourceControl("propertyType")}</div>}
               <div className="space-y-1.5"><label className="block text-sm font-medium">Bedrooms<Input type="number" min="0" max="30" step="0.5" value={form.bedrooms} onChange={(e) => setForm({ ...form, bedrooms: e.target.value })} /></label>{sourceControl("bedrooms")}</div>
               <div className="space-y-1.5"><label className="block text-sm font-medium">Bathrooms<Input type="number" min="0" max="30" step="0.5" value={form.bathrooms} onChange={(e) => setForm({ ...form, bathrooms: e.target.value })} /></label>{sourceControl("bathrooms")}</div>
+              <label className="block space-y-1.5 text-sm font-medium">Subtype<Input maxLength={80} value={form.subType} onChange={(e) => setForm({ ...form, subType: e.target.value })} placeholder="e.g. Corner unit" /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Built-up area (sq ft)<Input type="number" min="0" max="100000000" step="0.1" value={form.builtUpAreaSqft} onChange={(e) => setForm({ ...form, builtUpAreaSqft: e.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Plot area (sq ft)<Input type="number" min="0" max="100000000" step="0.1" value={form.plotAreaSqft} onChange={(e) => setForm({ ...form, plotAreaSqft: e.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Furnishing<Select value={form.furnishing || "none"} onValueChange={(value) => setForm({ ...form, furnishing: value === "none" ? "" : value })}><SelectTrigger><SelectValue placeholder="Not specified" /></SelectTrigger><SelectContent><SelectItem value="none">Not specified</SelectItem>{["FURNISHED", "SEMI_FURNISHED", "UNFURNISHED"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
+              <label className="block space-y-1.5 text-sm font-medium">View<Select value={form.view || "none"} onValueChange={(value) => setForm({ ...form, view: value === "none" ? "" : value })}><SelectTrigger><SelectValue placeholder="Not specified" /></SelectTrigger><SelectContent><SelectItem value="none">Not specified</SelectItem>{["SEA", "MARINA", "SKYLINE", "GOLF", "PARK", "COMMUNITY"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>
+              <label className="block space-y-1.5 text-sm font-medium">Floor<Input type="number" min="-10" max="300" step="1" value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Total floors<Input type="number" min="1" max="300" step="1" value={form.totalFloors} onChange={(e) => setForm({ ...form, totalFloors: e.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Handover quarter<Input maxLength={40} value={form.handoverQuarter} onChange={(e) => setForm({ ...form, handoverQuarter: e.target.value })} placeholder="e.g. Q4 2027" /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Address<Input maxLength={500} value={form.addressLine} onChange={(e) => setForm({ ...form, addressLine: e.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">RERA permit<Input maxLength={120} value={form.reraPermit} onChange={(e) => setForm({ ...form, reraPermit: e.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Title deed reference<Input maxLength={160} value={form.titleDeedRef} onChange={(e) => setForm({ ...form, titleDeedRef: e.target.value })} /></label>
               <div className="space-y-1.5"><label className="block text-sm font-medium">Price (AED){creating && <span className="ml-1 text-xs text-muted-foreground">manual asking price</span>}<Input type="number" min="0.01" max="1000000000" step="0.01" required={creating} value={form.priceAed} onChange={(e) => setForm({ ...form, priceAed: e.target.value })} /></label>{sourceControl("priceAed")}</div>
-              {creating && <label className="block space-y-1.5 text-sm font-medium">Listing type<Select value={form.listingType || undefined} onValueChange={(listingType) => setForm({ ...form, listingType, rentFrequency: listingType === "RENT" ? form.rentFrequency : "" })}><SelectTrigger><SelectValue placeholder="Select listing type" /></SelectTrigger><SelectContent>{["SALE", "RENT", "SHORT_TERM"].map((type) => <SelectItem key={type} value={type}>{type.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>}
-              {creating && form.listingType === "RENT" && <label className="block space-y-1.5 text-sm font-medium">Rent frequency<Select value={form.rentFrequency || undefined} onValueChange={(rentFrequency) => setForm({ ...form, rentFrequency })}><SelectTrigger><SelectValue placeholder="Select rent frequency" /></SelectTrigger><SelectContent>{["YEARLY", "MONTHLY", "WEEKLY", "DAILY"].map((frequency) => <SelectItem key={frequency} value={frequency}>{frequency}</SelectItem>)}</SelectContent></Select></label>}
+              <label className="block space-y-1.5 text-sm font-medium">Price qualifier<Input maxLength={80} value={form.priceQualifier} onChange={(e) => setForm({ ...form, priceQualifier: e.target.value })} placeholder="e.g. From" /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Tenure<Select value={form.tenure || "none"} onValueChange={(value) => setForm({ ...form, tenure: value === "none" ? "" : value })}><SelectTrigger><SelectValue placeholder="Not specified" /></SelectTrigger><SelectContent><SelectItem value="none">Not specified</SelectItem><SelectItem value="FREEHOLD">Freehold</SelectItem><SelectItem value="LEASEHOLD">Leasehold</SelectItem></SelectContent></Select></label>
+              <label className="block space-y-1.5 text-sm font-medium">Service charge (AED/sq ft)<Input type="number" min="0" max="100000000" step="0.01" value={form.serviceChargePerSqft} onChange={(e) => setForm({ ...form, serviceChargePerSqft: e.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Listing expiry<Input type="datetime-local" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Listing type<Select value={form.listingType || undefined} onValueChange={(listingType) => setForm({ ...form, listingType, rentFrequency: listingType === "RENT" ? form.rentFrequency : "" })}><SelectTrigger><SelectValue placeholder="Select listing type" /></SelectTrigger><SelectContent>{["SALE", "RENT", "SHORT_TERM"].map((type) => <SelectItem key={type} value={type}>{type.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
+              {form.listingType === "RENT" && <label className="block space-y-1.5 text-sm font-medium">Rent frequency<Select value={form.rentFrequency || undefined} onValueChange={(rentFrequency) => setForm({ ...form, rentFrequency })}><SelectTrigger><SelectValue placeholder="Select rent frequency" /></SelectTrigger><SelectContent>{["YEARLY", "MONTHLY", "WEEKLY", "DAILY"].map((frequency) => <SelectItem key={frequency} value={frequency}>{frequency}</SelectItem>)}</SelectContent></Select></label>}
               {!creating && <label className="block space-y-1.5 text-sm font-medium">Publication status<Select value={form.status} onValueChange={(status) => setForm({ ...form, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["DRAFT", "PUBLISHED", "UNPUBLISHED", "ARCHIVED"].map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></label>}
               <div className="space-y-1.5"><label className="block text-sm font-medium">Listing availability<Select value={form.availability || undefined} onValueChange={(availability) => setForm({ ...form, availability })}><SelectTrigger><SelectValue placeholder="Select availability" /></SelectTrigger><SelectContent>{["AVAILABLE", "RESERVED", "SOLD", "RENTED", "HELD", "WITHDRAWN"].map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></label>{sourceControl("availabilityStatus")}</div>
-              {creating && <>
-                <label className="block space-y-1.5 text-sm font-medium">Community<Select value={form.communityId || undefined} onValueChange={(communityId) => setForm({ ...form, communityId })}><SelectTrigger><SelectValue placeholder="Select a community" /></SelectTrigger><SelectContent>{communities.map((community) => <SelectItem key={String(community.id)} value={String(community.id)}>{String(community.name)} ({String(community.publicationStatus)})</SelectItem>)}</SelectContent></Select></label>
-                <MapLocationPicker lat={form.lat} lng={form.lng} onLatitudeChange={(lat) => setForm({ ...form, lat })} onLongitudeChange={(lng) => setForm({ ...form, lng })} />
-                <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["BUILDING", "PROJECT", "COMMUNITY_CENTROID", "APPROXIMATE", "EXACT"].map((precision) => <SelectItem key={precision} value={precision}>{precision.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
-              </>}
+              <label className="block space-y-1.5 text-sm font-medium">Community<Select value={form.communityId || undefined} onValueChange={(communityId) => setForm({ ...form, communityId, projectId: "" })}><SelectTrigger><SelectValue placeholder="Select a community" /></SelectTrigger><SelectContent>{communities.map((community) => <SelectItem key={String(community.id)} value={String(community.id)}>{String(community.name)} ({String(community.publicationStatus)})</SelectItem>)}</SelectContent></Select></label>
+              <MapLocationPicker lat={form.lat} lng={form.lng} onLatitudeChange={(lat) => setForm({ ...form, lat })} onLongitudeChange={(lng) => setForm({ ...form, lng })} />
+              <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["BUILDING", "PROJECT", "COMMUNITY_CENTROID", "APPROXIMATE", "EXACT"].map((precision) => <SelectItem key={precision} value={precision}>{precision.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
+              <label className="block space-y-1.5 text-sm font-medium">Project<Select value={form.projectId || "none"} onValueChange={(projectId) => { const project = propertyOptions.projects.find((item) => item.id === projectId); setForm({ ...form, projectId: projectId === "none" ? "" : projectId, ...(project?.developerId ? { developerId: String(project.developerId) } : {}) }); }}><SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger><SelectContent><SelectItem value="none">No project</SelectItem>{propertyOptions.projects.filter((project) => !form.communityId || project.communityId === form.communityId).map((project) => <SelectItem key={String(project.id)} value={String(project.id)}>{String(project.name)}</SelectItem>)}</SelectContent></Select></label>
+              <label className="block space-y-1.5 text-sm font-medium">Developer<Select value={form.developerId || "none"} onValueChange={(developerId) => setForm({ ...form, developerId: developerId === "none" ? "" : developerId })}><SelectTrigger><SelectValue placeholder="Not specified" /></SelectTrigger><SelectContent><SelectItem value="none">Not specified</SelectItem>{propertyOptions.developers.map((developer) => <SelectItem key={String(developer.id)} value={String(developer.id)}>{String(developer.name)}</SelectItem>)}</SelectContent></Select></label>
+              <label className="block space-y-1.5 text-sm font-medium">Listing advisor<Select value={form.agentId || "none"} onValueChange={(agentId) => setForm({ ...form, agentId: agentId === "none" ? "" : agentId })}><SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger><SelectContent><SelectItem value="none">Unassigned</SelectItem>{propertyOptions.agents.map((agent) => <SelectItem key={String(agent.id)} value={String(agent.id)}>{String(agent.name)}</SelectItem>)}</SelectContent></Select></label>
             </div>
+            <label className="block space-y-1.5 text-sm font-medium">Highlights<Textarea value={form.highlights} maxLength={7500} rows={4} onChange={(e) => setForm({ ...form, highlights: e.target.value })} placeholder="One highlight per line" /></label>
+            <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Amenities</legend><div className="grid gap-2 sm:grid-cols-2">{propertyOptions.amenities.map((amenity) => <label key={String(amenity.id)} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.amenityIds.includes(String(amenity.id))} onChange={(event) => setForm({ ...form, amenityIds: event.target.checked ? [...form.amenityIds, String(amenity.id)] : form.amenityIds.filter((id) => id !== amenity.id) })} />{String(amenity.name)}</label>)}</div></fieldset>
             <PublicMediaPicker label="Public property cover image" value={form.coverMediaId} onChange={(coverMediaId) => setForm({ ...form, coverMediaId })} />
+            {!creating && editing && <MediaGalleryEditor entity="property" entityId={String(editing.id)} initialGallery={Array.isArray(editing.gallery) ? editing.gallery as { mediaId: string; isCover?: boolean; url?: string; altText?: string | null }[] : []} onChanged={load} />}
+            {!creating && editing && <PropertyAssetEditor propertyId={String(editing.id)} floorPlans={Array.isArray(editing.floorPlans) ? editing.floorPlans as { id: string; mediaId: string; bedrooms: number | null; areaSqft: number | null; priceMinor: string | null; label: string | null; url: string }[] : []} documents={Array.isArray(editing.documents) ? editing.documents as { id: string; mediaId: string; docType: string; label: string | null; gated: boolean; url: string; mimeType: string }[] : []} onChanged={load} />}
+            {!creating && editing && <section className="space-y-2 rounded-lg border border-border/70 p-3"><h3 className="text-sm font-semibold">Source and editorial history</h3><p className="text-xs text-muted-foreground">Source: {String(editing.sourceType ?? "INTERNAL")} · last source update: {editing.sourceUpdatedAt ? formatDate(String(editing.sourceUpdatedAt)) : "not supplied"} · retrieved: {editing.retrievedAt ? formatDate(String(editing.retrievedAt)) : "not supplied"}</p><div className="grid gap-3 sm:grid-cols-2"><div><p className="mb-1 text-xs font-medium">Price history</p>{Array.isArray(editing.priceHistory) && editing.priceHistory.length ? <ul className="space-y-1 text-xs">{(editing.priceHistory as { priceMinor: string; currency: string; sourceType: string; recordedAt: string }[]).map((item, index) => <li key={`${item.recordedAt}-${index}`}>{formatMoney(item.priceMinor, { currency: item.currency })} · {formatDate(item.recordedAt)} · {item.sourceType}</li>)}</ul> : <p className="text-xs text-muted-foreground">No history recorded.</p>}</div><div><p className="mb-1 text-xs font-medium">Availability history</p>{Array.isArray(editing.statusHistory) && editing.statusHistory.length ? <ul className="space-y-1 text-xs">{(editing.statusHistory as { fromStatus: string | null; toStatus: string; reason: string | null; createdAt: string }[]).map((item, index) => <li key={`${item.createdAt}-${index}`}>{item.fromStatus ?? "Created"} → {item.toStatus} · {formatDate(item.createdAt)}{item.reason ? ` · ${item.reason}` : ""}</li>)}</ul> : <p className="text-xs text-muted-foreground">No status changes recorded.</p>}</div></div></section>}
+            <div className="grid gap-3 sm:grid-cols-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.offPlan} onChange={(e) => setForm({ ...form, offPlan: e.target.checked })} /> Off-plan listing</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.exclusive} onChange={(e) => setForm({ ...form, exclusive: e.target.checked })} /> Exclusive listing</label></div>
             {!creating && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} /> Featured listing</label>}
             {creating && communities.length === 0 && <p className="text-sm text-muted-foreground">Create a community before creating a property.</p>}
             <DialogFooter>
@@ -813,6 +911,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
             <label className="block space-y-1.5 text-sm font-medium">Summary<Textarea maxLength={2000} value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} /></label>
             <label className="block space-y-1.5 text-sm font-medium">Description<Textarea maxLength={10000} rows={8} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <PublicMediaPicker label="Public project brochure or image" value={form.brochureMediaId} allowedKinds={["IMAGE", "DOCUMENT"]} onChange={(brochureMediaId) => setForm({ ...form, brochureMediaId })} />
+            {!creating && editing && <MediaGalleryEditor entity="project" entityId={String(editing.id)} initialGallery={Array.isArray(editing.gallery) ? editing.gallery as { mediaId: string; isCover?: boolean; url?: string; altText?: string | null }[] : []} onChanged={load} />}
             {creating && relations.developers.length === 0 && relations.communities.length === 0 && <p className="text-sm text-muted-foreground">Create a developer and community before creating a project.</p>}
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft project" : "Save changes"}</Button></DialogFooter>
           </form>
@@ -1564,38 +1663,149 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
 
 function MediaSection({ canEdit }: { canEdit: boolean }) {
   const [assets, setAssets] = React.useState<Record<string, unknown>[] | null>(null);
-  const [file, setFile] = React.useState<File | null>(null);
+  const [files, setFiles] = React.useState<File[]>([]);
+  const [q, setQ] = React.useState("");
+  const [kindFilter, setKindFilter] = React.useState("");
+  const [usageFilter, setUsageFilter] = React.useState("");
+  const [dateFrom, setDateFrom] = React.useState("");
+  const [dateTo, setDateTo] = React.useState("");
+  const [minWidth, setMinWidth] = React.useState("");
+  const [minHeight, setMinHeight] = React.useState("");
+  const [uploader, setUploader] = React.useState("");
+  const [listMode, setListMode] = React.useState(false);
+  const [uploadKind, setUploadKind] = React.useState("IMAGE");
+  const [maxUploadBytes, setMaxUploadBytes] = React.useState(25 * 1024 * 1024);
+  const [uploadProgress, setUploadProgress] = React.useState<{ name: string; status: "queued" | "uploading" | "uploaded" | "failed"; progress: number; error?: string; file: File }[]>([]);
+  const [selected, setSelected] = React.useState<string[]>([]);
   const [uploadAltText, setUploadAltText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [altText, setAltText] = React.useState("");
   const [caption, setCaption] = React.useState("");
+  const [bulkCaption, setBulkCaption] = React.useState("");
 
   const load = React.useCallback(() => {
-    api.get<{ media: Record<string, unknown>[] }>("/api/media?take=100")
+    const params = new URLSearchParams({ take: "100" });
+    if (q) params.set("q", q);
+    if (kindFilter) params.set("kind", kindFilter);
+    if (usageFilter) params.set("usage", usageFilter);
+    if (dateFrom) params.set("createdAfter", new Date(`${dateFrom}T00:00:00`).toISOString());
+    if (dateTo) params.set("createdBefore", new Date(`${dateTo}T23:59:59.999`).toISOString());
+    if (minWidth) params.set("minWidth", minWidth);
+    if (minHeight) params.set("minHeight", minHeight);
+    if (uploader.trim()) params.set("uploader", uploader.trim());
+    api.get<{ media: Record<string, unknown>[] }>(`/api/media?${params.toString()}`)
       .then((result) => setAssets(result.media))
       .catch(() => setAssets([]));
-  }, []);
+  }, [q, kindFilter, usageFilter, dateFrom, dateTo, minWidth, minHeight, uploader]);
   React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => { api.get<{ maxBytes: number }>("/api/media?policy=1").then((policy) => setMaxUploadBytes(policy.maxBytes)).catch(() => {}); }, []);
 
   const upload = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!file) return;
+    if (!files.length) return;
     setBusy(true);
     try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("altText", uploadAltText);
-      await api.upload("/api/media", body);
-      toast.success("Public media uploaded and queued for processing");
-      setFile(null);
-      setUploadAltText("");
+      const progress: { name: string; status: "queued" | "uploading" | "uploaded" | "failed"; progress: number; error?: string; file: File }[] = files.map((file) => ({ name: file.name, status: "queued", progress: 0, file }));
+      setUploadProgress(progress);
+      const failedFiles: File[] = [];
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        if (file.size > maxUploadBytes || !["image/jpeg", "image/png", "image/webp", "image/avif", "application/pdf"].includes(file.type)) {
+          const reason = file.size > maxUploadBytes ? `File exceeds ${(maxUploadBytes / 1048576).toFixed(0)} MB.` : "Unsupported file type.";
+          progress[index] = { ...progress[index], status: "failed", error: reason };
+          failedFiles.push(file);
+          setUploadProgress([...progress]);
+          continue;
+        }
+        const body = new FormData();
+        body.append("file", file);
+        body.append("altText", uploadAltText);
+        body.append("kind", uploadKind);
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const request = new XMLHttpRequest();
+            request.open("POST", "/api/media");
+            request.withCredentials = true;
+            request.setRequestHeader("x-requested-with", "fetch");
+            request.upload.onprogress = (event) => {
+              if (!event.lengthComputable) return;
+              progress[index] = { ...progress[index], status: "uploading", progress: Math.min(99, Math.round((event.loaded / event.total) * 100)) };
+              setUploadProgress([...progress]);
+            };
+            request.onerror = () => reject(new Error("Network error while uploading."));
+            request.onload = () => {
+              let payload: { error?: string } = {};
+              try { payload = JSON.parse(request.responseText) as { error?: string }; } catch { /* keep a safe generic response */ }
+              if (request.status >= 200 && request.status < 300) resolve();
+              else reject(new Error(payload.error || `Upload failed (${request.status}).`));
+            };
+            request.send(body);
+          });
+          progress[index] = { ...progress[index], status: "uploaded", progress: 100 };
+        } catch (error) {
+          progress[index] = { ...progress[index], status: "failed", error: error instanceof Error ? error.message : "Upload failed." };
+          failedFiles.push(file);
+        }
+        setUploadProgress([...progress]);
+      }
+      const uploaded = progress.filter((item) => item.status === "uploaded").length;
+      if (uploaded) toast.success(`${uploaded} public asset${uploaded === 1 ? "" : "s"} uploaded`);
+      setFiles(failedFiles);
+      if (!failedFiles.length) setUploadAltText("");
       load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Media upload failed");
     } finally {
       setBusy(false);
     }
+  };
+
+  const retryFailed = async () => {
+    const failed = uploadProgress.filter((item) => item.status === "failed").map((item) => item.file);
+    if (!failed.length) return;
+    setFiles(failed);
+    setUploadProgress([]);
+    window.setTimeout(() => {
+      const form = document.getElementById("media-upload-form") as HTMLFormElement | null;
+      form?.requestSubmit();
+    }, 0);
+  };
+
+  const deleteSelected = async () => {
+    if (!selected.length || !window.confirm(`Delete ${selected.length} selected asset(s) that have no tracked uses? Used assets will remain protected.`)) return;
+    setBusy(true);
+    try {
+      const result = await api.delete<{ deleted: number; blocked: number; results: { id: string; error?: string; cleanupComplete?: boolean }[] }>("/api/media", { mediaAssetIds: selected });
+      const failures = result.results.filter((item) => item.error);
+      toast.success(`${result.deleted} asset(s) deleted${result.blocked ? `; ${result.blocked} still in use or protected` : ""}`);
+      if (failures.length) toast.error(failures.slice(0, 3).map((item) => item.error).join(" "));
+      const cleanupPending = result.results.filter((item) => item.cleanupComplete === false).length;
+      if (cleanupPending) toast.warning(`${cleanupPending} database record(s) were removed, but object storage cleanup needs a retry.`);
+      setSelected([]);
+      load();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Selected media could not be removed"); }
+    finally { setBusy(false); }
+  };
+
+  const fillMissingMetadata = async () => {
+    if (!selected.length || !bulkCaption.trim()) return;
+    setBusy(true);
+    let changed = 0;
+    const failures: string[] = [];
+    try {
+      for (const id of selected) {
+        const asset = assets?.find((item) => item.id === id);
+        if (!asset || (asset.caption && String(asset.caption).trim())) continue;
+        try {
+          await api.patch(`/api/media/${id}`, { expectedUpdatedAt: asset.updatedAt, altText: asset.altText || null, caption: bulkCaption.trim() });
+          changed += 1;
+        } catch (error) { failures.push(error instanceof Error ? error.message : `Could not update ${id}.`); }
+      }
+      toast.success(`${changed} asset(s) received the caption; existing captions were kept.`);
+      if (failures.length) toast.error(failures.slice(0, 3).join(" "));
+      setBulkCaption(""); setSelected([]); load();
+    } finally { setBusy(false); }
   };
 
   const openMetadata = (asset: Record<string, unknown>) => {
@@ -1625,24 +1835,28 @@ function MediaSection({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-6">
-      <header><h1 className="font-display text-2xl font-semibold">Media library</h1><p className="mt-1 max-w-3xl text-sm text-muted-foreground">Manage public assets and accessibility metadata. Private portfolio documents are excluded; privacy and deletion controls are intentionally unavailable, and tracked usage is shown before future linking.</p></header>
-      {canEdit && <form onSubmit={upload} className="grid gap-3 rounded-xl border border-border/70 p-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
-        <label className="block space-y-1.5 text-sm font-medium">Image or PDF<Input required type="file" accept="image/jpeg,image/png,image/webp,image/avif,application/pdf" onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)} /></label>
+      <header><h1 className="font-display text-2xl font-semibold">Media library</h1><p className="mt-1 max-w-3xl text-sm text-muted-foreground">Bulk upload, find and reuse public assets. Private portfolio documents are excluded; assets referenced by a property, project, content entry or other catalog record cannot be deleted.</p></header>
+      {canEdit && <form id="media-upload-form" onSubmit={upload} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFiles(Array.from(event.dataTransfer.files)); }} className="grid gap-3 rounded-xl border border-dashed border-border/70 p-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
+        <label className="block space-y-1.5 text-sm font-medium">Drop files here or choose multiple<Input required multiple type="file" accept="image/jpeg,image/png,image/webp,image/avif,application/pdf" onChange={(event) => setFiles(Array.from(event.currentTarget.files ?? []))} /></label>
         <label className="block space-y-1.5 text-sm font-medium">Alt text<Input maxLength={300} value={uploadAltText} onChange={(event) => setUploadAltText(event.target.value)} placeholder="Describe the visible image; leave blank if decorative" /></label>
-        <Button type="submit" disabled={busy || !file}>{busy ? "Uploading…" : "Upload public asset"}</Button>
+        <label className="block space-y-1.5 text-sm font-medium">Asset type<Select value={uploadKind} onValueChange={setUploadKind}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["IMAGE", "LOGO", "FLOOR_PLAN", "BROCHURE", "DOCUMENT"].map((kind) => <SelectItem key={kind} value={kind}>{kind.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
+        <Button type="submit" disabled={busy || !files.length}>{busy ? "Uploading…" : `Upload ${files.length || "selected"} asset${files.length === 1 ? "" : "s"}`}</Button>
       </form>}
+      {uploadProgress.length > 0 && <div className="space-y-2 rounded-lg border border-border/70 p-3">{uploadProgress.map((item, index) => <div key={`${item.file.name}-${item.file.lastModified}-${index}`} className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="truncate">{item.name}</span><span>{item.status === "uploaded" ? "Uploaded" : item.status === "failed" ? item.error : `${item.status === "uploading" ? "Uploading" : "Queued"} · ${item.progress}%`}</span><progress className="h-2 w-full" max={100} value={item.progress} aria-label={`${item.name} upload progress`} /></div>)}{uploadProgress.some((item) => item.status === "failed") && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={retryFailed}>Retry failed files</Button>}</div>}
+      <div className="flex flex-wrap items-center gap-2"><Input className="max-w-sm" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search filename, alt, caption or ID" aria-label="Search media" /><Select value={kindFilter || "all"} onValueChange={(value) => setKindFilter(value === "all" ? "" : value)}><SelectTrigger className="w-48" aria-label="Filter media type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All asset types</SelectItem>{["IMAGE", "LOGO", "FLOOR_PLAN", "BROCHURE", "DOCUMENT"].map((kind) => <SelectItem key={kind} value={kind}>{kind.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select><Select value={usageFilter || "all"} onValueChange={(value) => setUsageFilter(value === "all" ? "" : value)}><SelectTrigger className="w-44" aria-label="Filter media usage"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Any usage</SelectItem><SelectItem value="orphaned">Unreferenced assets</SelectItem><SelectItem value="used">Used assets</SelectItem></SelectContent></Select><Input className="w-40" type="date" aria-label="Uploaded after" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /><Input className="w-40" type="date" aria-label="Uploaded before" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /><Input className="w-28" type="number" min="1" aria-label="Minimum image width" placeholder="Min width" value={minWidth} onChange={(event) => setMinWidth(event.target.value)} /><Input className="w-28" type="number" min="1" aria-label="Minimum image height" placeholder="Min height" value={minHeight} onChange={(event) => setMinHeight(event.target.value)} /><Input className="w-40" aria-label="Uploader ID" placeholder="Uploader ID" value={uploader} onChange={(event) => setUploader(event.target.value)} /><Button type="button" size="sm" variant="outline" onClick={() => setListMode((value) => !value)}>{listMode ? "Grid view" : "List view"}</Button>{canEdit && selected.length > 0 && <><span className="text-xs text-muted-foreground">{selected.length} selected</span><Input className="w-48" aria-label="Caption for assets without one" maxLength={1000} placeholder="Fill missing captions" value={bulkCaption} onChange={(event) => setBulkCaption(event.target.value)} /><Button type="button" size="sm" variant="outline" disabled={busy || !bulkCaption.trim()} onClick={() => void fillMissingMetadata()}>Fill missing captions</Button><Button type="button" size="sm" variant="destructive" disabled={busy} onClick={deleteSelected}>Delete unused selected</Button></>}</div>
       {assets === null ? <LoadingState rows={4} /> : assets.length === 0 ? <EmptyState title="No public media assets" description="Upload a validated image or PDF to start the library." /> : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className={listMode ? "space-y-2" : "grid gap-3 md:grid-cols-2 xl:grid-cols-3"}>
           {assets.map((asset) => <article key={String(asset.id)} className="space-y-3 rounded-xl border border-border/70 p-4">
+            {canEdit && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selected.includes(String(asset.id))} onChange={(event) => setSelected((current) => event.target.checked ? [...current, String(asset.id)] : current.filter((id) => id !== asset.id))} />Select asset</label>}
             {!asset.isPrivate && asset.kind === "IMAGE" && isPublicMediaUrl(asset.url) && <div className="overflow-hidden rounded-md bg-secondary/40"><Image src={asset.url} alt={String(asset.altText ?? "")} width={640} height={360} unoptimized className="h-36 w-full object-cover" /></div>}
             <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex gap-2"><Badge variant="outline">{String(asset.kind)}</Badge><Badge variant="secondary">{asset.isPrivate ? "PRIVATE" : "PUBLIC"}</Badge></div><span className="text-xs text-muted-foreground">{formatDate(String(asset.createdAt))}</span></div>
-            <div><p className="break-all text-sm font-medium">{String(asset.mimeType)} · {formatNumber(Number(asset.sizeBytes) / 1024, "en-AE", { maximumFractionDigits: 0 })} KB</p><p className="text-xs text-muted-foreground">{asset.width && asset.height ? `${String(asset.width)} × ${String(asset.height)} · ` : ""}{String(asset.usageCount)} tracked uses</p></div>
+            <div><p className="break-all text-sm font-medium">{String(asset.mimeType)} · {formatNumber(Number(asset.sizeBytes) / 1024, "en-AE", { maximumFractionDigits: 0 })} KB</p><p className="text-xs text-muted-foreground">{asset.width && asset.height ? `${String(asset.width)} × ${String(asset.height)} · ` : ""}{String(asset.usageCount)} tracked uses{asset.checksum ? ` · SHA-256 ${String(asset.checksum).slice(0, 12)}` : ""}</p>{Boolean(asset.variants && Object.keys(asset.variants as object).length) && <p className="text-xs text-muted-foreground">Variants: {Object.keys(asset.variants as object).join(", ")}</p>}{assets.some((other) => other.id !== asset.id && other.checksum && other.checksum === asset.checksum) && <Badge variant="outline">Duplicate checksum</Badge>}</div>
             <div className="min-h-10 text-sm"><p>{String(asset.altText ?? "No alt text recorded")}</p>{Boolean(asset.caption) && <p className="mt-1 text-xs text-muted-foreground">{String(asset.caption)}</p>}</div>
             <div className="flex flex-wrap gap-2">{!asset.isPrivate && isPublicMediaUrl(asset.url) && <a className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-secondary" href={asset.url} target="_blank" rel="noopener noreferrer">Open asset</a>}{canEdit && <Button size="sm" variant="outline" onClick={() => openMetadata(asset)}>Edit metadata</Button>}</div>
           </article>)}
         </div>
       )}
-      <p className="text-xs text-muted-foreground">Showing {String(assets?.length ?? 0)} public assets (maximum 100). Tracked use counts include catalog, content, SEO, gallery, and document references.</p>
+      <p className="text-xs text-muted-foreground">Showing {String(assets?.length ?? 0)} matching public assets (maximum 100). Usage includes catalog, content, SEO, gallery, and document references.</p>
 
       {canEdit && <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>
