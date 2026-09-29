@@ -2,10 +2,10 @@
 
 - Source baseline commit: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
 - Current branch: `codex/production-recovery-wave1`
-- Current source checkpoint: `768d447e73c5af0c40564aa9fa749c6addb799f9`
+- Current source checkpoint: `a476e127470abff70dfc979b7d545be995acc5db`
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
 - Last completed phase: Phase 05 (`768d447e73c5af0c40564aa9fa749c6addb799f9`)
-- Current phase status: Phases 02–05 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
+- Current phase status: Phases 02–05 COMPLETE; Phases 06–07 implementation is ready for hosted verification; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
 - Last verified migration: `20260929000100_media_original_filename` (33/33 applied in hosted CI)
 - Last verified implementation deployment: `768d447e73c5af0c40564aa9fa749c6addb799f9` (web only; phases 02–05)
 
@@ -34,11 +34,20 @@
 - Live database and search-index checks pass; the public search returns 3 clearly demo-labelled listings. Health remains degraded only for `worker-heartbeat-stale-or-missing`; the USD 7/month background worker remains owner-deferred and no queue-drain claim is made.
 - Media workflows include upload, filtering/search, usage graph, picker, gallery ordering/cover, property floor plans/documents and guarded unused-media deletion. Automated storage journeys pass; a manual upload against the production R2 bucket was not performed.
 - Property Studio supports create/edit/preview/publish lifecycle, metadata/SEO, audited price history, media assets, and synchronous search projection refresh without relying on the unavailable worker.
-- This is a staging service and its demo inventory is not real owner-approved listing data. Phases 06 onward remain NOT_STARTED.
+- This is a staging service and its demo inventory is not real owner-approved listing data. Project, unit, community, developer and advisor records still need owner-provided, sourced inventory before they can represent live facts.
+
+## Phases 06 and 07 implementation checkpoint
+
+- Scope: Project Studio, payment plans, project documents and galleries, unit CRUD/import provenance, communities, developer verification, and private-to-public advisor onboarding.
+- A forward-only migration adds imported-unit provenance and availability history, plus developer verification evidence. No shared database was reset or modified from this workspace.
+- Local checks passed: TypeScript, ESLint, Prisma schema validation, repository filename/build-context hygiene, and `git diff --check`.
+- Hosted Docker CI, the credential scanner, migration apply, and Render deploy verification are pending the authorized push to `main`. Docker Engine is unavailable locally, so the local credential scanner could not run. Bun is also unavailable locally, so the Bun unit/integration suites must be confirmed by hosted CI.
+- The advisor public-profile gate requires an active, email-verified AGENT account; new profiles remain private. Developer verification requires an owner/admin and a source URL; payment-plan VERIFIED status requires an owner/admin and a source document.
+- Phases 08 onward have not been started.
 
 ## Next phase
 
-- Phase 06: Project/payment plan/units Studio.
+- Phase 08: Page/Content Studio and settings, after Phases 06–07 pass hosted verification.
 - Read first: `docs/agent/PHASE_CHECKLIST.md`, `docs/agent/CMS_GAP_MATRIX.md`, `docs/agent/DESIGN_REFERENCE.md`, `src/features/admin/`, and the relevant project and unit APIs.
 
 ## Rollback

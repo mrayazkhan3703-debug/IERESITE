@@ -17,6 +17,10 @@ export interface DeveloperCommandInput {
   headquarters?: string | null;
   foundedYear?: number | null;
   logoMediaId?: string | null;
+  verificationStatus?: "UNVERIFIED" | "PUBLIC_RECORDS" | "VERIFIED";
+  verificationEvidenceUrl?: string | null;
+  sourceType?: string;
+  sourceUpdatedAt?: string | null;
 }
 
 export interface NewDeveloperCommandInput {
@@ -28,6 +32,8 @@ export interface NewDeveloperCommandInput {
   headquarters?: string | null;
   foundedYear?: number | null;
   logoMediaId?: string | null;
+  sourceType?: string;
+  sourceUpdatedAt?: string | null;
 }
 
 function normalizeDeveloper(input: { name: string; slug: string; websiteUrl?: string | null }) {
@@ -63,7 +69,9 @@ export async function createDeveloperCommand(actor: SessionUser, input: NewDevel
           logoMediaId,
           verificationStatus: "UNVERIFIED",
           lastVerifiedAt: null,
-          sourceType: "INTERNAL",
+          sourceType: input.sourceType?.trim() || "INTERNAL",
+          sourceUpdatedAt: input.sourceUpdatedAt ? new Date(input.sourceUpdatedAt) : null,
+          retrievedAt: input.sourceUpdatedAt ? new Date() : null,
           isDemoData: false,
         },
       });
@@ -71,6 +79,7 @@ export async function createDeveloperCommand(actor: SessionUser, input: NewDevel
         name: developer.name, slug: developer.slug, summary: developer.summary, description: developer.description,
         websiteUrl: developer.websiteUrl, headquarters: developer.headquarters, foundedYear: developer.foundedYear,
         verificationStatus: developer.verificationStatus, lastVerifiedAt: null, logoMediaId: developer.logoMediaId,
+        sourceType: developer.sourceType, sourceUpdatedAt: developer.sourceUpdatedAt,
       };
       await audit({ actorId: actor.id, organizationId: actor.organizationId, action: "developer.create", resourceType: "developer", resourceId: developer.id, before: null, after, ip }, tx);
       await emitEvent("developer", developer.id, "developer.updated", { developerId: developer.id, by: actor.email }, tx);
@@ -103,9 +112,25 @@ export async function updateDeveloperCommand(actor: SessionUser, input: Develope
         ? developer.logoMediaId
         : await requirePublicMedia(tx, input.logoMediaId, ["IMAGE"]);
 
+      const verificationChanged = input.verificationStatus !== undefined || input.verificationEvidenceUrl !== undefined;
+      if (verificationChanged && !actor.roles.some((role) => role === "OWNER" || role === "ADMIN")) {
+        throw new HttpError(403, "Only an owner or administrator can change developer verification status.", "VERIFICATION_FORBIDDEN");
+      }
+      const verificationStatus = input.verificationStatus ?? developer.verificationStatus;
+      const verificationEvidenceUrl = input.verificationEvidenceUrl === undefined ? developer.verificationEvidenceUrl : input.verificationEvidenceUrl?.trim() || null;
+      if (verificationStatus !== "UNVERIFIED") {
+        if (!verificationEvidenceUrl) throw new HttpError(422, "Attach an HTTP or HTTPS verification source before marking this developer verified.", "DEVELOPER_EVIDENCE_REQUIRED");
+        let source: URL;
+        try { source = new URL(verificationEvidenceUrl); } catch { throw new HttpError(422, "Verification evidence must be a valid HTTP or HTTPS URL.", "DEVELOPER_EVIDENCE_INVALID"); }
+        if (!new Set(["http:", "https:"]).has(source.protocol)) throw new HttpError(422, "Verification evidence must use HTTP or HTTPS.", "DEVELOPER_EVIDENCE_INVALID");
+      }
+      const lastVerifiedAt = verificationStatus === "UNVERIFIED" ? null : verificationChanged ? new Date() : developer.lastVerifiedAt;
+
       const before = {
         name: developer.name, slug: developer.slug, summary: developer.summary, description: developer.description,
         websiteUrl: developer.websiteUrl, headquarters: developer.headquarters, foundedYear: developer.foundedYear, logoMediaId: developer.logoMediaId,
+        verificationStatus: developer.verificationStatus, verificationEvidenceUrl: developer.verificationEvidenceUrl,
+        lastVerifiedAt: developer.lastVerifiedAt, sourceType: developer.sourceType, sourceUpdatedAt: developer.sourceUpdatedAt,
       };
       const data: Prisma.DeveloperUpdateManyMutationInput = { updatedAt: new Date() };
       if (input.name !== undefined) data.name = name;
@@ -116,6 +141,10 @@ export async function updateDeveloperCommand(actor: SessionUser, input: Develope
       if (input.headquarters !== undefined) data.headquarters = input.headquarters?.trim() || null;
       if (input.foundedYear !== undefined) data.foundedYear = input.foundedYear;
       if (input.logoMediaId !== undefined) data.logoMediaId = logoMediaId;
+      if (input.verificationStatus !== undefined) data.verificationStatus = verificationStatus;
+      if (verificationChanged) { data.verificationEvidenceUrl = verificationStatus === "UNVERIFIED" ? null : verificationEvidenceUrl; data.lastVerifiedAt = lastVerifiedAt; }
+      if (input.sourceType !== undefined) data.sourceType = input.sourceType.trim();
+      if (input.sourceUpdatedAt !== undefined) { data.sourceUpdatedAt = input.sourceUpdatedAt ? new Date(input.sourceUpdatedAt) : null; data.retrievedAt = input.sourceUpdatedAt ? new Date() : null; }
 
       const changed = await tx.developer.updateMany({ where: { id: developer.id, updatedAt: expectedUpdatedAt }, data });
       if (changed.count !== 1) throw new HttpError(409, "This developer changed since it was loaded. Refresh and review the latest values.", "VERSION_CONFLICT");
@@ -137,6 +166,9 @@ export async function updateDeveloperCommand(actor: SessionUser, input: Develope
         headquarters: input.headquarters === undefined ? developer.headquarters : input.headquarters?.trim() || null,
         foundedYear: input.foundedYear === undefined ? developer.foundedYear : input.foundedYear,
         logoMediaId,
+        verificationStatus, verificationEvidenceUrl: verificationStatus === "UNVERIFIED" ? null : verificationEvidenceUrl,
+        lastVerifiedAt, sourceType: input.sourceType ?? developer.sourceType,
+        sourceUpdatedAt: input.sourceUpdatedAt === undefined ? developer.sourceUpdatedAt : input.sourceUpdatedAt,
       };
       await audit({ actorId: actor.id, organizationId: actor.organizationId, action: "developer.update", resourceType: "developer", resourceId: developer.id, before, after, ip }, tx);
       await emitEvent("developer", developer.id, "developer.updated", { developerId: developer.id, by: actor.email }, tx);

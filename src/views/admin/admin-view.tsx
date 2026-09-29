@@ -23,7 +23,7 @@ import { KnowledgeBaseSection } from "@/views/admin/knowledge-base-section";
 import { TestimonialsSection } from "@/views/admin/testimonials-section";
 import { RedirectsSection } from "@/views/admin/redirects-section";
 import { SeoMetadataSection } from "@/views/admin/seo-metadata-section";
-import { formatMoney, formatNumber, formatDate } from "@/lib/money";
+import { formatMoney, formatNumber, formatDate, toMinor } from "@/lib/money";
 import {
   Users, Building2, Download, RefreshCcw, BarChart3, ScrollText, Flag,
   AlertTriangle, Database, Activity, CheckCircle2, XCircle, Clock, Loader2, ShieldCheck,
@@ -38,6 +38,9 @@ import { confirmDiscardChanges, useUnsavedChanges } from "@/features/admin/share
 import { MapLocationPicker } from "@/features/admin/shared/map-location-picker";
 import { MediaGalleryEditor } from "@/features/admin/shared/media-gallery-editor";
 import { PropertyAssetEditor } from "@/features/admin/shared/property-asset-editor";
+import { ProjectAssetEditor } from "@/features/admin/shared/project-asset-editor";
+import { ProjectPaymentPlanEditor } from "@/features/admin/shared/project-payment-plan-editor";
+import { UnitEditorDialog, UnitImportDialog, type UnitRow, type UnitProject, type UnitProperty } from "@/features/admin/shared/unit-studio-actions";
 import { AdminShell } from "@/features/admin/admin-shell";
 
 function isPublicMediaUrl(value: unknown): value is string {
@@ -89,7 +92,7 @@ export default function AdminView() {
         {section === "redirects" && <RedirectsSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} />}
         {section === "seo-metadata" && <SeoMetadataSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} />}
         {section === "media" && <MediaSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} />}
-        {section === "units" && <UnitsSection />}
+        {section === "units" && <UnitsSection canEdit={hasRole(user, ["OWNER", "ADMIN"])} />}
         {section === "imports" && <ImportsSection />}
         {section === "evidence" && <EvidenceSection />}
         {section === "data-quality" && <DataQualitySection />}
@@ -103,12 +106,14 @@ export default function AdminView() {
 }
 
 function UsersSection({ isOwner, canManage }: { isOwner: boolean; canManage: boolean }) {
+  const route = useRoute();
   const [data, setData] = React.useState<{ users: Record<string, unknown>[]; invitations: Record<string, unknown>[]; organizations: Record<string, unknown>[]; roleOptions: string[] } | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [roleKey, setRoleKey] = React.useState("");
   const [organizationId, setOrganizationId] = React.useState("");
+  const promptedRole = React.useRef(false);
 
   const load = React.useCallback(() => {
     api.get<typeof data>("/api/admin/users").then(setData).catch(() => setData(null));
@@ -119,6 +124,13 @@ function UsersSection({ isOwner, canManage }: { isOwner: boolean; canManage: boo
     if (!roleKey && data.roleOptions[0]) setRoleKey(data.roleOptions[0]);
     if (!organizationId && data.organizations[0]) setOrganizationId(String(data.organizations[0].id));
   }, [data, organizationId, roleKey]);
+  React.useEffect(() => {
+    if (!promptedRole.current && canManage && route.query.inviteRole === "AGENT" && data?.roleOptions.includes("AGENT")) {
+      promptedRole.current = true;
+      setRoleKey("AGENT");
+      setDialogOpen(true);
+    }
+  }, [canManage, data, route.query.inviteRole]);
 
   const submitInvite = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -769,7 +781,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
 
 function ProjectsSection({ canEdit }: { canEdit: boolean }) {
   const [data, setData] = React.useState<{ projects: Record<string, unknown>[]; total: number } | null>(null);
-  const [relations, setRelations] = React.useState<{ developers: Record<string, unknown>[]; communities: Record<string, unknown>[] }>({ developers: [], communities: [] });
+  const [relations, setRelations] = React.useState<{ developers: Record<string, unknown>[]; communities: Record<string, unknown>[]; amenities: Record<string, unknown>[] }>({ developers: [], communities: [], amenities: [] });
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
@@ -778,6 +790,8 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
     name: "", slug: "", tagline: "", summary: "", description: "",
     developerId: "", communityId: "", lat: "", lng: "", locationPrecision: "PROJECT",
     projectType: "RESIDENTIAL", status: "OFF_PLAN", publicationStatus: "DRAFT", brochureMediaId: "",
+    launchDate: "", handoverDate: "", completionPercent: "", constructionStatus: "", constructionSourceUrl: "", constructionSourceVerifiedAt: "",
+    totalUnits: "", startingPrice: "", currency: "AED", highlightsText: "", keyAmenitiesText: "", amenityIds: [] as string[],
   });
 
   const load = React.useCallback(() => {
@@ -793,10 +807,11 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
     Promise.all([
       api.get<{ developers: Record<string, unknown>[] }>("/api/admin/developers"),
       api.get<{ communities: Record<string, unknown>[] }>("/api/admin/communities"),
-    ]).then(([developers, communities]) => {
-      if (active) setRelations({ developers: developers.developers, communities: communities.communities });
+      api.get<{ amenities: Record<string, unknown>[] }>("/api/admin/properties/options"),
+    ]).then(([developers, communities, options]) => {
+      if (active) setRelations({ developers: developers.developers, communities: communities.communities, amenities: options.amenities });
     }).catch(() => {
-      if (active) setRelations({ developers: [], communities: [] });
+      if (active) setRelations({ developers: [], communities: [], amenities: [] });
     });
     return () => { active = false; };
   }, [canEdit]);
@@ -807,7 +822,9 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
     setForm({
       name: "", slug: "", tagline: "", summary: "", description: "", developerId: "", communityId: "",
       lat: "", lng: "", locationPrecision: "PROJECT", projectType: "RESIDENTIAL", status: "OFF_PLAN",
-      publicationStatus: "DRAFT", brochureMediaId: "",
+      publicationStatus: "DRAFT", brochureMediaId: "", launchDate: "", handoverDate: "", completionPercent: "",
+      constructionStatus: "", constructionSourceUrl: "", constructionSourceVerifiedAt: "", totalUnits: "", startingPrice: "", currency: "AED",
+      highlightsText: "", keyAmenitiesText: "", amenityIds: [],
     });
   };
 
@@ -820,11 +837,19 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
       tagline: String(project.tagline ?? ""),
       summary: String(project.summary ?? ""),
       description: String(project.description ?? ""),
-      developerId: "", communityId: "", lat: "", lng: "", locationPrecision: "PROJECT",
+      developerId: String(project.developerId ?? ""), communityId: String(project.communityId ?? ""), lat: String(project.lat ?? ""), lng: String(project.lng ?? ""), locationPrecision: String(project.locationPrecision ?? "PROJECT"),
       projectType: String(project.projectType ?? "RESIDENTIAL"),
       status: String(project.status ?? "OFF_PLAN"),
       publicationStatus: String(project.publicationStatus ?? "DRAFT"),
       brochureMediaId: String(project.brochureMediaId ?? ""),
+      launchDate: String(project.launchDate ?? ""), handoverDate: String(project.handoverDate ?? ""),
+      completionPercent: project.completionPercent == null ? "" : String(project.completionPercent),
+      constructionStatus: String(project.constructionStatus ?? ""), constructionSourceUrl: String(project.constructionSourceUrl ?? ""),
+      constructionSourceVerifiedAt: project.constructionSourceVerifiedAt ? datetimeLocalValue(String(project.constructionSourceVerifiedAt)) : "",
+      totalUnits: project.totalUnits == null ? "" : String(project.totalUnits), startingPrice: project.startingPriceMinor == null ? "" : String(Number(project.startingPriceMinor) / 100), currency: String(project.currency ?? "AED"),
+      highlightsText: Array.isArray(project.highlights) ? (project.highlights as string[]).join("\n") : "",
+      keyAmenitiesText: Array.isArray(project.keyAmenities) ? (project.keyAmenities as string[]).join("\n") : "",
+      amenityIds: Array.isArray(project.amenities) ? (project.amenities as { id: string }[]).map((item) => String(item.id)) : [],
     });
   };
 
@@ -841,12 +866,23 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
         lat: Number(form.lat),
         lng: Number(form.lng),
         brochureMediaId: form.brochureMediaId || null,
+        launchDate: form.launchDate || null,
+        handoverDate: form.handoverDate || null,
+        completionPercent: form.completionPercent === "" ? null : Number(form.completionPercent),
+        constructionStatus: form.constructionStatus || null,
+        constructionSourceUrl: form.constructionSourceUrl || null,
+        constructionSourceVerifiedAt: form.constructionSourceVerifiedAt ? new Date(form.constructionSourceVerifiedAt).toISOString() : null,
+        totalUnits: form.totalUnits === "" ? null : Number(form.totalUnits),
+        startingPriceMinor: form.startingPrice ? toMinor(form.startingPrice).toString() : null,
+        currency: form.currency.toUpperCase(),
+        highlights: form.highlightsText.split("\n").map((item) => item.trim()).filter(Boolean),
+        keyAmenities: form.keyAmenitiesText.split("\n").map((item) => item.trim()).filter(Boolean),
       };
       if (creating) {
         const createFields = Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "publicationStatus"));
         await api.post("/api/admin/projects", createFields);
       } else if (editing) {
-        const editableFields = Object.fromEntries(Object.entries(fields).filter(([key]) => !["developerId", "communityId", "lat", "lng", "locationPrecision"].includes(key)));
+        const editableFields = Object.fromEntries(Object.entries(fields));
         await api.patch("/api/admin/projects", {
           projectId: editing.id, expectedUpdatedAt: editing.updatedAt, ...editableFields,
         });
@@ -892,26 +928,39 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
       <p className="text-xs text-muted-foreground">Showing {String(data?.projects.length ?? 0)} of {String(data?.total ?? 0)} projects (maximum 50).</p>
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader><DialogTitle>{creating ? "Create project" : "Edit project"}</DialogTitle><DialogDescription>{creating ? "New projects are saved as internal drafts. Select existing records and enter known coordinates; location is attributed to manual Admin input and is not externally verified." : "Updates are version checked and audited. Publishing requires the linked community to be public; URL changes create a permanent redirect."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{creating ? "Create project" : "Edit project"}</DialogTitle><DialogDescription>{creating ? "New projects are saved as internal drafts. Enter known facts and source evidence; location is attributed to manual Admin input." : "Updates are version checked and audited. Public plans require verification; URL changes create a permanent redirect."}</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={saveEditor}>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
-              {creating && <>
-                <label className="block space-y-1.5 text-sm font-medium">Developer<Select value={form.developerId || undefined} onValueChange={(developerId) => setForm({ ...form, developerId })}><SelectTrigger><SelectValue placeholder="Select a developer" /></SelectTrigger><SelectContent>{relations.developers.map((developer) => <SelectItem key={String(developer.id)} value={String(developer.id)}>{String(developer.name)}{developer.verificationStatus === "UNVERIFIED" ? " (unverified)" : ""}</SelectItem>)}</SelectContent></Select></label>
-                <label className="block space-y-1.5 text-sm font-medium">Community<Select value={form.communityId || undefined} onValueChange={(communityId) => setForm({ ...form, communityId })}><SelectTrigger><SelectValue placeholder="Select a community" /></SelectTrigger><SelectContent>{relations.communities.map((community) => <SelectItem key={String(community.id)} value={String(community.id)}>{String(community.name)} ({String(community.publicationStatus)})</SelectItem>)}</SelectContent></Select></label>
-                <MapLocationPicker lat={form.lat} lng={form.lng} onLatitudeChange={(lat) => setForm({ ...form, lat })} onLongitudeChange={(lng) => setForm({ ...form, lng })} />
-                <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["PROJECT", "COMMUNITY_CENTROID", "APPROXIMATE", "BUILDING", "EXACT"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
-              </>}
+              <label className="block space-y-1.5 text-sm font-medium">Developer<Select required value={form.developerId || undefined} onValueChange={(developerId) => setForm({ ...form, developerId })}><SelectTrigger><SelectValue placeholder="Select a developer" /></SelectTrigger><SelectContent>{relations.developers.map((developer) => <SelectItem key={String(developer.id)} value={String(developer.id)}>{String(developer.name)}{developer.verificationStatus === "UNVERIFIED" ? " (unverified)" : ""}</SelectItem>)}</SelectContent></Select></label>
+              <label className="block space-y-1.5 text-sm font-medium">Community<Select required value={form.communityId || undefined} onValueChange={(communityId) => setForm({ ...form, communityId })}><SelectTrigger><SelectValue placeholder="Select a community" /></SelectTrigger><SelectContent>{relations.communities.map((community) => <SelectItem key={String(community.id)} value={String(community.id)}>{String(community.name)} ({String(community.publicationStatus)})</SelectItem>)}</SelectContent></Select></label>
+              <MapLocationPicker lat={form.lat} lng={form.lng} onLatitudeChange={(lat) => setForm({ ...form, lat })} onLongitudeChange={(lng) => setForm({ ...form, lng })} />
+              <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["PROJECT", "COMMUNITY_CENTROID", "APPROXIMATE", "BUILDING", "EXACT"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
               <label className="block space-y-1.5 text-sm font-medium">Project type<Select value={form.projectType} onValueChange={(projectType) => setForm({ ...form, projectType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["RESIDENTIAL", "MIXED_USE", "HOSPITALITY", "COMMERCIAL"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>
               <label className="block space-y-1.5 text-sm font-medium">Construction status<Select value={form.status} onValueChange={(status) => setForm({ ...form, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["OFF_PLAN", "UNDER_CONSTRUCTION", "READY", "COMPLETED", "CANCELLED", "ON_HOLD"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
               {!creating && <label className="block space-y-1.5 text-sm font-medium">Publication<Select value={form.publicationStatus} onValueChange={(publicationStatus) => setForm({ ...form, publicationStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["DRAFT", "PUBLISHED", "ARCHIVED"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>}
               <label className="block space-y-1.5 text-sm font-medium">Tagline<Input maxLength={300} value={form.tagline} onChange={(event) => setForm({ ...form, tagline: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Launch date<Input type="date" value={form.launchDate} onChange={(event) => setForm({ ...form, launchDate: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Handover date<Input type="date" value={form.handoverDate} onChange={(event) => setForm({ ...form, handoverDate: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Completion (%)<Input type="number" min="0" max="100" step="0.1" value={form.completionPercent} onChange={(event) => setForm({ ...form, completionPercent: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Construction status<Input maxLength={200} value={form.constructionStatus} onChange={(event) => setForm({ ...form, constructionStatus: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Total units<Input type="number" min="0" max="100000" step="1" value={form.totalUnits} onChange={(event) => setForm({ ...form, totalUnits: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Starting price<Input type="number" min="0" step="0.01" value={form.startingPrice} onChange={(event) => setForm({ ...form, startingPrice: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Currency<Input maxLength={3} pattern="[A-Za-z]{3}" value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Construction source URL<Input type="url" maxLength={2048} value={form.constructionSourceUrl} onChange={(event) => setForm({ ...form, constructionSourceUrl: event.target.value })} placeholder="https://" /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Source checked at<Input type="datetime-local" value={form.constructionSourceVerifiedAt} onChange={(event) => setForm({ ...form, constructionSourceVerifiedAt: event.target.value })} /></label>
             </div>
             <label className="block space-y-1.5 text-sm font-medium">Summary<Textarea maxLength={2000} value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} /></label>
             <label className="block space-y-1.5 text-sm font-medium">Description<Textarea maxLength={10000} rows={8} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+            <label className="block space-y-1.5 text-sm font-medium">Project highlights<Textarea maxLength={9000} rows={4} value={form.highlightsText} onChange={(event) => setForm({ ...form, highlightsText: event.target.value })} placeholder="One known highlight per line" /></label>
+            <label className="block space-y-1.5 text-sm font-medium">Key amenities<Textarea maxLength={3600} rows={3} value={form.keyAmenitiesText} onChange={(event) => setForm({ ...form, keyAmenitiesText: event.target.value })} placeholder="One amenity per line" /></label>
+            <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Amenity catalogue</legend>{relations.amenities.length ? <div className="grid gap-2 sm:grid-cols-2">{relations.amenities.map((amenity) => <label key={String(amenity.id)} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.amenityIds.includes(String(amenity.id))} onChange={(event) => setForm({ ...form, amenityIds: event.target.checked ? [...form.amenityIds, String(amenity.id)] : form.amenityIds.filter((id) => id !== String(amenity.id)) })} />{String(amenity.name)}</label>)}</div> : <p className="text-xs text-muted-foreground">No amenities are available in the catalogue yet.</p>}</fieldset>
             <PublicMediaPicker label="Public project brochure or image" value={form.brochureMediaId} allowedKinds={["IMAGE", "DOCUMENT"]} onChange={(brochureMediaId) => setForm({ ...form, brochureMediaId })} />
             {!creating && editing && <MediaGalleryEditor entity="project" entityId={String(editing.id)} initialGallery={Array.isArray(editing.gallery) ? editing.gallery as { mediaId: string; isCover?: boolean; url?: string; altText?: string | null }[] : []} onChanged={load} />}
+            {!creating && editing && <MediaGalleryEditor entity="project" entityId={String(editing.id)} section="PROGRESS" initialGallery={Array.isArray(editing.progressGallery) ? editing.progressGallery as { mediaId: string; isCover?: boolean; url?: string; altText?: string | null }[] : []} onChanged={load} />}
+            {!creating && editing && <ProjectAssetEditor projectId={String(editing.id)} documents={Array.isArray(editing.documents) ? editing.documents as { id: string; mediaId: string; docType: string; label: string | null; gated: boolean; mimeType: string }[] : []} onChanged={load} />}
+            {!creating && editing && <ProjectPaymentPlanEditor projectId={String(editing.id)} initialCount={Number(editing.paymentPlanCount ?? 0)} onChanged={load} />}
             {creating && relations.developers.length === 0 && relations.communities.length === 0 && <p className="text-sm text-muted-foreground">Create a developer and community before creating a project.</p>}
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft project" : "Save changes"}</Button></DialogFooter>
           </form>
@@ -922,12 +971,12 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
 }
 
 function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
-  const [data, setData] = React.useState<{ communities: Record<string, unknown>[]; total: number } | null>(null);
+  const [data, setData] = React.useState<{ communities: Record<string, unknown>[]; total: number; locations?: { id: string; name: string; slug: string; level: string }[] } | null>(null);
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", slug: "", summary: "", description: "", areaType: "RESIDENTIAL", lat: "", lng: "", locationPrecision: "COMMUNITY_CENTROID", publicationStatus: "DRAFT", imageMediaId: "" });
+  const [form, setForm] = React.useState({ name: "", slug: "", summary: "", description: "", areaType: "RESIDENTIAL", lat: "", lng: "", locationPrecision: "COMMUNITY_CENTROID", publicationStatus: "DRAFT", imageMediaId: "", parentLocationId: "", avgPricePerSqft: "", currency: "AED", boundaryText: "", radiusMeters: "2500", lifestyleTagsText: "", transportText: "[]", schoolsText: "[]", healthcareText: "[]", retailText: "[]", sourceType: "INTERNAL", sourceUpdatedAt: "", locationSourceType: "MANUAL_ADMIN", locationSourceId: "" });
 
   const load = React.useCallback(() => {
     api.get<{ communities: Record<string, unknown>[]; total: number }>(`/api/admin/communities${q ? `?q=${encodeURIComponent(q)}` : ""}`)
@@ -939,7 +988,7 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
   const openCreate = () => {
     setEditing(null);
     setCreating(true);
-    setForm({ name: "", slug: "", summary: "", description: "", areaType: "RESIDENTIAL", lat: "", lng: "", locationPrecision: "COMMUNITY_CENTROID", publicationStatus: "DRAFT", imageMediaId: "" });
+    setForm({ name: "", slug: "", summary: "", description: "", areaType: "RESIDENTIAL", lat: "", lng: "", locationPrecision: "COMMUNITY_CENTROID", publicationStatus: "DRAFT", imageMediaId: "", parentLocationId: "", avgPricePerSqft: "", currency: "AED", boundaryText: "", radiusMeters: "2500", lifestyleTagsText: "", transportText: "[]", schoolsText: "[]", healthcareText: "[]", retailText: "[]", sourceType: "INTERNAL", sourceUpdatedAt: "", locationSourceType: "MANUAL_ADMIN", locationSourceId: "" });
   };
 
   const openEditor = (community: Record<string, unknown>) => {
@@ -947,11 +996,19 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
     setEditing(community);
     setForm({
       name: String(community.name ?? ""), slug: String(community.slug ?? ""),
+      parentLocationId: String(community.parentLocationId ?? ""),
+      avgPricePerSqft: community.avgPricePerSqftMinor == null ? "" : String(Number(community.avgPricePerSqftMinor) / 100), currency: String(community.currency ?? "AED"),
       summary: String(community.summary ?? ""), description: String(community.description ?? ""),
       areaType: String(community.areaType ?? "RESIDENTIAL"), lat: String(community.lat ?? ""), lng: String(community.lng ?? ""),
-      locationPrecision: "COMMUNITY_CENTROID",
+      locationPrecision: String(community.locationPrecision ?? "COMMUNITY_CENTROID"),
       publicationStatus: String(community.publicationStatus ?? "DRAFT"),
       imageMediaId: String(community.imageMediaId ?? ""),
+      boundaryText: String(community.boundaryJson ?? ""), radiusMeters: String(community.radiusMeters ?? 2500),
+      lifestyleTagsText: Array.isArray(community.lifestyleTags) ? (community.lifestyleTags as string[]).join("\n") : "",
+      transportText: JSON.stringify(community.transport ?? [], null, 2), schoolsText: JSON.stringify(community.schools ?? [], null, 2),
+      healthcareText: JSON.stringify(community.healthcare ?? [], null, 2), retailText: JSON.stringify(community.retail ?? [], null, 2),
+      sourceType: String(community.sourceType ?? "INTERNAL"), sourceUpdatedAt: community.sourceUpdatedAt ? datetimeLocalValue(String(community.sourceUpdatedAt)) : "",
+      locationSourceType: String(community.locationSourceType ?? "MANUAL_ADMIN"), locationSourceId: String(community.locationSourceId ?? ""),
     });
   };
 
@@ -960,10 +1017,25 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
     if (!editing && !creating) return;
     setSaving(true);
     try {
+      const parseRows = (raw: string, label: string) => {
+        let parsed: unknown;
+        try { parsed = JSON.parse(raw || "[]"); } catch { throw new Error(`${label} must be valid JSON array data.`); }
+        if (!Array.isArray(parsed)) throw new Error(`${label} must be a JSON array.`);
+        return parsed;
+      };
       const fields = {
         ...form,
         summary: form.summary || null, description: form.description || null,
         lat: Number(form.lat), lng: Number(form.lng), imageMediaId: form.imageMediaId || null,
+        parentLocationId: form.parentLocationId || null,
+        avgPricePerSqftMinor: form.avgPricePerSqft ? toMinor(form.avgPricePerSqft).toString() : null,
+        currency: form.currency.toUpperCase(),
+        boundaryJson: form.boundaryText || null, radiusMeters: Number(form.radiusMeters),
+        lifestyleTags: form.lifestyleTagsText.split("\n").map((item) => item.trim()).filter(Boolean),
+        transport: parseRows(form.transportText, "Transport"), schools: parseRows(form.schoolsText, "Schools"),
+        healthcare: parseRows(form.healthcareText, "Healthcare"), retail: parseRows(form.retailText, "Retail"),
+        sourceUpdatedAt: form.sourceUpdatedAt ? new Date(form.sourceUpdatedAt).toISOString() : null,
+        locationSourceId: form.locationSourceId || null,
       };
       if (creating) {
         const createFields = Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "publicationStatus"));
@@ -995,10 +1067,10 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
       {data === null ? <LoadingState rows={4} /> : data.communities.length === 0 ? <EmptyState title="No communities found" description="Try another community name or slug." /> : (
         <div className="overflow-x-safe rounded-xl border border-border/70">
           <table className="w-full min-w-[800px] text-sm">
-            <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Community</th><th className="p-3">Area type</th><th className="p-3">Public projects</th><th className="p-3">Publication</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
+            <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Community</th><th className="p-3">Area type</th><th className="p-3">Avg price / sqft</th><th className="p-3">Public projects / properties</th><th className="p-3">Publication</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
             <tbody>{data.communities.map((community) => <tr key={String(community.id)} className="border-b border-border/50">
               <td className="p-3"><p className="font-medium">{String(community.name)}</p><p className="text-xs text-muted-foreground">/{String(community.slug)}</p></td>
-              <td className="p-3">{String(community.areaType)}</td><td className="p-3">{String(community.publishedProjectCount)}</td>
+              <td className="p-3">{String(community.areaType)}</td><td className="p-3">{community.avgPricePerSqftMinor ? formatMoney(String(community.avgPricePerSqftMinor), { currency: String(community.currency ?? "AED") }) : "—"}</td><td className="p-3">{String(community.publishedProjectCount)} / {String(community.publishedPropertyCount)}</td>
               <td className="p-3"><Badge variant="outline">{String(community.publicationStatus)}</Badge></td>
               {canEdit && <td className="p-3">{Boolean(community.canManage) && <Button size="sm" variant="outline" onClick={() => openEditor(community)}>Edit</Button>}</td>}
             </tr>)}</tbody>
@@ -1014,12 +1086,32 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">Area type<Select value={form.areaType} onValueChange={(areaType) => setForm({ ...form, areaType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["RESIDENTIAL", "BUSINESS", "WATERFRONT", "ISLAND", "SUBURBAN", "INDUSTRIAL"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>
-              {creating ? <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["COMMUNITY_CENTROID", "APPROXIMATE", "EXACT"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label> : <label className="block space-y-1.5 text-sm font-medium">Publication<Select value={form.publicationStatus} onValueChange={(publicationStatus) => setForm({ ...form, publicationStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["DRAFT", "PUBLISHED", "ARCHIVED", "UNPUBLISHED"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>}
+              <label className="block space-y-1.5 text-sm font-medium">Parent location<Select value={form.parentLocationId || "none"} onValueChange={(parentLocationId) => setForm({ ...form, parentLocationId: parentLocationId === "none" ? "" : parentLocationId })}><SelectTrigger><SelectValue placeholder="No parent location" /></SelectTrigger><SelectContent><SelectItem value="none">No parent</SelectItem>{data?.locations?.map((location) => <SelectItem key={location.id} value={location.id}>{location.name} · {location.level}</SelectItem>)}</SelectContent></Select></label>
+              <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["COMMUNITY_CENTROID", "APPROXIMATE", "EXACT", "UNAVAILABLE"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
+              {!creating && <label className="block space-y-1.5 text-sm font-medium">Publication<Select value={form.publicationStatus} onValueChange={(publicationStatus) => setForm({ ...form, publicationStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["DRAFT", "PUBLISHED", "ARCHIVED", "UNPUBLISHED"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>}
+              <label className="block space-y-1.5 text-sm font-medium">Radius (metres)<Input type="number" min="0" max="100000" step="1" value={form.radiusMeters} onChange={(event) => setForm({ ...form, radiusMeters: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Average price per sqft<Input type="number" min="0" step="0.01" value={form.avgPricePerSqft} onChange={(event) => setForm({ ...form, avgPricePerSqft: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Currency<Input maxLength={3} pattern="[A-Za-z]{3}" value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })} /></label>
               <MapLocationPicker lat={form.lat} lng={form.lng} onLatitudeChange={(lat) => setForm({ ...form, lat })} onLongitudeChange={(lng) => setForm({ ...form, lng })} />
             </div>
             <PublicMediaPicker label="Public community cover image" value={form.imageMediaId} onChange={(imageMediaId) => setForm({ ...form, imageMediaId })} />
             <label className="block space-y-1.5 text-sm font-medium">Summary<Textarea maxLength={2000} value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} /></label>
             <label className="block space-y-1.5 text-sm font-medium">Description<Textarea maxLength={10000} rows={8} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+            <label className="block space-y-1.5 text-sm font-medium">Boundary GeoJSON<Textarea maxLength={200000} rows={5} value={form.boundaryText} onChange={(event) => setForm({ ...form, boundaryText: event.target.value })} placeholder='{"type":"Polygon","coordinates":[...]}' /></label>
+            <label className="block space-y-1.5 text-sm font-medium">Lifestyle tags<Textarea maxLength={4000} rows={3} value={form.lifestyleTagsText} onChange={(event) => setForm({ ...form, lifestyleTagsText: event.target.value })} placeholder="One known tag per line" /></label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1.5 text-sm font-medium">Transport JSON array<Textarea maxLength={20000} rows={4} value={form.transportText} onChange={(event) => setForm({ ...form, transportText: event.target.value })} placeholder='[{"name":"...","type":"...","distance":"..."}]' /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Schools JSON array<Textarea maxLength={20000} rows={4} value={form.schoolsText} onChange={(event) => setForm({ ...form, schoolsText: event.target.value })} placeholder='[{"name":"..."}]' /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Healthcare JSON array<Textarea maxLength={20000} rows={4} value={form.healthcareText} onChange={(event) => setForm({ ...form, healthcareText: event.target.value })} placeholder='[{"name":"..."}]' /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Retail JSON array<Textarea maxLength={20000} rows={4} value={form.retailText} onChange={(event) => setForm({ ...form, retailText: event.target.value })} placeholder='[{"name":"..."}]' /></label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1.5 text-sm font-medium">Source type<Input maxLength={60} value={form.sourceType} onChange={(event) => setForm({ ...form, sourceType: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Source last updated<Input type="datetime-local" value={form.sourceUpdatedAt} onChange={(event) => setForm({ ...form, sourceUpdatedAt: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Location source type<Input maxLength={80} value={form.locationSourceType} onChange={(event) => setForm({ ...form, locationSourceType: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Location source ID or URL<Input maxLength={2048} value={form.locationSourceId} onChange={(event) => setForm({ ...form, locationSourceId: event.target.value })} /></label>
+            </div>
+            <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">To publish: add a summary, description and public cover; set valid coordinates and a usable location precision. Do not publish unverified amenity claims. Source: {form.sourceType}{editing?.sourceUpdatedAt ? ` · updated ${formatDate(String(editing.sourceUpdatedAt))}` : " · freshness date not supplied"}</p>
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft community" : "Save changes"}</Button></DialogFooter>
           </form>
         </DialogContent>
@@ -1034,7 +1126,7 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", slug: "", summary: "", description: "", websiteUrl: "", headquarters: "", foundedYear: "", logoMediaId: "" });
+  const [form, setForm] = React.useState({ name: "", slug: "", summary: "", description: "", websiteUrl: "", headquarters: "", foundedYear: "", logoMediaId: "", verificationStatus: "UNVERIFIED", verificationEvidenceUrl: "", sourceType: "INTERNAL", sourceUpdatedAt: "" });
 
   const load = React.useCallback(() => {
     api.get<{ developers: Record<string, unknown>[]; total: number }>(`/api/admin/developers${q ? `?q=${encodeURIComponent(q)}` : ""}`)
@@ -1046,7 +1138,7 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
   const openCreate = () => {
     setEditing(null);
     setCreating(true);
-    setForm({ name: "", slug: "", summary: "", description: "", websiteUrl: "", headquarters: "", foundedYear: "", logoMediaId: "" });
+    setForm({ name: "", slug: "", summary: "", description: "", websiteUrl: "", headquarters: "", foundedYear: "", logoMediaId: "", verificationStatus: "UNVERIFIED", verificationEvidenceUrl: "", sourceType: "INTERNAL", sourceUpdatedAt: "" });
   };
 
   const openEditor = (developer: Record<string, unknown>) => {
@@ -1058,6 +1150,10 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
       websiteUrl: String(developer.websiteUrl ?? ""), headquarters: String(developer.headquarters ?? ""),
       foundedYear: developer.foundedYear == null ? "" : String(developer.foundedYear),
       logoMediaId: String(developer.logoMediaId ?? ""),
+      verificationStatus: String(developer.verificationStatus ?? "UNVERIFIED"),
+      verificationEvidenceUrl: String(developer.verificationEvidenceUrl ?? ""),
+      sourceType: String(developer.sourceType ?? "INTERNAL"),
+      sourceUpdatedAt: developer.sourceUpdatedAt ? datetimeLocalValue(String(developer.sourceUpdatedAt)) : "",
     });
   };
 
@@ -1072,8 +1168,13 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
         websiteUrl: form.websiteUrl || null, headquarters: form.headquarters || null,
         foundedYear: form.foundedYear ? Number(form.foundedYear) : null,
         logoMediaId: form.logoMediaId || null,
+        sourceUpdatedAt: form.sourceUpdatedAt ? new Date(form.sourceUpdatedAt).toISOString() : null,
+        verificationEvidenceUrl: form.verificationEvidenceUrl || null,
       };
-      if (creating) await api.post("/api/admin/developers", fields);
+      if (creating) {
+        const createFields = Object.fromEntries(Object.entries(fields).filter(([key]) => !["verificationStatus", "verificationEvidenceUrl"].includes(key)));
+        await api.post("/api/admin/developers", createFields);
+      }
       else if (editing) await api.patch("/api/admin/developers", { developerId: editing.id, expectedUpdatedAt: editing.updatedAt, ...fields });
       toast.success(creating ? "Developer created as unverified" : "Developer profile updated");
       setEditing(null);
@@ -1090,19 +1191,20 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="font-display text-2xl font-semibold">Developers</h1><p className="mt-1 text-sm text-muted-foreground">Edit directory facts. Verification status is displayed as recorded and cannot be asserted by this editorial form.</p></div>
+        <div><h1 className="font-display text-2xl font-semibold">Developers</h1><p className="mt-1 text-sm text-muted-foreground">Manage directory facts and record source-backed verification. Verified statuses require evidence and an audit timestamp.</p></div>
         <div className="flex flex-wrap gap-2"><div className="w-64"><Input placeholder="Search developers…" value={q} onChange={(event) => setQ(event.target.value)} aria-label="Search developers" /></div>{canEdit && <Button onClick={openCreate}>Create developer</Button>}</div>
       </header>
       {data === null ? <LoadingState rows={4} /> : data.developers.length === 0 ? <EmptyState title="No developers found" description="Try another name or slug." /> : (
         <div className="overflow-x-safe rounded-xl border border-border/70">
           <table className="w-full min-w-[820px] text-sm">
-            <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Developer</th><th className="p-3">Headquarters</th><th className="p-3">Founded</th><th className="p-3">Published projects</th><th className="p-3">Recorded verification</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
+            <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Developer</th><th className="p-3">Headquarters</th><th className="p-3">Founded</th><th className="p-3">Published projects</th><th className="p-3">Published properties</th><th className="p-3">Recorded verification</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
             <tbody>{data.developers.map((developer) => <tr key={String(developer.id)} className="border-b border-border/50">
               <td className="p-3"><p className="font-medium">{String(developer.name)}</p><p className="text-xs text-muted-foreground">/{String(developer.slug)}</p></td>
               <td className="p-3 text-muted-foreground">{String(developer.headquarters || "—")}</td>
               <td className="p-3">{String(developer.foundedYear ?? "—")}</td>
               <td className="p-3">{String(developer.publishedProjectCount)}</td>
-              <td className="p-3"><div><StatusBadge status={String(developer.verificationStatus)} />{Boolean(developer.lastVerifiedAt) && <p className="mt-1 text-xs text-muted-foreground">{formatDate(String(developer.lastVerifiedAt))}</p>}</div></td>
+              <td className="p-3">{String(developer.publishedPropertyCount)}</td>
+              <td className="p-3"><div><StatusBadge status={String(developer.verificationStatus)} />{Boolean(developer.lastVerifiedAt) && <p className="mt-1 text-xs text-muted-foreground">{formatDate(String(developer.lastVerifiedAt))}</p>}{Boolean(developer.verificationEvidenceUrl) && <a className="mt-1 block text-xs underline" href={String(developer.verificationEvidenceUrl)} target="_blank" rel="noopener noreferrer">Evidence</a>}</div></td>
               {canEdit && <td className="p-3">{Boolean(developer.canManage) && <Button size="sm" variant="outline" onClick={() => openEditor(developer)}>Edit</Button>}</td>}
             </tr>)}</tbody>
           </table>
@@ -1111,7 +1213,7 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
       <p className="text-xs text-muted-foreground">Showing {String(data?.developers.length ?? 0)} of {String(data?.total ?? 0)} developers (maximum 50).</p>
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader><DialogTitle>{creating ? "Create developer" : "Edit developer"}</DialogTitle><DialogDescription>{creating ? "New records start UNVERIFIED and stay out of public developer results until linked to a published project. Enter only known facts; verification requires separate provenance." : "Updates are version checked and audited. Verification status and its evidence must be handled through a separate approved verification process."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{creating ? "Create developer" : "Edit developer"}</DialogTitle><DialogDescription>{creating ? "New records start UNVERIFIED and stay out of public developer results until linked to a published project. Enter only known facts." : "Updates are version checked and audited. A verification claim must have an HTTP or HTTPS source."}</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={saveEditor}>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
@@ -1123,6 +1225,12 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
             <PublicMediaPicker label="Public developer logo" value={form.logoMediaId} onChange={(logoMediaId) => setForm({ ...form, logoMediaId })} />
             <label className="block space-y-1.5 text-sm font-medium">Summary<Textarea maxLength={2000} value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} /></label>
             <label className="block space-y-1.5 text-sm font-medium">Description<Textarea maxLength={10000} rows={8} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1.5 text-sm font-medium">Source type<Input maxLength={60} value={form.sourceType} onChange={(event) => setForm({ ...form, sourceType: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Source last updated<Input type="datetime-local" value={form.sourceUpdatedAt} onChange={(event) => setForm({ ...form, sourceUpdatedAt: event.target.value })} /></label>
+              {!creating && <label className="block space-y-1.5 text-sm font-medium">Verification status<Select value={form.verificationStatus} onValueChange={(verificationStatus) => setForm({ ...form, verificationStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["UNVERIFIED", "PUBLIC_RECORDS", "VERIFIED"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>}
+              {!creating && <label className="block space-y-1.5 text-sm font-medium">Verification evidence URL<Input type="url" maxLength={2048} value={form.verificationEvidenceUrl} onChange={(event) => setForm({ ...form, verificationEvidenceUrl: event.target.value })} placeholder="https://official-source.example" /></label>}
+            </div>
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create unverified developer" : "Save changes"}</Button></DialogFooter>
           </form>
         </DialogContent>
@@ -1132,26 +1240,26 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
 }
 
 function AgentsSection({ canEdit }: { canEdit: boolean }) {
-  const [data, setData] = React.useState<{ agents: Record<string, unknown>[]; total: number } | null>(null);
+  const [data, setData] = React.useState<{ agents: Record<string, unknown>[]; total: number; communities?: { id: string; name: string; slug: string }[] } | null>(null);
   const [linkableUsers, setLinkableUsers] = React.useState<{ id: string; name: string | null; email: string }[]>([]);
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [selectedUserId, setSelectedUserId] = React.useState("");
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, photoMediaId: "" });
+  const [form, setForm] = React.useState({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, photoMediaId: "", email: "", phoneE164: "", whatsappE164: "", languagesText: "", specialties: [] as string[], communityIds: [] as string[] });
 
   const load = React.useCallback(() => {
-    api.get<{ agents: Record<string, unknown>[]; total: number; linkableUsers?: { id: string; name: string | null; email: string }[] }>(`/api/admin/agents${q ? `?q=${encodeURIComponent(q)}` : ""}`)
+    api.get<{ agents: Record<string, unknown>[]; total: number; communities?: { id: string; name: string; slug: string }[]; linkableUsers?: { id: string; name: string | null; email: string }[] }>(`/api/admin/agents${q ? `?q=${encodeURIComponent(q)}` : ""}`)
       .then((result) => { setData(result); setLinkableUsers(result.linkableUsers ?? []); })
-      .catch(() => { setData({ agents: [], total: 0 }); setLinkableUsers([]); });
+      .catch(() => { setData({ agents: [], total: 0, communities: [] }); setLinkableUsers([]); });
   }, [q]);
   React.useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
     setEditing(null);
     setSelectedUserId(linkableUsers[0]?.id ?? "");
-    setForm({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, photoMediaId: "" });
+    setForm({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, photoMediaId: "", email: "", phoneE164: "", whatsappE164: "", languagesText: "", specialties: [], communityIds: [] });
     setCreating(true);
   };
 
@@ -1162,6 +1270,10 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
       bio: String(agent.bio ?? ""), department: String(agent.department ?? "other"),
       yearsExperience: String(agent.yearsExperience ?? 0), active: Boolean(agent.active), publicAdvisor: Boolean(agent.publicAdvisor),
       photoMediaId: String(agent.photoMediaId ?? ""),
+      email: String(agent.email ?? ""), phoneE164: String(agent.phoneE164 ?? ""), whatsappE164: String(agent.whatsappE164 ?? ""),
+      languagesText: Array.isArray(agent.languages) ? (agent.languages as { code: string; name: string; fluency: string }[]).map((language) => `${language.code}|${language.name}|${language.fluency}`).join("\n") : "",
+      specialties: Array.isArray(agent.specialties) ? (agent.specialties as string[]) : [],
+      communityIds: Array.isArray(agent.communities) ? (agent.communities as { id: string }[]).map((community) => String(community.id)) : [],
     });
   };
 
@@ -1173,15 +1285,24 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
       const values = {
         ...form,
         yearsExperience: Number(form.yearsExperience), department: form.department || null, photoMediaId: form.photoMediaId || null,
+        email: form.email || null, phoneE164: form.phoneE164 || null, whatsappE164: form.whatsappE164 || null,
+        languages: form.languagesText.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+          const [code, name, fluency = "FLUENT"] = line.split("|").map((item) => item.trim());
+          if (!code || !name) throw new Error("Enter languages as code|name|fluency, one per line.");
+          return { code, name, fluency };
+        }),
       };
       if (creating) {
         await api.post("/api/admin/agents", {
           userId: selectedUserId, name: values.name, slug: values.slug, jobTitle: values.jobTitle,
           bio: values.bio, department: values.department, yearsExperience: values.yearsExperience, photoMediaId: values.photoMediaId,
+          email: values.email, phoneE164: values.phoneE164, whatsappE164: values.whatsappE164,
+          languages: values.languages, specialties: values.specialties, communityIds: values.communityIds,
         });
         toast.success("Inactive team profile created; review it before making it public");
       } else if (editing) {
-        await api.patch("/api/admin/agents", { agentId: editing.id, expectedUpdatedAt: editing.updatedAt, ...values });
+        const { languagesText: _languagesText, ...patchValues } = values;
+        await api.patch("/api/admin/agents", { agentId: editing.id, expectedUpdatedAt: editing.updatedAt, ...patchValues });
         toast.success("Team profile updated; public directory and sitemap will refresh");
       }
       setEditing(null);
@@ -1198,15 +1319,15 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="font-display text-2xl font-semibold">Team profiles</h1><p className="mt-1 text-sm text-muted-foreground">Manage advisory profiles within your permitted scope. Public profiles require an active record and a bio.</p></div>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto"><div className="w-full sm:w-64"><Input placeholder="Search team profiles…" value={q} onChange={(event) => setQ(event.target.value)} aria-label="Search team profiles" /></div>{canEdit && <Button onClick={openCreate}>New team profile</Button>}</div>
+        <div><h1 className="font-display text-2xl font-semibold">Team profiles</h1><p className="mt-1 text-sm text-muted-foreground">Invite a person as AGENT, wait for account activation and email verification, then create their private profile. Public advisors require a verified linked account, bio, and active status.</p></div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto"><div className="w-full sm:w-64"><Input placeholder="Search team profiles…" value={q} onChange={(event) => setQ(event.target.value)} aria-label="Search team profiles" /></div>{canEdit && <><Link className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm" to="/admin/users" query={{ inviteRole: "AGENT" }}>Invite AGENT</Link><Button onClick={openCreate}>New team profile</Button></>}</div>
       </header>
       {data === null ? <LoadingState rows={4} /> : data.agents.length === 0 ? <EmptyState title="No team profiles found" description="No profiles are visible in this account’s permitted scope." /> : (
         <div className="overflow-x-safe rounded-xl border border-border/70">
           <table className="w-full min-w-[800px] text-sm">
             <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Team member</th><th className="p-3">Department</th><th className="p-3">Experience</th><th className="p-3">Account status</th><th className="p-3">Public advisor</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
             <tbody>{data.agents.map((agent) => <tr key={String(agent.id)} className="border-b border-border/50">
-              <td className="p-3"><p className="font-medium">{String(agent.name)}</p><p className="text-xs text-muted-foreground">{String(agent.jobTitle)} · /{String(agent.slug)}</p></td>
+              <td className="p-3"><p className="font-medium">{String(agent.name)}</p><p className="text-xs text-muted-foreground">{String(agent.jobTitle)} · /{String(agent.slug)}</p><p className="text-xs text-muted-foreground">{String(agent.linkedAccountEmail ?? "No linked account")}{agent.linkedAccountVerified ? " · verified" : " · not verified"}</p></td>
               <td className="p-3">{String(agent.department ?? "—")}</td><td className="p-3">{String(agent.yearsExperience)} years</td>
               <td className="p-3"><Badge variant={agent.active ? "default" : "outline"}>{agent.active ? "Active" : "Inactive"}</Badge></td>
               <td className="p-3">{agent.publicAdvisor ? "Public" : "Internal"}</td>
@@ -1218,18 +1339,25 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
       <p className="text-xs text-muted-foreground">Showing {String(data?.agents.length ?? 0)} of {String(data?.total ?? 0)} visible profiles (maximum 50).</p>
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader><DialogTitle>{creating ? "Create team profile" : "Edit team profile"}</DialogTitle><DialogDescription>{creating ? "Link an existing active AGENT account. New profiles start inactive and private; no account, role, or real profile facts are invented." : "Changes are audited and scoped by linked account organization. No staff login or role is changed here."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{creating ? "Create advisor profile" : "Edit advisor profile"}</DialogTitle><DialogDescription>{creating ? "Link an active, email-verified AGENT account. New profiles start inactive and private; no account, role, or real profile facts are invented." : "Changes are audited and scoped by linked account organization. Related projects below are derived from assigned listings."}</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={saveEditor}>
-            {creating && <label className="block space-y-1.5 text-sm font-medium">Active AGENT account<Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={linkableUsers.length === 0}><SelectTrigger><SelectValue placeholder="Choose an account" /></SelectTrigger><SelectContent>{linkableUsers.map((user) => <SelectItem key={user.id} value={user.id}>{user.name ? `${user.name} — ${user.email}` : user.email}</SelectItem>)}</SelectContent></Select>{linkableUsers.length === 0 && <span className="text-xs text-muted-foreground">No eligible account is available. Invite and activate an AGENT account first.</span>}</label>}
+            {creating && <label className="block space-y-1.5 text-sm font-medium">Active, verified AGENT account<Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={linkableUsers.length === 0}><SelectTrigger><SelectValue placeholder="Choose an account" /></SelectTrigger><SelectContent>{linkableUsers.map((user) => <SelectItem key={user.id} value={user.id}>{user.name ? `${user.name} — ${user.email}` : user.email}</SelectItem>)}</SelectContent></Select>{linkableUsers.length === 0 && <span className="text-xs text-muted-foreground">No eligible account is available. <Link className="underline" to="/admin/users">Open Users &amp; Access to invite an AGENT account</Link>. The invitee must accept and verify their email first.</span>}</label>}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">Job title<Input required maxLength={120} value={form.jobTitle} onChange={(event) => setForm({ ...form, jobTitle: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">Department<Select value={form.department} onValueChange={(department) => setForm({ ...form, department })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["leadership", "sales", "marketing", "hr", "admin", "other"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label>
               <label className="block space-y-1.5 text-sm font-medium">Years’ experience<Input type="number" min="0" max="80" step="1" value={form.yearsExperience} onChange={(event) => setForm({ ...form, yearsExperience: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Public contact email<Input type="email" maxLength={200} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">Phone (E.164)<Input type="tel" placeholder="+971501234567" maxLength={16} value={form.phoneE164} onChange={(event) => setForm({ ...form, phoneE164: event.target.value })} /></label>
+              <label className="block space-y-1.5 text-sm font-medium">WhatsApp (E.164)<Input type="tel" placeholder="+971501234567" maxLength={16} value={form.whatsappE164} onChange={(event) => setForm({ ...form, whatsappE164: event.target.value })} /></label>
             </div>
             <PublicMediaPicker label="Public team profile photo" value={form.photoMediaId} onChange={(photoMediaId) => setForm({ ...form, photoMediaId })} />
             <label className="block space-y-1.5 text-sm font-medium">Profile bio<Textarea maxLength={5000} rows={7} value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></label>
+            <label className="block space-y-1.5 text-sm font-medium">Languages<Textarea maxLength={5000} rows={3} value={form.languagesText} onChange={(event) => setForm({ ...form, languagesText: event.target.value })} placeholder="en|English|NATIVE\nar|Arabic|FLUENT" /><span className="text-xs font-normal text-muted-foreground">Format: ISO code|language name|BASIC, CONVERSATIONAL, FLUENT, or NATIVE. One language per line.</span></label>
+            <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Specialties</legend><div className="grid gap-2 sm:grid-cols-2">{["OFF_PLAN", "LUXURY", "INVESTMENT", "SECONDARY", "COMMERCIAL", "RELOCATION", "RESIDENTIAL", "RENTALS", "PROPERTY_MANAGEMENT"].map((specialty) => <label key={specialty} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.specialties.includes(specialty)} onChange={(event) => setForm({ ...form, specialties: event.target.checked ? [...form.specialties, specialty] : form.specialties.filter((item) => item !== specialty) })} />{specialty.replaceAll("_", " ")}</label>)}</div></fieldset>
+            <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Communities served</legend><div className="grid gap-2 sm:grid-cols-2">{(data?.communities ?? []).map((community) => <label key={community.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.communityIds.includes(community.id)} onChange={(event) => setForm({ ...form, communityIds: event.target.checked ? [...form.communityIds, community.id] : form.communityIds.filter((id) => id !== community.id) })} />{community.name}</label>)}{(data?.communities ?? []).length === 0 && <p className="text-xs text-muted-foreground">No manageable communities are available.</p>}</div></fieldset>
+            {!creating && Array.isArray(editing?.assignedProjects) && <section className="space-y-1 rounded-lg border border-border/70 p-3"><h3 className="text-sm font-semibold">Projects linked through assigned listings</h3>{(editing.assignedProjects as { id: string; name: string; slug: string }[]).length ? (editing.assignedProjects as { id: string; name: string; slug: string }[]).map((project) => <p key={project.id} className="text-xs">{project.name} · /projects/{project.slug}</p>) : <p className="text-xs text-muted-foreground">No assigned listing currently links this advisor to a project.</p>}</section>}
             {!creating && <div className="space-y-3 rounded-lg border border-border/70 p-3">
               <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Active team profile</span><span className="text-xs text-muted-foreground">Inactive profiles are excluded from public advisor listings.</span></span><Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active, publicAdvisor: active ? form.publicAdvisor : false })} /></label>
               <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Public advisor directory</span><span className="text-xs text-muted-foreground">A bio and active status are required.</span></span><Switch checked={form.publicAdvisor} disabled={!form.active} onCheckedChange={(publicAdvisor) => setForm({ ...form, publicAdvisor })} /></label>
@@ -2515,23 +2643,9 @@ interface UnitsResponse {
   pageSize: number;
   availabilityOptions: string[];
   typeOptions: string[];
-  projects: { id: string; name: string; slug: string; unitCount: number }[];
-  units: {
-    id: string;
-    unitNumber: string | null;
-    unitType: string;
-    bedrooms: number;
-    bathrooms: number;
-    areaSqft: number | null;
-    priceMinor: string | null;
-    currency: string;
-    availabilityStatus: string;
-    floor: number | null;
-    aspect: string | null;
-    project: { name: string; slug: string } | null;
-    property: { title: string; slug: string } | null;
-    updatedAt: string;
-  }[];
+  projects: UnitProject[];
+  properties: UnitProperty[];
+  units: (UnitRow & { project: { name: string; slug: string } | null; property: { id: string; title: string; slug: string; projectId: string | null } | null })[];
   managedVia: string;
 }
 
@@ -2541,9 +2655,10 @@ const AVAILABILITY_STYLES: Record<string, string> = {
   SOLD: "bg-muted text-muted-foreground",
   RENTED: "bg-muted text-muted-foreground",
   HELD: "bg-secondary text-secondary-foreground",
+  WITHDRAWN: "bg-muted text-muted-foreground",
 };
 
-function UnitsSection() {
+function UnitsSection({ canEdit }: { canEdit: boolean }) {
   const [data, setData] = React.useState<UnitsResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [project, setProject] = React.useState("all");
@@ -2552,6 +2667,10 @@ function UnitsSection() {
   const [beds, setBeds] = React.useState("all");
   const [page, setPage] = React.useState(1);
   const [exporting, setExporting] = React.useState(false);
+  const [reloadKey, setReloadKey] = React.useState(0);
+  const [editorOpen, setEditorOpen] = React.useState(false);
+  const [importOpen, setImportOpen] = React.useState(false);
+  const [selectedUnit, setSelectedUnit] = React.useState<UnitRow | null>(null);
 
   React.useEffect(() => { setPage(1); }, [project, availability, type, beds]);
 
@@ -2564,7 +2683,11 @@ function UnitsSection() {
     api.get<UnitsResponse>(`/api/admin/units?${params.toString()}`)
       .then(setData)
       .catch((e) => setError(e instanceof Error ? e.message : "Units unavailable"));
-  }, [project, availability, type, beds, page]);
+  }, [project, availability, type, beds, page, reloadKey]);
+
+  const refresh = () => setReloadKey((key) => key + 1);
+  const openEdit = (unit: UnitsResponse["units"][number]) => { setSelectedUnit(unit); setEditorOpen(true); };
+  const openCreate = () => { setSelectedUnit(null); setEditorOpen(true); };
 
   const exportCsv = async () => {
     setExporting(true);
@@ -2612,15 +2735,9 @@ function UnitsSection() {
           <p className="mt-1 text-sm text-muted-foreground">
             {formatNumber(data.total)} units across {formatNumber(data.projects.length)} projects — tower/floor, size, price and availability per unit.
           </p>
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />
-            Read-only — units are managed via ingestion pipelines (imports / seed). Direct edits are disabled by design.
-          </p>
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />Manual edits are audited. Imported values retain their source snapshot, with Admin edits stored as overrides.</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-2" onClick={exportCsv} disabled={exporting}>
-          {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-          Export CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">{canEdit && <><Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import CSV</Button><Button size="sm" onClick={openCreate} disabled={!data.projects.length}>Add unit</Button></>}<Button variant="outline" size="sm" className="gap-2" onClick={exportCsv} disabled={exporting}>{exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}Export CSV</Button></div>
       </header>
 
       <div className="flex flex-wrap gap-2">
@@ -2673,13 +2790,15 @@ function UnitsSection() {
                 <th scope="col" className="p-3 font-medium">Aspect</th>
                 <th scope="col" className="p-3 font-medium">Price</th>
                 <th scope="col" className="p-3 font-medium">Availability</th>
+                <th scope="col" className="p-3 font-medium">Source</th>
+                {canEdit && <th scope="col" className="p-3 font-medium">Edit</th>}
               </tr>
             </thead>
             <tbody>
               {groups.map((g) => (
                 <React.Fragment key={`${g.name}-${g.rows[0].id}`}>
                   <tr className="border-b border-border/60 bg-sand/25">
-                    <th scope="colgroup" colSpan={8} className="p-2.5 text-left">
+                    <th scope="colgroup" colSpan={canEdit ? 10 : 9} className="p-2.5 text-left">
                       {g.slug ? (
                         <Link to={`/projects/${g.slug}`} className="text-xs font-semibold uppercase tracking-wide text-brand-strong hover:underline">
                           {g.name}
@@ -2706,6 +2825,8 @@ function UnitsSection() {
                           {u.availabilityStatus}
                         </span>
                       </td>
+                      <td className="p-3"><details className="max-w-56 text-xs"><summary className="cursor-pointer">{u.sourceType}{u.sourceKey ? ` · ${u.sourceKey}` : ""}</summary><div className="mt-1 space-y-1 text-muted-foreground"><p>Source snapshot keys: {Object.keys(u.sourceSnapshot).join(", ") || "none"}</p><p>Editorial overrides: {Object.keys(u.editorOverrides).join(", ") || "none"}</p><p>Updated {formatDate(u.updatedAt)}</p>{u.statusHistory.map((history, index) => <p key={`${history.createdAt}-${index}`}>{history.fromStatus ?? "Created"} → {history.toStatus}{history.reason ? ` · ${history.reason}` : ""}</p>)}</div></details></td>
+                      {canEdit && <td className="p-3"><Button size="sm" variant="outline" onClick={() => openEdit(u)}>Edit</Button></td>}
                     </tr>
                   ))}
                 </React.Fragment>
@@ -2724,6 +2845,7 @@ function UnitsSection() {
           <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
         </div>
       </div>
+      {canEdit && <><UnitEditorDialog open={editorOpen} onOpenChange={setEditorOpen} unit={selectedUnit} projects={data.projects} properties={data.properties} onChanged={refresh} /><UnitImportDialog open={importOpen} onOpenChange={setImportOpen} projects={data.projects} defaultProjectId={data.projects.find((item) => item.slug === project)?.id ?? data.projects[0]?.id ?? ""} onChanged={refresh} /></>}
     </div>
   );
 }

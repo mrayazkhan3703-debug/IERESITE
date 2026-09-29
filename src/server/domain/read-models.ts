@@ -88,7 +88,7 @@ export async function getPropertyDetail(
       : { slug, ...PUBLIC_PROPERTY_WHERE },
     include: {
       community: true,
-      project: { include: { developer: true, paymentPlans: { include: { installments: true }, orderBy: { isDefault: "desc" } } } },
+      project: { include: { developer: true, paymentPlans: { where: { verificationStatus: { in: ["PUBLISHED", "VERIFIED"] } }, include: { installments: true }, orderBy: { isDefault: "desc" } } } },
       developer: true,
       media: { orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }], include: { media: true } },
       floorPlans: { orderBy: { bedrooms: "asc" }, include: { media: true } },
@@ -332,7 +332,7 @@ export async function getProjectDetail(slug: string) {
       community: true,
       media: { orderBy: [{ sortOrder: "asc" }], include: { media: true } },
       amenities: { include: { amenity: true } },
-      paymentPlans: { include: { installments: true }, orderBy: { isDefault: "desc" } },
+      paymentPlans: { where: { verificationStatus: { in: ["PUBLISHED", "VERIFIED"] } }, include: { installments: true }, orderBy: { isDefault: "desc" } },
       statusHistory: { orderBy: { createdAt: "desc" }, take: 6 },
       documents: { include: { media: true } },
     },
@@ -987,7 +987,7 @@ export async function getProjectDetailV2(slug: string): Promise<ProjectDetailV2 
       community: true,
       media: { orderBy: [{ sortOrder: "asc" }], include: { media: true } },
       amenities: { include: { amenity: true } },
-      paymentPlans: { include: { installments: true }, orderBy: { isDefault: "desc" } },
+      paymentPlans: { where: { verificationStatus: { in: ["PUBLISHED", "VERIFIED"] } }, include: { installments: true }, orderBy: { isDefault: "desc" } },
       statusHistory: { orderBy: { createdAt: "desc" }, take: 6 },
       documents: { include: { media: true } },
     },
@@ -1423,7 +1423,7 @@ export async function getDeveloperDetailV2(slug: string): Promise<DeveloperDetai
     include: {
       community: true,
       media: { orderBy: { sortOrder: "asc" }, include: { media: true }, take: 1 },
-      paymentPlans: { include: { installments: true }, orderBy: { isDefault: "desc" } },
+      paymentPlans: { where: { verificationStatus: { in: ["PUBLISHED", "VERIFIED"] } }, include: { installments: true }, orderBy: { isDefault: "desc" } },
     },
     orderBy: { createdAt: "desc" },
   });

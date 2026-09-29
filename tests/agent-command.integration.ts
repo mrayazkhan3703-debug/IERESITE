@@ -5,7 +5,7 @@ import { createAgentProfileCommand, updateAgentCommand } from "@/server/domain/a
 
 const prefix = `agent-command-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const baseUrl = process.env.TEST_BASE_URL ?? "http://web:3000";
-const ids = { organization: `${prefix}-org`, otherOrganization: `${prefix}-other-org`, user: `${prefix}-user`, candidateUser: `${prefix}-candidate`, outsideCandidate: `${prefix}-outside-candidate`, apiCandidate: `${prefix}-api-candidate`, contentEditor: `${prefix}-content-editor`, agent: `${prefix}-agent`, createdAgent: `${prefix}-created-agent`, apiAgent: `${prefix}-api-agent`, publicMedia: `${prefix}-public-media`, privateMedia: `${prefix}-private-media` };
+const ids = { organization: `${prefix}-org`, otherOrganization: `${prefix}-other-org`, user: `${prefix}-user`, candidateUser: `${prefix}-candidate`, outsideCandidate: `${prefix}-outside-candidate`, apiCandidate: `${prefix}-api-candidate`, unverifiedCandidate: `${prefix}-unverified-candidate`, contentEditor: `${prefix}-content-editor`, agent: `${prefix}-agent`, createdAgent: `${prefix}-created-agent`, apiAgent: `${prefix}-api-agent`, publicMedia: `${prefix}-public-media`, privateMedia: `${prefix}-private-media` };
 const beforeSlug = `${prefix}-old`;
 const afterSlug = `${prefix}-new`;
 let createdAgentId: string | null = null;
@@ -24,7 +24,7 @@ async function cleanup() {
   await db.redirect.deleteMany({ where: { fromPath: `/agents/${beforeSlug}` } });
   await db.agent.deleteMany({ where: { id: { in: agentIds } } });
   await db.mediaAsset.deleteMany({ where: { id: { in: [ids.publicMedia, ids.privateMedia] } } });
-  await db.user.deleteMany({ where: { id: { in: [ids.user, ids.candidateUser, ids.outsideCandidate, ids.apiCandidate, ids.contentEditor] } } });
+  await db.user.deleteMany({ where: { id: { in: [ids.user, ids.candidateUser, ids.outsideCandidate, ids.apiCandidate, ids.unverifiedCandidate, ids.contentEditor] } } });
   await db.organization.deleteMany({ where: { id: { in: [ids.organization, ids.otherOrganization] } } });
 }
 
@@ -36,17 +36,20 @@ beforeAll(async () => {
   ] });
   const roles = await db.role.findMany({ where: { key: { in: ["AGENT", "MANAGER", "CONTENT_EDITOR"] } }, select: { key: true, id: true } });
   const roleIds = new Map(roles.map((role) => [role.key, role.id]));
-  await db.user.create({ data: { id: ids.user, email: actor.email, organizationId: ids.organization, roles: { create: { roleId: roleIds.get("MANAGER")! } } } });
+  await db.user.create({ data: { id: ids.user, email: actor.email, emailVerified: new Date(), organizationId: ids.organization, roles: { create: { roleId: roleIds.get("MANAGER")! } } } });
   await db.user.createMany({ data: [
-    { id: ids.candidateUser, email: `${ids.candidateUser}@example.invalid`, name: "Authorized AGENT", organizationId: ids.organization },
-    { id: ids.outsideCandidate, email: `${ids.outsideCandidate}@example.invalid`, name: "Other AGENT", organizationId: ids.otherOrganization },
-    { id: ids.apiCandidate, email: `${ids.apiCandidate}@example.invalid`, name: "HTTP AGENT", organizationId: ids.organization },
+    { id: ids.candidateUser, email: `${ids.candidateUser}@example.invalid`, name: "Authorized AGENT", organizationId: ids.organization, emailVerified: new Date() },
+    { id: ids.outsideCandidate, email: `${ids.outsideCandidate}@example.invalid`, name: "Other AGENT", organizationId: ids.otherOrganization, emailVerified: new Date() },
+    { id: ids.apiCandidate, email: `${ids.apiCandidate}@example.invalid`, name: "HTTP AGENT", organizationId: ids.organization, emailVerified: new Date() },
+    { id: ids.unverifiedCandidate, email: `${ids.unverifiedCandidate}@example.invalid`, name: "Unverified AGENT", organizationId: ids.organization },
     { id: ids.contentEditor, email: `${ids.contentEditor}@example.invalid`, name: "Content editor", organizationId: ids.organization },
   ] });
   await db.userRole.createMany({ data: [
     { userId: ids.candidateUser, roleId: roleIds.get("AGENT")! },
     { userId: ids.outsideCandidate, roleId: roleIds.get("AGENT")! },
     { userId: ids.apiCandidate, roleId: roleIds.get("AGENT")! },
+    { userId: ids.unverifiedCandidate, roleId: roleIds.get("AGENT")! },
+    { userId: ids.user, roleId: roleIds.get("AGENT")! },
     { userId: ids.contentEditor, roleId: roleIds.get("CONTENT_EDITOR")! },
   ] });
   await db.mediaAsset.createMany({ data: [
@@ -86,6 +89,9 @@ describe("organization-scoped team command", () => {
     await expect(createAgentProfileCommand({ ...actor, permissions: ["agent:update"] }, {
       userId: ids.outsideCandidate, name: "No permission", slug: `${prefix}-denied`, jobTitle: "Property Consultant",
     }, null)).rejects.toMatchObject({ status: 403, code: "FORBIDDEN" });
+    await expect(createAgentProfileCommand(actor, {
+      userId: ids.unverifiedCandidate, name: "Unverified AGENT", slug: `${prefix}-unverified`, jobTitle: "Property Consultant",
+    }, null)).rejects.toMatchObject({ status: 422, code: "INVALID_AGENT_ACCOUNT" });
   });
 
   test("Admin API scopes linkable AGENT accounts and creates only through the command", async () => {
@@ -93,6 +99,7 @@ describe("organization-scoped team command", () => {
     expect(managerList.status).toBe(200);
     const listed = await managerList.json() as { linkableUsers: { id: string }[] };
     expect(listed.linkableUsers.map((user) => user.id)).toContain(ids.apiCandidate);
+    expect(listed.linkableUsers.map((user) => user.id)).not.toContain(ids.unverifiedCandidate);
     expect(listed.linkableUsers.map((user) => user.id)).not.toContain(ids.outsideCandidate);
 
     const editorList = await fetch(`${baseUrl}/api/admin/agents`, { headers: { cookie: editorCookie } });

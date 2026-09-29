@@ -4,7 +4,7 @@ import type { SessionUser } from "@/server/auth";
 import { HttpError, audit } from "@/server/auth";
 import { hasGrantedPermission } from "@/server/authz-policy";
 import { emitEvent } from "@/server/jobs/outbox";
-import { canManageAgentProfile } from "@/server/domain/resource-policy";
+import { canManageAgentProfile, canManageCatalogResource } from "@/server/domain/resource-policy";
 import { requirePublicMedia } from "@/server/domain/media-policy";
 
 export interface AgentCommandInput {
@@ -19,6 +19,12 @@ export interface AgentCommandInput {
   active?: boolean;
   publicAdvisor?: boolean;
   photoMediaId?: string | null;
+  phoneE164?: string | null;
+  whatsappE164?: string | null;
+  email?: string | null;
+  languages?: { code: string; name: string; fluency: "BASIC" | "CONVERSATIONAL" | "FLUENT" | "NATIVE" }[];
+  specialties?: string[];
+  communityIds?: string[];
 }
 
 export interface AgentCreateCommandInput {
@@ -30,6 +36,38 @@ export interface AgentCreateCommandInput {
   department?: string | null;
   yearsExperience?: number;
   photoMediaId?: string | null;
+  phoneE164?: string | null;
+  whatsappE164?: string | null;
+  email?: string | null;
+  languages?: { code: string; name: string; fluency: "BASIC" | "CONVERSATIONAL" | "FLUENT" | "NATIVE" }[];
+  specialties?: string[];
+  communityIds?: string[];
+}
+
+function validateAdvisorFacts(input: { phoneE164?: string | null; whatsappE164?: string | null; email?: string | null; languages?: { code: string; name: string; fluency: string }[]; specialties?: string[]; communityIds?: string[] }) {
+  for (const phone of [input.phoneE164, input.whatsappE164]) if (phone && !/^\+[1-9]\d{7,14}$/.test(phone)) throw new HttpError(422, "Advisor contact numbers must use E.164 format (for example +971501234567).", "AGENT_CONTACT_INVALID");
+  if (input.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) throw new HttpError(422, "Enter a valid public contact email.", "AGENT_CONTACT_INVALID");
+  if (input.languages && (input.languages.length > 30 || new Set(input.languages.map((row) => row.code.toLowerCase())).size !== input.languages.length)) throw new HttpError(422, "Languages must use unique codes and contain no more than 30 entries.", "AGENT_LANGUAGES_INVALID");
+  if (input.specialties && (input.specialties.length > 40 || new Set(input.specialties).size !== input.specialties.length)) throw new HttpError(422, "Specialties must be unique and contain no more than 40 entries.", "AGENT_SPECIALTIES_INVALID");
+  if (input.communityIds && (input.communityIds.length > 100 || new Set(input.communityIds).size !== input.communityIds.length)) throw new HttpError(422, "Communities must be unique and contain no more than 100 entries.", "AGENT_COMMUNITIES_INVALID");
+}
+
+async function replaceAdvisorRelations(tx: Prisma.TransactionClient, actor: SessionUser, agentId: string, input: { languages?: { code: string; name: string; fluency: "BASIC" | "CONVERSATIONAL" | "FLUENT" | "NATIVE" }[]; specialties?: string[]; communityIds?: string[] }) {
+  if (input.languages !== undefined) {
+    await tx.agentLanguage.deleteMany({ where: { agentId } });
+    if (input.languages.length) await tx.agentLanguage.createMany({ data: input.languages.map((language) => ({ agentId, code: language.code.toLowerCase(), name: language.name.trim(), fluency: language.fluency })) });
+  }
+  if (input.specialties !== undefined) {
+    await tx.agentSpecialty.deleteMany({ where: { agentId } });
+    if (input.specialties.length) await tx.agentSpecialty.createMany({ data: input.specialties.map((specialty) => ({ agentId, specialty })) });
+  }
+  if (input.communityIds !== undefined) {
+    const ids = [...new Set(input.communityIds)];
+    const communities = await tx.community.findMany({ where: { id: { in: ids }, publicationStatus: { not: "ARCHIVED" } }, select: { id: true, ownerOrganizationId: true } });
+    if (communities.length !== ids.length || communities.some((community) => !canManageCatalogResource(actor, community.ownerOrganizationId))) throw new HttpError(422, "Choose communities in your permitted scope.", "AGENT_COMMUNITY_INVALID");
+    await tx.agentCommunity.deleteMany({ where: { agentId } });
+    if (ids.length) await tx.agentCommunity.createMany({ data: ids.map((communityId) => ({ agentId, communityId })) });
+  }
 }
 
 /** Create an unpublished team profile only for a real, active AGENT account. */
@@ -47,6 +85,7 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
   if (input.yearsExperience !== undefined && (!Number.isInteger(input.yearsExperience) || input.yearsExperience < 0 || input.yearsExperience > 80)) {
     throw new HttpError(422, "Years of experience must be between 0 and 80.", "AGENT_VALIDATION");
   }
+  validateAdvisorFacts(input);
 
   try {
     return await db.$transaction(async (tx) => {
@@ -54,6 +93,7 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
         where: {
           id: input.userId,
           isActive: true,
+          emailVerified: { not: null },
           agent: null,
           roles: { some: { role: { key: "AGENT" } } },
           ...(!actor.roles.includes("OWNER") ? { organizationId: actor.organizationId ?? "__no_organization__" } : {}),
@@ -74,15 +114,19 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
           department: input.department?.trim() || null,
           yearsExperience: input.yearsExperience ?? 0,
           photoMediaId,
+          phoneE164: input.phoneE164 ?? null, whatsappE164: input.whatsappE164 ?? null, email: input.email?.trim().toLowerCase() || null,
+          languagesJson: JSON.stringify(input.languages ?? []), specialtiesJson: JSON.stringify(input.specialties ?? []), communitiesJson: JSON.stringify(input.communityIds ?? []),
           active: false,
           publicAdvisor: false,
         },
       });
+      await replaceAdvisorRelations(tx, actor, agent.id, { languages: input.languages ?? [], specialties: input.specialties ?? [], communityIds: input.communityIds ?? [] });
       const after = {
         userId: linkedUser.id, name, slug, jobTitle, bio,
         department: input.department?.trim() || null,
         yearsExperience: input.yearsExperience ?? 0,
-        photoMediaId, active: false, publicAdvisor: false,
+        photoMediaId, phoneE164: input.phoneE164 ?? null, whatsappE164: input.whatsappE164 ?? null, email: input.email?.trim().toLowerCase() || null,
+        languages: input.languages ?? [], specialties: input.specialties ?? [], communityIds: input.communityIds ?? [], active: false, publicAdvisor: false,
       };
       await audit({
         actorId: actor.id, organizationId: linkedUser.organizationId,
@@ -111,7 +155,7 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
     return await db.$transaction(async (tx) => {
       const agent = await tx.agent.findUnique({
         where: { id: input.agentId },
-        include: { user: { select: { organizationId: true } } },
+        include: { user: { select: { organizationId: true, emailVerified: true, isActive: true, roles: { select: { role: { select: { key: true } } } } } } },
       });
       if (!agent) throw new HttpError(404, "Team profile not found", "NOT_FOUND");
       if (!canManageAgentProfile(actor, agent.user?.organizationId ?? null)) throw new HttpError(403, "You cannot manage this team profile.", "RESOURCE_FORBIDDEN");
@@ -131,14 +175,21 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       if (publicAdvisor && (!active || !bio.trim())) {
         throw new HttpError(422, "A public advisor must be active and have a profile bio.", "PUBLICATION_VALIDATION");
       }
+      if (publicAdvisor && (!agent.user?.isActive || !agent.user.emailVerified || !agent.user.roles.some(({ role }) => role.key === "AGENT"))) {
+        throw new HttpError(422, "A public advisor must be linked to an active, email-verified AGENT account.", "PUBLICATION_VALIDATION");
+      }
       const photoMediaId = input.photoMediaId === undefined
         ? agent.photoMediaId
         : await requirePublicMedia(tx, input.photoMediaId, ["IMAGE"]);
+      validateAdvisorFacts({ phoneE164: input.phoneE164 === undefined ? agent.phoneE164 : input.phoneE164, whatsappE164: input.whatsappE164 === undefined ? agent.whatsappE164 : input.whatsappE164, email: input.email === undefined ? agent.email : input.email, languages: input.languages, specialties: input.specialties, communityIds: input.communityIds });
 
       const before = {
         name: agent.name, slug: agent.slug, jobTitle: agent.jobTitle, bio: agent.bio,
         department: agent.department, yearsExperience: agent.yearsExperience, active: agent.active, publicAdvisor: agent.publicAdvisor,
-        photoMediaId: agent.photoMediaId,
+        photoMediaId: agent.photoMediaId, phoneE164: agent.phoneE164, whatsappE164: agent.whatsappE164, email: agent.email,
+        languages: input.languages === undefined ? safeArray(agent.languagesJson) : input.languages,
+        specialties: input.specialties === undefined ? safeArray(agent.specialtiesJson) : input.specialties,
+        communityIds: input.communityIds === undefined ? safeArray(agent.communitiesJson) : input.communityIds,
       };
       const data: Prisma.AgentUpdateManyMutationInput = { updatedAt: new Date() };
       if (input.name !== undefined) data.name = name;
@@ -150,9 +201,16 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       if (input.active !== undefined) data.active = active;
       if (input.publicAdvisor !== undefined) data.publicAdvisor = publicAdvisor;
       if (input.photoMediaId !== undefined) data.photoMediaId = photoMediaId;
+      if (input.phoneE164 !== undefined) data.phoneE164 = input.phoneE164?.trim() || null;
+      if (input.whatsappE164 !== undefined) data.whatsappE164 = input.whatsappE164?.trim() || null;
+      if (input.email !== undefined) data.email = input.email?.trim().toLowerCase() || null;
+      if (input.languages !== undefined) data.languagesJson = JSON.stringify(input.languages);
+      if (input.specialties !== undefined) data.specialtiesJson = JSON.stringify(input.specialties);
+      if (input.communityIds !== undefined) data.communitiesJson = JSON.stringify(input.communityIds);
 
       const changed = await tx.agent.updateMany({ where: { id: agent.id, updatedAt: expectedUpdatedAt }, data });
       if (changed.count !== 1) throw new HttpError(409, "This team profile changed since it was loaded. Refresh and review the latest values.", "VERSION_CONFLICT");
+      await replaceAdvisorRelations(tx, actor, agent.id, input);
 
       if (slug !== agent.slug) {
         const fromPath = `/agents/${agent.slug}`;
@@ -168,6 +226,11 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
         department: input.department === undefined ? agent.department : input.department?.trim() || null,
         yearsExperience: input.yearsExperience ?? agent.yearsExperience, active, publicAdvisor,
         photoMediaId,
+        phoneE164: input.phoneE164 === undefined ? agent.phoneE164 : input.phoneE164?.trim() || null,
+        whatsappE164: input.whatsappE164 === undefined ? agent.whatsappE164 : input.whatsappE164?.trim() || null,
+        email: input.email === undefined ? agent.email : input.email?.trim().toLowerCase() || null,
+        languages: input.languages ?? safeArray(agent.languagesJson), specialties: input.specialties ?? safeArray(agent.specialtiesJson),
+        communityIds: input.communityIds ?? safeArray(agent.communitiesJson),
       };
       await audit({ actorId: actor.id, organizationId: actor.organizationId, action: "agent.update", resourceType: "agent", resourceId: agent.id, before, after, ip }, tx);
       await emitEvent("agent", agent.id, "agent.updated", { agentId: agent.id, by: actor.email }, tx);
@@ -184,3 +247,5 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
     throw error;
   }
 }
+
+function safeArray(value: string | null): unknown[] { try { const parsed: unknown = JSON.parse(value ?? "[]"); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }

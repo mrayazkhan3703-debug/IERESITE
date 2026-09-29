@@ -513,14 +513,34 @@ model PropertyUnit {
   availabilityStatus String   @default("AVAILABLE") // AVAILABLE|RESERVED|SOLD|RENTED|HELD
   floor              Int?
   aspect             String?
+  sourceType         String   @default("MANUAL") // MANUAL|IMPORT
+  sourceKey           String?
+  sourceSnapshotJson String?
+  editorOverridesJson String?
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   property Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   project  Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  statusHistory PropertyUnitStatusHistory[]
 
   @@index([projectId])
   @@index([propertyId])
+  @@unique([projectId, sourceKey])
+}
+
+model PropertyUnitStatusHistory {
+  id         String   @id @default(cuid())
+  unitId     String
+  fromStatus String?
+  toStatus   String
+  reason     String?
+  changedBy  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  unit PropertyUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@index([unitId, createdAt])
 }
 
 model Listing {
@@ -689,6 +709,7 @@ model Developer {
   headquarters       String?
   foundedYear        Int?
   verificationStatus String    @default("UNVERIFIED") // UNVERIFIED|PUBLIC_RECORDS|VERIFIED
+  verificationEvidenceUrl String?
   lastVerifiedAt     DateTime? @db.Timestamptz(3)
   sourceUpdatedAt    DateTime? @db.Timestamptz(3)
   retrievedAt        DateTime? @db.Timestamptz(3)

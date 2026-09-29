@@ -21,7 +21,10 @@ export const GET = apiHandler(async (req) => {
       where,
       orderBy: { updatedAt: "desc" },
       take: 50,
-      include: { _count: { select: { projects: { where: { publicationStatus: "PUBLISHED", deletedAt: null } } } } },
+      include: { _count: { select: {
+        projects: { where: { publicationStatus: "PUBLISHED", deletedAt: null } },
+        properties: { where: { publicationStatus: "PUBLISHED", deletedAt: null } },
+      } } },
     }),
     db.developer.count({ where }),
   ]);
@@ -31,9 +34,13 @@ export const GET = apiHandler(async (req) => {
       id: developer.id, name: developer.name, slug: developer.slug, summary: developer.summary,
       description: developer.description, websiteUrl: developer.websiteUrl, headquarters: developer.headquarters,
       foundedYear: developer.foundedYear, verificationStatus: developer.verificationStatus,
+      verificationEvidenceUrl: developer.verificationEvidenceUrl,
       logoMediaId: developer.logoMediaId,
       lastVerifiedAt: developer.lastVerifiedAt?.toISOString() ?? null,
+      sourceType: developer.sourceType, sourceUpdatedAt: developer.sourceUpdatedAt?.toISOString() ?? null,
+      retrievedAt: developer.retrievedAt?.toISOString() ?? null,
       publishedProjectCount: developer._count.projects, updatedAt: developer.updatedAt.toISOString(),
+      publishedPropertyCount: developer._count.properties,
       canManage: canManageCatalogResource(actor, developer.ownerOrganizationId),
     })),
   });
@@ -48,6 +55,8 @@ const developerFieldsSchema = z.object({
   headquarters: z.string().max(200).nullable().optional(),
   foundedYear: z.number().int().min(1000).max(new Date().getFullYear()).nullable().optional(),
   logoMediaId: z.string().min(1).nullable().optional(),
+  sourceType: z.string().trim().min(1).max(60).optional(),
+  sourceUpdatedAt: z.string().datetime().nullable().optional(),
 }).strict();
 
 const createSchema = developerFieldsSchema;
@@ -55,6 +64,8 @@ const createSchema = developerFieldsSchema;
 const patchSchema = developerFieldsSchema.partial().extend({
   developerId: z.string().min(1),
   expectedUpdatedAt: z.string().datetime(),
+  verificationStatus: z.enum(["UNVERIFIED", "PUBLIC_RECORDS", "VERIFIED"]).optional(),
+  verificationEvidenceUrl: z.string().trim().max(2048).nullable().optional().refine((value) => !value || /^https?:\/\//i.test(value), { message: "Verification evidence must use HTTP or HTTPS." }),
 }).strict().refine((input) => Object.keys(input).some((key) => key !== "developerId" && key !== "expectedUpdatedAt"), {
   message: "Provide at least one developer change.",
 });

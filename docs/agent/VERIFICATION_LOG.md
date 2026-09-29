@@ -53,3 +53,10 @@ Concise, append-only evidence. No secret values are recorded here.
 - PASS — Live `/api/health`: database `ok=true`, PostgreSQL search index `ok=true` and built with size 3. Live search returns 3 demo-labelled listings.
 - BLOCKED — Health reports `worker-heartbeat-stale-or-missing`. Phase 01 remains blocked by the owner’s deferral of the USD 7/month Render worker; no worker was provisioned and no outbox drain is claimed.
 - LIMITATION — This staging site still contains demo inventory. Automated storage journeys pass, but no manual live upload to the production R2 bucket was performed; real property content and a separate storage production-readiness review remain outstanding.
+
+## 2026-09-29 — Phases 06 and 07 local implementation checkpoint
+
+- PASS — TypeScript `tsc --noEmit`, ESLint on `src` and `tests`, Prisma schema validation, repository filename/build-context hygiene, and `git diff --check` pass.
+- FINDING — The local repository secret scan could not run because Docker Desktop's Linux engine is not available. The scanner emitted no report, so this is not recorded as a clean scan; hosted CI remains required before sign-off.
+- LIMITATION — Bun is not installed on this Windows host. The new unit test and existing integration suites have not run locally; hosted CI is the test gate.
+- PENDING — Hosted CI, migration `20260929000200_project_unit_studio_provenance`, and Render deployment verification after the authorized push. Phases remain IN_PROGRESS until those checks pass.

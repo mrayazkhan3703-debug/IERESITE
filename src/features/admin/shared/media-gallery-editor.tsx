@@ -11,8 +11,8 @@ import { toast } from "sonner";
 type GalleryItem = { mediaId: string; isCover?: boolean; url?: string; altText?: string | null; sortOrder?: number };
 type Asset = { id: string; url: string; altText: string | null; kind: string };
 
-export function MediaGalleryEditor({ entity, entityId, initialGallery, onChanged }: {
-  entity: "property" | "project"; entityId: string; initialGallery: GalleryItem[]; onChanged?: () => void;
+export function MediaGalleryEditor({ entity, entityId, initialGallery, section = "GALLERY", onChanged }: {
+  entity: "property" | "project"; entityId: string; initialGallery: GalleryItem[]; section?: "GALLERY" | "PROGRESS"; onChanged?: () => void;
 }) {
   const [gallery, setGallery] = React.useState(initialGallery);
   const [assets, setAssets] = React.useState<Asset[]>([]);
@@ -32,9 +32,11 @@ export function MediaGalleryEditor({ entity, entityId, initialGallery, onChanged
     setBusy(true);
     try {
       const url = "/api/admin/media/gallery";
-      const response = method === "POST" ? await api.post<{ mediaIds: string[]; coverMediaId: string | null }>(url, payload)
-        : method === "PATCH" ? await api.patch<{ mediaIds: string[]; coverMediaId: string | null }>(url, payload)
-          : await api.delete<{ mediaIds: string[]; coverMediaId: string | null }>(url, payload);
+      const sectionPayload = entity === "project" ? { section } : {};
+      const requestPayload = { ...payload, ...sectionPayload };
+      const response = method === "POST" ? await api.post<{ mediaIds: string[]; coverMediaId: string | null }>(url, requestPayload)
+        : method === "PATCH" ? await api.patch<{ mediaIds: string[]; coverMediaId: string | null }>(url, requestPayload)
+          : await api.delete<{ mediaIds: string[]; coverMediaId: string | null }>(url, requestPayload);
       const next = response.mediaIds.map((mediaId, sortOrder) => {
         const asset = assets.find((item) => item.id === mediaId);
         const previous = gallery.find((item) => item.mediaId === mediaId);
@@ -80,8 +82,9 @@ export function MediaGalleryEditor({ entity, entityId, initialGallery, onChanged
   };
   const available = assets.filter((asset) => asset.kind === "IMAGE" && !gallery.some((item) => item.mediaId === asset.id) && (!q || `${asset.altText ?? ""} ${asset.id}`.toLowerCase().includes(q.toLowerCase())));
 
-  return <section className="space-y-3 rounded-lg border border-border/70 p-3" aria-label="Property gallery">
-    <div><h3 className="text-sm font-semibold">Gallery and floor-plan images</h3><p className="text-xs text-muted-foreground">Choose existing public image assets. Changes are saved immediately and audited.</p></div>
+  const sectionTitle = entity === "project" && section === "PROGRESS" ? "Construction progress gallery" : entity === "project" ? "Project gallery" : "Property gallery";
+  return <section className="space-y-3 rounded-lg border border-border/70 p-3" aria-label={sectionTitle}>
+    <div><h3 className="text-sm font-semibold">{sectionTitle}</h3><p className="text-xs text-muted-foreground">Choose existing public image assets. Changes are saved immediately and audited.</p></div>
     <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
       <Input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Find media by alt text or ID" aria-label="Find gallery media" />
       <Select value={selected} onValueChange={setSelected}><SelectTrigger aria-label="Select a gallery image"><SelectValue placeholder="Choose an image" /></SelectTrigger><SelectContent>{available.slice(0, 50).map((asset) => <SelectItem key={asset.id} value={asset.id}>{asset.altText || asset.id.slice(0, 18)}</SelectItem>)}</SelectContent></Select>
