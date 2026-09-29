@@ -60,3 +60,13 @@ Concise, append-only evidence. No secret values are recorded here.
 - FINDING — The local repository secret scan could not run because Docker Desktop's Linux engine is not available. The scanner emitted no report, so this is not recorded as a clean scan; hosted CI remains required before sign-off.
 - LIMITATION — Bun is not installed on this Windows host. The new unit test and existing integration suites have not run locally; hosted CI is the test gate.
 - PENDING — Hosted CI, migration `20260929000200_project_unit_studio_provenance`, and Render deployment verification after the authorized push. Phases remain IN_PROGRESS until those checks pass.
+
+## 2026-09-29 — Phases 06 and 07 complete
+
+- PASS — Hosted GitHub Actions run `36604426460` (run 39) passes both jobs: repository secret scan, schema/migration verification (34/34), lint, typecheck, unit and contract tests, PostgreSQL/HTTP integration, worker shutdown/retry, SMTP recovery, storage/backup checks, browser accessibility/responsive-image journeys, browser delivery measurements, and candidate performance budgets.
+- PASS — The first run `36603681508` exposed two existing integration fixtures that lacked the new community/project publication requirements. The test records were corrected in `94190061a1eae85a943c5f542793c61d96c7007f`; the application publication gates remain in place and run 39 passes.
+- PASS — Render deploy `dep-datv7fgu01pc73fr2c7g` is live on commit `94190061a1eae85a943c5f542793c61d96c7007f`.
+- PASS — Live GET smoke returned HTTP 200 for `/`, `/properties`, `/properties/map`, `/advisor`, and `/api/health`; no server exception was returned by those routes.
+- PASS — Live `/api/health` reports database and search index healthy. It truthfully reports `degraded` solely for `worker-heartbeat-stale-or-missing`; worker status is `MISSING` because the owner-deferred USD 7/month worker was not created.
+- PASS — Project/payment-plan/unit Studio and community/developer/advisor workflows are implemented with audited, version-checked edits, evidence/provenance handling, publication checks, and account verification gates. Phase 06/07 CMS records need owner-supplied real facts before representing actual listings.
+- UPDATE — The earlier local implementation checkpoint above is superseded by this hosted verification. The local secret scanner remained unavailable without Docker Engine; the hosted full-history credential scan passed.

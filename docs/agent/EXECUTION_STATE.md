@@ -2,12 +2,12 @@
 
 - Source baseline commit: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
 - Current branch: `codex/production-recovery-wave1`
-- Current source checkpoint: `a476e127470abff70dfc979b7d545be995acc5db`
+- Current source checkpoint: `94190061a1eae85a943c5f542793c61d96c7007f`
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
 - Last completed phase: Phase 05 (`768d447e73c5af0c40564aa9fa749c6addb799f9`)
-- Current phase status: Phases 02–05 COMPLETE; Phases 06–07 implementation is ready for hosted verification; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
-- Last verified migration: `20260929000100_media_original_filename` (33/33 applied in hosted CI)
-- Last verified implementation deployment: `768d447e73c5af0c40564aa9fa749c6addb799f9` (web only; phases 02–05)
+- Current phase status: Phases 02–07 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
+- Last verified migration: `20260929000200_project_unit_studio_provenance` (34/34 applied in hosted CI)
+- Last verified implementation deployment: `94190061a1eae85a943c5f542793c61d96c7007f` / Render deploy `dep-datv7fgu01pc73fr2c7g` (live; Phases 06–07)
 
 ## Completed phase evidence
 
@@ -41,8 +41,12 @@
 - Scope: Project Studio, payment plans, project documents and galleries, unit CRUD/import provenance, communities, developer verification, and private-to-public advisor onboarding.
 - A forward-only migration adds imported-unit provenance and availability history, plus developer verification evidence. No shared database was reset or modified from this workspace.
 - Local checks passed: TypeScript, ESLint, Prisma schema validation, repository filename/build-context hygiene, and `git diff --check`.
-- Hosted Docker CI, the credential scanner, migration apply, and Render deploy verification are pending the authorized push to `main`. Docker Engine is unavailable locally, so the local credential scanner could not run. Bun is also unavailable locally, so the Bun unit/integration suites must be confirmed by hosted CI.
+- Hosted Docker CI run `36604426460` passes both jobs, including the full-history/source credential scan, 34/34 migration verification, lint, typecheck, unit tests, PostgreSQL/HTTP integration, worker recovery, SMTP, storage/backup, all browser accessibility journeys, delivery measurements and performance budgets. Bun and Docker Engine were unavailable locally; hosted CI provided those full gates.
+- The first CI attempt `36603681508` found two integration fixtures that did not meet the new community/project publishing requirements. The fixtures were corrected without weakening the publishing gates, then all suites passed in run `36604426460`.
+- Render deploy `dep-datv7fgu01pc73fr2c7g` is live on the verified checkpoint. Smoke returned HTTP 200 for `/`, `/properties`, `/properties/map`, `/advisor`, and `/api/health`.
+- Live health reports database and search index OK. It remains `degraded` only for `worker-heartbeat-stale-or-missing`; the worker status is `MISSING` because its USD 7/month service remains deferred.
 - The advisor public-profile gate requires an active, email-verified AGENT account; new profiles remain private. Developer verification requires an owner/admin and a source URL; payment-plan VERIFIED status requires an owner/admin and a source document.
+- Test and source evidence establishes CMS readiness, but the staging site still uses demo inventory. Do not represent demo or unsourced values as owner-approved real estate facts.
 - Phases 08 onward have not been started.
 
 ## Next phase
@@ -53,5 +57,5 @@
 ## Rollback
 
 - Safe source tag: `iere-wave1-baseline-20260928` -> `fb6ae2208d108d7cb57d8b52826201e85c608a61`.
-- DB note: Phase 01 applied `20260928000100_worker_heartbeat`; use forward fixes and never reset the shared Supabase database.
+- DB note: Phase 01 applied `20260928000100_worker_heartbeat`; Phase 06 applied `20260929000200_project_unit_studio_provenance` in the verified CI database. Use forward fixes and never reset the shared Supabase database.
 - Workspace note: the original `F:\\IERE Website` checkout remains dirty and untouched. Wave 1 runs in the managed worktree at `C:\\Users\\mraya\\.codex\\worktrees\\production-recovery-wave1\\IERE Website`.
