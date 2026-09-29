@@ -135,7 +135,7 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   await editor.getByLabel("Built-up area (sq ft)").fill("1325");
   await editor.getByLabel("RERA permit").fill("SYNTHETIC-RERA-001");
   await editor.getByLabel("Highlights").fill("Waterfront\nBalcony");
-  await editor.getByRole("group", { name: "Amenities" }).getByText("Synthetic Pool").click();
+  await expect(editor.getByRole("group", { name: "Amenities" }).getByLabel("Synthetic Pool")).toBeChecked();
   await editor.getByLabel("Price (AED)").fill("2600000");
   await editor.getByLabel("Publication status").click();
   await page.getByRole("option", { name: "PUBLISHED", exact: true }).click();
