@@ -6,6 +6,7 @@ import { emitEvent } from "@/server/jobs/outbox";
 import { requirePublicMedia } from "@/server/domain/media-policy";
 import { canCreateCatalogResource, canManageCatalogResource } from "@/server/domain/resource-policy";
 import { parseCatalogJson } from "@/server/domain/catalog-source";
+import { reindexProperty } from "@/server/search/service";
 
 export interface PropertyCommandInput {
   propertyId: string;
@@ -272,7 +273,7 @@ export async function updatePropertyCommand(
   const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
   if (!Number.isFinite(expectedUpdatedAt.getTime())) throw new HttpError(400, "Invalid property version", "INVALID_VERSION");
 
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const property = await tx.property.findUnique({
       where: { id: input.propertyId },
       include: {
@@ -596,4 +597,9 @@ export async function updatePropertyCommand(
     const updated = await tx.property.findUniqueOrThrow({ where: { id: property.id }, select: { updatedAt: true } });
     return { ok: true as const, updatedAt: updated.updatedAt.toISOString() };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+  // The outbox remains the durable retry path, but keep published property
+  // changes immediately visible when the optional background worker is paused.
+  await reindexProperty(input.propertyId);
+  return result;
 }
