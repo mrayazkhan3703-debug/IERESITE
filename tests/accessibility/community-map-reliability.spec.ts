@@ -24,9 +24,9 @@ test("community images fall back safely and community/map routes survive repeate
   await expect.poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 
   for (let cycle = 0; cycle < 3; cycle++) {
-    await page.locator('a[href="/properties/map"]').last().click();
+    await page.locator('footer a[href="/properties/map"]').click();
     await expect(page.locator(".leaflet-container")).toHaveCount(1);
-    await page.locator('a[href="/communities"]').last().click();
+    await page.locator('footer a[href="/communities"]').click();
     await expect(page.getByRole("heading", { name: "Explore Dubai, community by community" })).toBeVisible();
   }
   expect(errors).toEqual([]);
