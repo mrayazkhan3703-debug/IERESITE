@@ -62,8 +62,13 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
     throw new Error("Unsupported file type (allowed: JPEG, PNG, WebP, AVIF, PDF)");
   }
   const checksum = crypto.createHash("sha256").update(buf).digest("hex");
-  const duplicate = await db.mediaAsset.findFirst({ where: { checksum, isPrivate: false }, select: { id: true } });
-  if (duplicate) throw new HttpError(409, `This file matches existing asset ${duplicate.id}; reuse it from the Media Library instead of uploading a duplicate.`, "DUPLICATE_MEDIA");
+  // Public and private assets have separate visibility and lifecycle rules.
+  // A private portfolio document/image must not be blocked just because the
+  // same bytes already exist in the public library (or disclose that asset).
+  if (!opts?.private) {
+    const duplicate = await db.mediaAsset.findFirst({ where: { checksum, isPrivate: false }, select: { id: true } });
+    if (duplicate) throw new HttpError(409, `This file matches existing asset ${duplicate.id}; reuse it from the Media Library instead of uploading a duplicate.`, "DUPLICATE_MEDIA");
+  }
   const kind = opts?.kind ?? allowed.kind as "IMAGE" | "DOCUMENT";
   const imageKind = ["IMAGE", "LOGO", "FLOOR_PLAN"].includes(kind);
   if ((mime.startsWith("image/") && !imageKind) || (mime === "application/pdf" && !["DOCUMENT", "BROCHURE", "FLOOR_PLAN"].includes(kind))) {

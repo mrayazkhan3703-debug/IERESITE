@@ -350,7 +350,14 @@ describe("transactional property command", () => {
       db.listing.findUniqueOrThrow({ where: { id: ids.listing } }),
     ]);
     expect(restoredProperty.title).toBe("Provider refreshed title");
-    expect(restoredProperty.editorOverridesJson).toBeNull();
+    // Restoring selected source-backed values must keep unrelated editorial
+    // overrides that have no corresponding source value to restore from.
+    expect(JSON.parse(restoredProperty.editorOverridesJson ?? "{}")).toMatchObject({
+      builtUpAreaSqft: 1325,
+      furnishing: "SEMI_FURNISHED",
+      shortDescription: "Editorial summary",
+      highlights: ["Updated fact"],
+    });
     expect(restoredListing.priceMinor).toBe(290_000_000n);
     expect(restoredListing.editorOverridesJson).toBeNull();
   });
