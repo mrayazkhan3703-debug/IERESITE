@@ -3,6 +3,7 @@
  * entities — drafts/private notes never leak through public queries.
  */
 import { db, parseJson } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import type { MediaDTO, ProjectCardDTO, CommunityCardDTO, AgentDTO, ListingCardDTO } from "@/lib/types";
 import {
   PUBLIC_AGENT_WHERE,
@@ -77,9 +78,14 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-export async function getPropertyDetail(slug: string): Promise<PropertyDetail | null> {
+export async function getPropertyDetail(
+  slug: string,
+  options?: { previewScope: Prisma.PropertyWhereInput },
+): Promise<PropertyDetail | null> {
   const property = await db.property.findFirst({
-    where: { slug, ...PUBLIC_PROPERTY_WHERE },
+    where: options?.previewScope
+      ? { AND: [{ slug, deletedAt: null }, options.previewScope] }
+      : { slug, ...PUBLIC_PROPERTY_WHERE },
     include: {
       community: true,
       project: { include: { developer: true, paymentPlans: { include: { installments: true }, orderBy: { isDefault: "desc" } } } },
@@ -88,7 +94,11 @@ export async function getPropertyDetail(slug: string): Promise<PropertyDetail | 
       floorPlans: { orderBy: { bedrooms: "asc" }, include: { media: true } },
       documents: { include: { media: true } },
       amenities: { include: { amenity: true } },
-      listings: { where: publicListingWindowWhere(), orderBy: { createdAt: "desc" }, include: { agent: true } },
+      listings: {
+        ...(!options?.previewScope ? { where: publicListingWindowWhere() } : {}),
+        orderBy: { createdAt: "desc" },
+        include: { agent: true },
+      },
       priceHistory: { orderBy: { recordedAt: "desc" }, take: 12 },
     },
   });
@@ -290,8 +300,11 @@ export interface PropertyDetailV2 extends PropertyDetail {
   listingUpdatedAt: string | null;
 }
 
-export async function getPropertyDetailV2(slug: string): Promise<PropertyDetailV2 | null> {
-  const base = await getPropertyDetail(slug);
+export async function getPropertyDetailV2(
+  slug: string,
+  options?: { previewScope: Prisma.PropertyWhereInput },
+): Promise<PropertyDetailV2 | null> {
+  const base = await getPropertyDetail(slug, options);
   if (!base) return null;
   const property = await db.property.findUnique({
     where: { id: base.id },

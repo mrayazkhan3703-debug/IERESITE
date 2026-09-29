@@ -868,6 +868,7 @@ model ProjectAmenity {
 model MediaAsset {
   id           String   @id @default(cuid())
   kind         String   @default("IMAGE") // IMAGE|VIDEO|FLOOR_PLAN|DOCUMENT|BROCHURE|LOGO
+  originalFilename String?
   storageKey   String   @unique // path under public/uploads
   url          String
   mimeType     String

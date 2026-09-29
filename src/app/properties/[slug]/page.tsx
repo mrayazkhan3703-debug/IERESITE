@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
-import { OG_IMAGE } from "@/lib/seo-schema";
 import { getPropertyDetailV2 } from "@/server/domain/read-models";
+import { resolveSpaRoutePage, spaRouteMetadata } from "@/server/seo/route-contract";
 import PropertyDetailView from "@/views/property-detail-view";
 
 export const dynamic = "force-dynamic";
@@ -15,62 +15,10 @@ type PropertyPageProps = {
 
 const loadProperty = cache((slug: string) => getPropertyDetailV2(slug));
 
-function propertyDescription(property: NonNullable<Awaited<ReturnType<typeof getPropertyDetailV2>>>): string {
-  return (
-    property.shortDescription ??
-    `${property.propertyType} in ${property.community.name}${property.project ? ` — ${property.project.name}` : ""}. ${
-      property.bedrooms === 0 ? "Studio" : `${property.bedrooms} bedroom`
-    }, ${property.bathrooms} bath${property.builtUpAreaSqft ? `, ${property.builtUpAreaSqft.toLocaleString("en-US")} sqft` : ""}.`
-  );
-}
-
 export async function generateMetadata({ params }: PropertyPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const property = await loadProperty(slug);
-  if (!property) {
-    return {
-      title: "Property not found",
-      robots: { index: false, follow: false },
-    };
-  }
-
-  const canonical = `/properties/${property.slug}`;
-  const description = propertyDescription(property);
-  const image = property.media[0]
-    ? {
-        url: property.media[0].url,
-        width: property.media[0].width ?? undefined,
-        height: property.media[0].height ?? undefined,
-        alt: property.media[0].altText ?? property.title,
-      }
-    : OG_IMAGE;
-
-  return {
-    title: property.title,
-    description,
-    alternates: {
-      canonical,
-      languages: {
-        en: canonical,
-        ar: `/ar${canonical}`,
-        "x-default": canonical,
-      },
-    },
-    openGraph: {
-      type: "website",
-      url: canonical,
-      title: property.title,
-      description,
-      images: [image],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: property.title,
-      description,
-      images: [image.url],
-    },
-    robots: { index: true, follow: true },
-  };
+  const path = `/properties/${slug}`;
+  return spaRouteMetadata(path, "en", await resolveSpaRoutePage(path));
 }
 
 export default async function PropertyPage({ params }: PropertyPageProps) {

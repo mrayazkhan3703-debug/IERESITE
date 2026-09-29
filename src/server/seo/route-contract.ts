@@ -5,10 +5,12 @@ import {
   getAgentDetailV2,
   getCommunityDetailV2,
   getDeveloperDetailV2,
+  getPropertyDetailV2,
   getProjectDetailV2,
 } from "@/server/domain/read-models";
 import { publicContentWhere, publicMarketReportWhere } from "@/server/domain/visibility";
 import { publicContentLocaleAlternates } from "@/server/seo/content-locale";
+import { OG_IMAGE } from "@/lib/seo-schema";
 
 export type RouteContract = {
   title: string;
@@ -69,6 +71,7 @@ const EXACT_ROUTES: Record<string, RouteContract> = {
 };
 
 const DYNAMIC_ROUTES: Array<{ pattern: RegExp; contract: RouteContract }> = [
+  { pattern: /^\/properties\/[^/]+$/, contract: { title: "Property" } },
   { pattern: /^\/projects\/[^/]+$/, contract: { title: "Project" } },
   { pattern: /^\/developers\/[^/]+$/, contract: { title: "Developer" } },
   { pattern: /^\/communities\/[^/]+$/, contract: { title: "Community" } },
@@ -100,6 +103,12 @@ async function resolveSpaRoutePageBase(path: string): Promise<RouteContract | nu
   if (parts.length === 2 && parts[0] === "projects") {
     const entity = await getProjectDetailV2(slug);
     return entity ? { title: entity.name, description: entity.summary ?? entity.tagline } : null;
+  }
+  if (parts.length === 2 && parts[0] === "properties") {
+    const entity = await getPropertyDetailV2(slug);
+    if (!entity) return null;
+    const description = entity.shortDescription ?? `${entity.propertyType} in ${entity.community.name}. ${entity.bedrooms === 0 ? "Studio" : `${entity.bedrooms} bedroom`}, ${entity.bathrooms} bath${entity.builtUpAreaSqft ? `, ${entity.builtUpAreaSqft.toLocaleString("en-US")} sqft` : ""}.`;
+    return { title: entity.title, description, ogImageUrl: entity.media[0]?.url ?? OG_IMAGE.url };
   }
   if (parts.length === 2 && parts[0] === "developers") {
     const entity = await getDeveloperDetailV2(slug);
@@ -158,7 +167,7 @@ export const resolveSpaRoutePage = cache(async (path: string): Promise<RouteCont
     description: seo.description?.trim() || contract.description,
     noindex: Boolean(contract.noindex || seo.noindex),
     canonicalPath: seo.canonicalPath,
-    ogImageUrl: image ? `/api/media/${encodeURIComponent(image.id)}/content` : null,
+    ogImageUrl: image ? `/api/media/${encodeURIComponent(image.id)}/content` : contract.ogImageUrl ?? null,
   };
 });
 

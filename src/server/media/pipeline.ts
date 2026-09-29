@@ -37,6 +37,12 @@ function sniffMime(buf: Buffer): string | null {
   return null;
 }
 
+function safeOriginalFilename(name: string): string {
+  const base = name.replaceAll("\\", "/").split("/").pop() ?? "";
+  const safe = base.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").replace(/[<>:"|?*]/g, "_").trim();
+  return (safe || "upload").slice(0, 255);
+}
+
 export interface StoredMedia {
   id: string;
   url: string;
@@ -112,6 +118,7 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
       data: {
         id,
         kind,
+        originalFilename: safeOriginalFilename(file.name),
         storageKey: key,
         url: opts?.private ? `private-object://${key}` : objectStorage ? publicMediaUrl(id) : `/uploads/${key}`,
         mimeType: mime,

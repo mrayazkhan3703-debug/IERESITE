@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, LoadingState } from "@/components/common";
+import { useRoute } from "@/lib/router";
 import { History, Plus, RotateCcw } from "lucide-react";
 
 interface SeoEntry {
@@ -27,10 +28,12 @@ function imageLabel(image: PublicImage) { return image.altText?.trim() || image.
 function formatDate(value: string) { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toLocaleString() : "—"; }
 
 export function SeoMetadataSection({ canEdit }: { canEdit: boolean }) {
+  const route = useRoute();
+  const routeQuery = typeof route.query.q === "string" ? route.query.q : "";
   const [entries, setEntries] = React.useState<SeoEntry[] | null>(null);
   const [loadFailed, setLoadFailed] = React.useState(false);
   const [images, setImages] = React.useState<PublicImage[]>([]);
-  const [query, setQuery] = React.useState("");
+  const [query, setQuery] = React.useState(routeQuery);
   const [editing, setEditing] = React.useState<SeoEntry | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [form, setForm] = React.useState<SeoForm>(emptyForm());
@@ -53,7 +56,12 @@ export function SeoMetadataSection({ canEdit }: { canEdit: boolean }) {
       .catch(() => setImages([]));
   }, [canEdit]);
 
-  const openCreate = () => { setEditing(null); setCreating(true); setForm(emptyForm()); };
+  const openCreate = () => {
+    const routeKey = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/.test(query.trim()) ? query.trim() : "";
+    setEditing(null);
+    setCreating(true);
+    setForm({ ...emptyForm(), routeKey });
+  };
   const openEdit = (entry: SeoEntry) => {
     setEditing(entry);
     setCreating(false);

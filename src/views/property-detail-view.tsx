@@ -54,10 +54,12 @@ export default function PropertyDetailView({
   slug,
   initialData = null,
   manageMetadata = true,
+  previewMode = false,
 }: {
   slug: string;
   initialData?: PropertyDetailV2 | null;
   manageMetadata?: boolean;
+  previewMode?: boolean;
 }) {
   const [data, setData] = React.useState<PropertyDetailV2 | null>(initialData);
   const [notFound, setNotFound] = React.useState(false);
@@ -78,9 +80,11 @@ export default function PropertyDetailView({
     setError(null);
     if (initialData?.slug === slug) {
       setData(initialData);
-      events.propertyView(slug);
-      api.post("/api/recently-viewed", { propertySlug: slug }).catch(() => {});
-      addRecent(detailToCard(initialData));
+      if (!previewMode) {
+        events.propertyView(slug);
+        api.post("/api/recently-viewed", { propertySlug: slug }).catch(() => {});
+        addRecent(detailToCard(initialData));
+      }
       return;
     }
     setData(null);
@@ -96,7 +100,7 @@ export default function PropertyDetailView({
         if (e instanceof Error && e.message.includes("not found")) setNotFound(true);
         else setError(e instanceof Error ? e.message : t("property.detail.loadError", locale));
       });
-  }, [slug, initialData, addRecent]);
+  }, [slug, initialData, addRecent, previewMode]);
 
   usePageMeta(
     data
@@ -770,7 +774,7 @@ export default function PropertyDetailView({
         locale={locale}
       />
 
-      <LeadFormDialog context={leadForm.ctx} onClose={leadForm.close} />
+      {!previewMode && <LeadFormDialog context={leadForm.ctx} onClose={leadForm.close} />}
 
       {/* Print footnote — contact + disclosure on every PDF page */}
       <div className="container-page mt-8 hidden print:block">

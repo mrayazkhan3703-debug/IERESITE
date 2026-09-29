@@ -79,6 +79,7 @@ describe("S3-compatible public and private media delivery", () => {
     expect(stored.url).toBe(`/api/media/${stored.id}/content`);
 
     const asset = await db.mediaAsset.findUniqueOrThrow({ where: { id: stored.id } });
+    expect(asset.originalFilename).toBe("synthetic-test-image.png");
     const variants = JSON.parse(asset.variantsJson ?? "{}") as Record<string, string>;
     expect(variants.card).toBe(`/api/media/${stored.id}/content?variant=card`);
 

@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
+import { resolveSpaRoute } from "@/server/seo/route-contract";
 
 describe("native App Router extraction inventory", () => {
   test("every declared exact SEO route has concrete EN and AR modules", () => {
@@ -20,5 +21,10 @@ describe("native App Router extraction inventory", () => {
     expect(existsSync("src/app/[...path]/page.tsx")).toBe(false);
     const shell = readFileSync("src/components/spa-root.tsx", "utf8");
     expect(/React\.lazy|matchRoute|STATIC_REDIRECTS|api\/seo\/redirects/.test(shell)).toBe(false);
+  });
+
+  test("property detail routes support controlled SEO overrides while admin previews stay noindex", () => {
+    expect(resolveSpaRoute("/properties/dubai-marina-residence")).toMatchObject({ title: "Property" });
+    expect(resolveSpaRoute("/admin/properties/dubai-marina-residence/preview")).toMatchObject({ noindex: true });
   });
 });
