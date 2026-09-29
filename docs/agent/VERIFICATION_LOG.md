@@ -70,3 +70,9 @@ Concise, append-only evidence. No secret values are recorded here.
 - PASS — Live `/api/health` reports database and search index healthy. It truthfully reports `degraded` solely for `worker-heartbeat-stale-or-missing`; worker status is `MISSING` because the owner-deferred USD 7/month worker was not created.
 - PASS — Project/payment-plan/unit Studio and community/developer/advisor workflows are implemented with audited, version-checked edits, evidence/provenance handling, publication checks, and account verification gates. Phase 06/07 CMS records need owner-supplied real facts before representing actual listings.
 - UPDATE — The earlier local implementation checkpoint above is superseded by this hosted verification. The local secret scanner remained unavailable without Docker Engine; the hosted full-history credential scan passed.
+
+## 2026-09-29 — Admin MFA sign-in requirement update
+
+- PASS — At the owner's earlier request, Render service `IERESITE` was updated with `AUTH_MFA_REQUIRED=false`; deployment `dep-datvi0rncjis73a6iq60` is live. The login route uses this flag to skip MFA challenges for privileged accounts.
+- PASS — `/admin`, `/account/login?next=%2Fadmin`, `/`, `/properties`, `/properties/map`, `/advisor` and `/api/health` all returned HTTP 200 after the deployment.
+- LIMITATION — This disables the sign-in requirement; it does not erase the account's encrypted authenticator enrollment. An owner-specific authenticated login was not performed because no password was available in the workspace.

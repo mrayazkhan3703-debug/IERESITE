@@ -4,6 +4,7 @@
 - Current branch: `codex/production-recovery-wave1`
 - Current source checkpoint: `94190061a1eae85a943c5f542793c61d96c7007f`
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
+- Admin login MFA requirement: disabled at the owner's request with Render `AUTH_MFA_REQUIRED=false`; deploy `dep-datvi0rncjis73a6iq60` is live. Existing encrypted MFA enrollment data remains stored.
 - Last completed phase: Phase 05 (`768d447e73c5af0c40564aa9fa749c6addb799f9`)
 - Current phase status: Phases 02–07 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
 - Last verified migration: `20260929000200_project_unit_studio_provenance` (34/34 applied in hosted CI)
