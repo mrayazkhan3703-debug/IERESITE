@@ -43,7 +43,7 @@ beforeAll(async () => {
     { id: ids.privateMedia, storageKey: `${prefix}/private.jpg`, url: "private-object://test", mimeType: "image/jpeg", sizeBytes: 256, kind: "IMAGE", isPrivate: true },
   ] });
   await db.community.create({
-    data: { id: ids.community, name: "Draft Command Community", slug: beforeSlug, areaType: "RESIDENTIAL", lat: 25.08, lng: 55.14, publicationStatus: "DRAFT" },
+    data: { id: ids.community, name: "Draft Command Community", slug: beforeSlug, summary: "Community integration fixture", description: "Test-only details for publishing a valid community fixture.", areaType: "RESIDENTIAL", lat: 25.08, lng: 55.14, locationPrecision: "COMMUNITY_CENTROID", imageMediaId: ids.publicMedia, publicationStatus: "DRAFT" },
   });
 });
 

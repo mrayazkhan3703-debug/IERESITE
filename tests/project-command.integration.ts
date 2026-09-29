@@ -5,7 +5,7 @@ import { createProjectCommand, updateProjectCommand } from "@/server/domain/proj
 import { getProjectDetailV2 } from "@/server/domain/read-models";
 
 const prefix = `project-command-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const ids = { user: `${prefix}-user`, developer: `${prefix}-developer`, community: `${prefix}-community`, project: `${prefix}-project`, childProperty: `${prefix}-child-property`, archiveDeveloper: `${prefix}-archive-developer`, archiveCommunity: `${prefix}-archive-community`, archiveProject: `${prefix}-archive-project`, childPropertyToArchive: `${prefix}-child-property-to-archive`, publicMedia: `${prefix}-public-media`, privateMedia: `${prefix}-private-media` };
+const ids = { user: `${prefix}-user`, developer: `${prefix}-developer`, community: `${prefix}-community`, project: `${prefix}-project`, childProperty: `${prefix}-child-property`, archiveDeveloper: `${prefix}-archive-developer`, archiveCommunity: `${prefix}-archive-community`, archiveProject: `${prefix}-archive-project`, childPropertyToArchive: `${prefix}-child-property-to-archive`, publicMedia: `${prefix}-public-media`, publicImageMedia: `${prefix}-public-image-media`, privateMedia: `${prefix}-private-media` };
 const beforeSlug = `${prefix}-old`;
 const afterSlug = `${prefix}-new`;
 const createdSlug = `${prefix}-created`;
@@ -34,7 +34,7 @@ async function cleanup() {
   await db.project.deleteMany({ where: { id: ids.project } });
   await db.community.deleteMany({ where: { id: ids.community } });
   await db.developer.deleteMany({ where: { id: ids.developer } });
-  await db.mediaAsset.deleteMany({ where: { id: { in: [ids.publicMedia, ids.privateMedia] } } });
+  await db.mediaAsset.deleteMany({ where: { id: { in: [ids.publicMedia, ids.publicImageMedia, ids.privateMedia] } } });
   await db.user.deleteMany({ where: { id: ids.user } });
 }
 
@@ -43,11 +43,12 @@ beforeAll(async () => {
   await db.user.create({ data: { id: ids.user, email: actor.email } });
   await db.mediaAsset.createMany({ data: [
     { id: ids.publicMedia, storageKey: `${prefix}/public.pdf`, url: "/api/media/public/content", mimeType: "application/pdf", sizeBytes: 256, kind: "DOCUMENT", isPrivate: false },
+    { id: ids.publicImageMedia, storageKey: `${prefix}/gallery.jpg`, url: "/api/media/public/content", mimeType: "image/jpeg", sizeBytes: 256, kind: "IMAGE", isPrivate: false },
     { id: ids.privateMedia, storageKey: `${prefix}/private.pdf`, url: "private-object://test", mimeType: "application/pdf", sizeBytes: 256, kind: "DOCUMENT", isPrivate: true },
   ] });
   await db.developer.create({ data: { id: ids.developer, name: "Project Command Developer", slug: `${prefix}-developer` } });
   await db.community.create({
-    data: { id: ids.community, name: "Project Command Community", slug: `${prefix}-community`, areaType: "RESIDENTIAL", lat: 25.08, lng: 55.14, publicationStatus: "PUBLISHED" },
+    data: { id: ids.community, name: "Project Command Community", slug: `${prefix}-community`, summary: "Project integration fixture", description: "Test-only details for a valid published community fixture.", areaType: "RESIDENTIAL", lat: 25.08, lng: 55.14, locationPrecision: "COMMUNITY_CENTROID", imageMediaId: ids.publicImageMedia, publicationStatus: "PUBLISHED" },
   });
   await db.project.create({
     data: {
@@ -55,6 +56,7 @@ beforeAll(async () => {
       lat: 25.08, lng: 55.14, publicationStatus: "DRAFT",
     },
   });
+  await db.projectMedia.create({ data: { projectId: ids.project, mediaId: ids.publicImageMedia, section: "GALLERY", sortOrder: 0 } });
 });
 
 afterAll(async () => {
@@ -104,6 +106,8 @@ describe("transactional project command", () => {
       expectedUpdatedAt: initial.updatedAt.toISOString(),
       name: "Command Published Project",
       slug: afterSlug,
+      summary: "Project integration fixture",
+      description: "Test-only details for a valid published project fixture.",
       status: "UNDER_CONSTRUCTION",
       publicationStatus: "PUBLISHED",
       brochureMediaId: ids.publicMedia,
