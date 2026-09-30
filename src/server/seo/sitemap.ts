@@ -62,8 +62,12 @@ export async function generateSitemap(): Promise<{ total: number }> {
   });
   const developers = await db.developer.findMany({ where: PUBLIC_DEVELOPER_WHERE, select: { slug: true, updatedAt: true } });
   const agents = await db.agent.findMany({ where: PUBLIC_AGENT_WHERE, select: { slug: true, updatedAt: true } });
+  const careers = await db.careerOpening.findMany({
+    where: { locale: "en", status: "PUBLISHED", publishedAt: { not: null, lte: new Date() }, OR: [{ closesAt: null }, { closesAt: { gt: new Date() } }] },
+    select: { slug: true, updatedAt: true },
+  });
   const content = await db.contentEntry.findMany({
-    where: { ...publicContentWhere(), locale: "en", contentType: { in: ["GUIDE", "AREA_GUIDE", "ARTICLE"] } },
+    where: { ...publicContentWhere(), locale: "en", contentType: { in: ["GUIDE", "AREA_GUIDE", "ARTICLE", "PAGE", "INTERNATIONAL_GUIDE"] }, OR: [{ contentType: { not: "INTERNATIONAL_GUIDE" } }, { sourceName: { not: null }, sourceUrl: { startsWith: "https://" }, sourceVerifiedAt: { not: null, lte: new Date() }, freshnessReviewDueAt: { gt: new Date() } }] },
     select: { slug: true, contentType: true, updatedAt: true },
   });
   const reports = await db.marketReport.findMany({
@@ -99,9 +103,10 @@ export async function generateSitemap(): Promise<{ total: number }> {
   for (const a of agents) {
     addRow("agents", `/agents/${a.slug}`, 0.6, "monthly", a.updatedAt);
   }
+  for (const opening of careers) addRow("careers", `/careers/${opening.slug}`, 0.5, "weekly", opening.updatedAt);
   for (const c of content) {
     const path = contentSitemapPath(c.contentType, c.slug);
-    if (path) addRow(c.contentType === "ARTICLE" ? "insights" : "guides", path, 0.6, "monthly", c.updatedAt);
+    if (path) addRow(c.contentType === "ARTICLE" ? "insights" : c.contentType === "INTERNATIONAL_GUIDE" ? "international" : c.contentType === "PAGE" ? "pages" : "guides", path, 0.6, "monthly", c.updatedAt);
   }
   for (const r of reports) {
     addRow("reports", `/market/reports/${r.slug}`, 0.6, "monthly", r.updatedAt);

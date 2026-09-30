@@ -10,8 +10,8 @@
 | 05 Property Studio | COMPLETE | `768d447e73c5af0c40564aa9fa749c6addb799f9` | Run 36; create/edit/preview/publish, price history, SEO, search/map and Arabic property journeys pass; deployed and route-smoked 2026-09-29 |
 | 06 Project/payment plan/units Studio | COMPLETE | `94190061a1eae85a943c5f542793c61d96c7007f` | Run 39 passes; 34/34 migrations; Render deploy `dep-datv7fgu01pc73fr2c7g` live and route-smoked |
 | 07 Communities/developers/advisors | COMPLETE | `94190061a1eae85a943c5f542793c61d96c7007f` | Run 39 passes; publish/verification/account gates covered; Render deploy `dep-datv7fgu01pc73fr2c7g` live |
-| 08 Page/Content Studio + settings | NOT_STARTED | — | — |
-| 09 Careers + International governance | NOT_STARTED | — | — |
+| 08 Page/Content Studio + settings | IN_PROGRESS | implementation checkpoint in `codex/production-recovery-wave1` | local Prisma validation, TypeScript, ESLint and production build pass; hosted CI/deploy pending |
+| 09 Careers + International governance | IN_PROGRESS | implementation checkpoint in `codex/production-recovery-wave1` | local Prisma validation, TypeScript, ESLint and production build pass; hosted CI/deploy pending |
 | 10 Market Intelligence operations | NOT_STARTED | — | — |
 | 11 Search + map production upgrade | NOT_STARTED | — | — |
 | 12 AI Advisor + RAG | NOT_STARTED | — | — |

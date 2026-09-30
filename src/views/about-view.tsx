@@ -7,6 +7,7 @@ import { Breadcrumbs, SectionHeading, ProvenanceBadge } from "@/components/commo
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, TrendingUp, Users, Globe2 } from "lucide-react";
 import { organizationJsonLd } from "@/lib/seo-schema";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 
 /** Shared company page shell */
 export function CompanyView({
@@ -22,12 +23,13 @@ export function CompanyView({
   intro: string;
   children?: React.ReactNode;
 }) {
+  const settings = useSiteSettings();
   usePageMeta({
     title,
     description: intro.slice(0, 155),
     /* V3-19: verified Organization schema (same authoritative facts as home —
      * name/url/logo/telephone/full postal address/sameAs; no email). */
-    jsonLd: organizationJsonLd(),
+    jsonLd: organizationJsonLd(settings.contact),
   });
 
   return (

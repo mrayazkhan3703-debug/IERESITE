@@ -45,7 +45,8 @@ import { events } from "@/lib/analytics-tracker";
 import { formatMoney, formatNumber, formatDate } from "@/lib/money";
 import { formatAEDPrecise, formatPctPrecise, fullValueTooltip } from "@/lib/format-precise";
 import { yieldBreakdown } from "@/lib/scenario-engine";
-import { SITE_CONTACT_CHANNELS, SITE_CONTACT, WHATSAPP_MESSAGES, companyWhatsappHref } from "@/lib/config";
+import { WHATSAPP_MESSAGES } from "@/lib/config";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 import { localeOf, t } from "@/lib/i18n";
 import { BedDouble, Bath, Ruler, MapPin, Heart, FileDown, CalendarClock, ShieldCheck, ChevronRight, Layers, Check, Printer, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,7 @@ export default function PropertyDetailView({
   const leadForm = useLeadForm();
   const loc = useRoute();
   const locale = localeOf(loc.locale);
+  const contact = useSiteSettings().contact;
   const isFav = useSavedStore((s) => s.isFavorite(slug));
   const toggleFavorite = useSavedStore((s) => s.toggleFavorite);
   const toggleCompare = useSavedStore((s) => s.toggleCompare);
@@ -240,11 +242,11 @@ export default function PropertyDetailView({
    * prefilled message; the fallback is the same verified company line. */
   const whatsappHref = data.agent?.whatsappE164
     ? `https://wa.me/${data.agent.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.property(data.title))}`
-    : companyWhatsappHref(WHATSAPP_MESSAGES.property(data.title));
+    : `https://wa.me/${contact.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.property(data.title))}`;
   const callHref = data.agent?.phoneE164
     ? `tel:${data.agent.phoneE164}`
-    : (SITE_CONTACT_CHANNELS.phone.href ?? SITE_CONTACT.phoneHref);
-  const callLabel = data.agent?.phoneDisplay ?? data.agent?.phoneE164 ?? SITE_CONTACT_CHANNELS.phone.value;
+    : `tel:${contact.phoneE164}`;
+  const callLabel = data.agent?.phoneDisplay ?? data.agent?.phoneE164 ?? contact.phoneDisplay;
 
   const scrollToMarketContext = () => {
     document.getElementById("market-context")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -794,7 +796,7 @@ export default function PropertyDetailView({
       {/* Print footnote — contact + disclosure on every PDF page */}
       <div className="container-page mt-8 hidden print:block">
         <p className="border-t border-ink/30 pt-2 text-[10px] leading-relaxed text-muted-foreground">
-          Investment Experts · Dubai Real Estate Investment Platform · {SITE_CONTACT.phone} ({SITE_CONTACT.addressLine2}) —
+          Investment Experts · Dubai Real Estate Investment Platform · {contact.phoneDisplay} ({contact.addressLine2}) —
           Figures shown are illustrative demo data unless labeled otherwise and do not constitute investment advice.
           Verify all facts against the live listing at the URL above before acting.
         </p>

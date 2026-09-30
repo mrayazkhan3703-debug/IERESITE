@@ -10,7 +10,7 @@ export const ROLE_PERMISSION_MANIFEST = {
   ADMIN: [
     "property:*", "project:*", "developer:*", "community:*", "agent:*",
     "lead:*", "content:*", "media:*", "seo:*", "import:*", "user:read", "user:invite", "user:update", "audit:read",
-    "analytics:read", "integration:read", "rag:*", "market:*", "jobs:*", "dlq:*", "quality:*",
+    "analytics:read", "integration:read", "rag:*", "market:*", "jobs:*", "dlq:*", "quality:*", "site-settings:update",
   ],
   MANAGER: [
     "property:*", "project:*", "developer:*", "community:*", "agent:*",

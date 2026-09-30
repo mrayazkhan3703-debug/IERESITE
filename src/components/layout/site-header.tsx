@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Link, useRoute, setLocale, navigate, type QueryValue } from "@/lib/router";
+import { Link, useRoute, setLocale, navigate } from "@/lib/router";
 import { t, dir, type Locale } from "@/lib/i18n";
-import { SITE_CONTACT, SITE_LOGO as LOGO, WHATSAPP_MESSAGES, companyWhatsappHref } from "@/lib/config";
+import { SITE_LOGO as LOGO, WHATSAPP_MESSAGES } from "@/lib/config";
 import { events } from "@/lib/analytics-tracker";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
+import type { SiteSettings } from "@/lib/site-settings";
 import {
   Sheet,
   SheetContent,
@@ -54,86 +56,33 @@ import {
 /*   ≥1280px — full 4-group IA + utility rail (contact menu, lang)     */
 /* ------------------------------------------------------------------ */
 
-interface NavItem {
-  to: string;
-  key: string;
-  query?: Record<string, QueryValue>;
+type NavItem = SiteSettings["headerGroups"][number]["items"][number];
+type NavGroup = SiteSettings["headerGroups"][number];
+
+function navLabel(item: { key?: string; labelEn?: string; labelAr?: string }, locale: Locale) {
+  return item.key ? t(item.key, locale) : (locale === "ar" ? item.labelAr : item.labelEn) ?? "";
 }
 
-interface NavGroup {
-  id: string;
-  key: string;
-  items: NavItem[];
+function enabled(items: NavItem[]) {
+  return items.filter((item) => item.enabled !== false);
 }
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    id: "properties",
-    key: "nav.groups.properties",
-    items: [
-      { to: "/buy", key: "nav.buy" },
-      { to: "/rent", key: "nav.rent" },
-      { to: "/off-plan", key: "nav.offPlan" },
-      { to: "/projects", key: "nav.newLaunches", query: { sort: "new" } },
-    ],
-  },
-  {
-    id: "explore",
-    key: "nav.groups.explore",
-    items: [
-      { to: "/communities", key: "nav.communities" },
-      { to: "/developers", key: "nav.developers" },
-      { to: "/properties/map", key: "nav.map" },
-      { to: "/market", key: "nav.market" },
-    ],
-  },
-  {
-    id: "invest",
-    key: "nav.groups.invest",
-    items: [
-      { to: "/invest/opportunities", key: "nav.opportunities" },
-      { to: "/calculators", key: "nav.investorTools" },
-      { to: "/market", key: "nav.reports" },
-      { to: "/international", key: "nav.internationalBuyers" },
-    ],
-  },
-];
-
-const ADVISORS_ITEM: NavItem = { to: "/agents", key: "nav.groups.advisors" };
-
-/**
- * V3-03 mobile drawer groups (§9): Properties · Explore Dubai · Invest ·
- * Company — the single source of navigation below 1024px.
- */
-const DRAWER_GROUPS: { key: string; items: NavItem[] }[] = [
-  ...NAV_GROUPS.map((g) => ({ key: g.key, items: g.items })),
-  {
-    key: "nav.groups.company",
-    items: [
-      ADVISORS_ITEM,
-      { to: "/about/team", key: "footer.company.team" },
-      { to: "/about", key: "footer.company.about" },
-      { to: "/contact", key: "footer.company.contact" },
-    ],
-  },
-];
 
 function isItemActive(path: string, to: string): boolean {
   return path === to || path.startsWith(to + "/");
 }
 
 /** Single best-matching nav target (longest active prefix wins; first on ties). */
-function useActiveTarget(path: string): { to: string; groupId: string } | null {
+function useActiveTarget(path: string, groups: NavGroup[], advisor: NavItem): { to: string; groupId: string } | null {
   return React.useMemo(() => {
     let best: { to: string; groupId: string } | null = null;
     const consider = (item: NavItem, groupId: string) => {
       if (!isItemActive(path, item.to)) return;
       if (!best || item.to.length > best.to.length) best = { to: item.to, groupId };
     };
-    for (const g of NAV_GROUPS) for (const item of g.items) consider(item, g.id);
-    consider(ADVISORS_ITEM, "advisors");
+    for (const g of groups) for (const item of enabled(g.items)) consider(item, g.id);
+    if (advisor.enabled !== false) consider(advisor, "advisors");
     return best;
-  }, [path]);
+  }, [path, groups, advisor]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -172,7 +121,7 @@ function NavRow({
         active ? "font-medium text-brand-strong" : "text-foreground/80"
       )}
     >
-      <span className="whitespace-nowrap">{t(item.key, locale)}</span>
+      <span className="whitespace-nowrap">{navLabel(item, locale)}</span>
       <ChevronRight
         aria-hidden
         className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-ui group-hover/row:opacity-100 rtl:rotate-180"
@@ -242,7 +191,10 @@ function HoverDropdown({
 }
 
 /** Compact contact menu (≥1280px): phone icon trigger, never a raw number. */
-function ContactMenu({ locale }: { locale: Locale }) {
+function ContactMenu({ locale, settings }: { locale: Locale; settings: SiteSettings }) {
+  const contact = settings.contact;
+  const phoneHref = `tel:${contact.phoneE164}`;
+  const whatsappHref = `https://wa.me/${contact.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.generic)}`;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -259,15 +211,15 @@ function ContactMenu({ locale }: { locale: Locale }) {
           {t("nav.contact.title", locale)}
         </DropdownMenuLabel>
         <DropdownMenuItem asChild>
-          <a href={SITE_CONTACT.phoneHref} className="num whitespace-nowrap" onClick={() => events.callClick("header")}>
+          <a href={phoneHref} className="num whitespace-nowrap" onClick={() => events.callClick("header")}>
             <Phone aria-hidden />
             <span className="flex-1">{t("nav.contact.call", locale)}</span>
-            <span className="text-muted-foreground">{SITE_CONTACT.phone}</span>
+            <span className="text-muted-foreground">{contact.phoneDisplay}</span>
           </a>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a
-            href={companyWhatsappHref(WHATSAPP_MESSAGES.generic)}
+            href={whatsappHref}
             target="_blank"
             rel="noopener noreferrer"
             className="whitespace-nowrap"
@@ -275,7 +227,7 @@ function ContactMenu({ locale }: { locale: Locale }) {
           >
             <MessageCircle aria-hidden />
             <span className="flex-1">{t("nav.contact.whatsapp", locale)}</span>
-            <span className="text-muted-foreground">{SITE_CONTACT.whatsappLabel}</span>
+            <span className="text-muted-foreground">{contact.whatsappDisplay}</span>
           </a>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -285,7 +237,7 @@ function ContactMenu({ locale }: { locale: Locale }) {
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a
-            href={SITE_CONTACT.mapsUrl}
+            href={contact.mapsUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="whitespace-nowrap"
@@ -295,7 +247,7 @@ function ContactMenu({ locale }: { locale: Locale }) {
             <span className="flex-1">{t("footer.contact.directions", locale)}</span>
           </a>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => navigate("/consultation")}>
+        <DropdownMenuItem onSelect={() => navigate(settings.globalCta.to)}>
           <CalendarClock aria-hidden />
           {t("nav.contact.book", locale)}
         </DropdownMenuItem>
@@ -317,16 +269,31 @@ function ContactMenu({ locale }: { locale: Locale }) {
 function MobileDrawer({
   locale,
   path,
+  groups,
+  advisor,
+  companyLinks,
+  settings,
   open,
   setOpen,
 }: {
   locale: Locale;
   path: string;
+  groups: NavGroup[];
+  advisor: NavItem;
+  companyLinks: NavItem[];
+  settings: SiteSettings;
   open: boolean;
   setOpen: (v: boolean) => void;
 }) {
   /* Drawer opens from the hamburger's edge: right in LTR, left in RTL. */
   const side = locale === "ar" ? "left" : "right";
+  const drawerGroups = [
+    ...groups.map((group) => ({ key: group.key, labelEn: group.labelEn, labelAr: group.labelAr, items: enabled(group.items) })),
+    { key: undefined, labelEn: "Company", labelAr: "الشركة", items: [advisor, ...companyLinks].filter((item) => item.enabled !== false) },
+  ];
+  const contact = settings.contact;
+  const phoneHref = `tel:${contact.phoneE164}`;
+  const whatsappHref = `https://wa.me/${contact.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.generic)}`;
 
   return (
     <Sheet
@@ -367,12 +334,12 @@ function MobileDrawer({
 
         <div className="flex-1 overflow-y-auto overscroll-contain">
           <nav aria-label={t("nav.menu.description", locale)} className="flex flex-col gap-5 p-4">
-            {DRAWER_GROUPS.map((group) => (
-              <div key={group.key}>
-                <h3 className="type-label mb-1.5 px-3 text-muted-foreground">{t(group.key, locale)}</h3>
+            {drawerGroups.map((group, index) => (
+              <div key={group.key ?? `company-${index}`}>
+                <h3 className="type-label mb-1.5 px-3 text-muted-foreground">{group.key ? t(group.key, locale) : locale === "ar" ? group.labelAr : group.labelEn}</h3>
                 <ul className="grid gap-0.5">
                   {group.items.map((item) => (
-                    <li key={item.to + item.key}>
+                    <li key={item.to + (item.key ?? item.labelEn ?? item.labelAr)}>
                       <Link
                         to={item.to}
                         query={item.query}
@@ -386,7 +353,7 @@ function MobileDrawer({
                           isItemActive(path, item.to) ? "text-brand-strong" : "text-foreground/85"
                         )}
                       >
-                        {t(item.key, locale)}
+                        {navLabel(item, locale)}
                       </Link>
                     </li>
                   ))}
@@ -401,14 +368,14 @@ function MobileDrawer({
           <h3 className="type-label mb-2 text-muted-foreground">{t("nav.contact.visit", locale)}</h3>
           <div className="grid grid-cols-2 gap-2">
             <Button asChild className="h-11 justify-center">
-              <a href={SITE_CONTACT.phoneHref} className="num" onClick={() => events.callClick("header_sheet")}>
+              <a href={phoneHref} className="num" onClick={() => events.callClick("header_sheet")}>
                 <Phone className="h-4 w-4" aria-hidden />
                 {t("nav.contact.call", locale)}
               </a>
             </Button>
             <Button asChild variant="outline" className="h-11 justify-center">
               <a
-                href={companyWhatsappHref(WHATSAPP_MESSAGES.generic)}
+                href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => events.whatsappClick("header_sheet")}
@@ -419,7 +386,7 @@ function MobileDrawer({
             </Button>
           </div>
           <a
-            href={SITE_CONTACT.mapsUrl}
+            href={contact.mapsUrl}
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => events.directionsClick("header_sheet")}
@@ -427,8 +394,8 @@ function MobileDrawer({
           >
             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
             <span className="leading-snug">
-              {SITE_CONTACT.addressLine1}
-              <span className="block text-muted-foreground">{SITE_CONTACT.addressLine2}</span>
+              {contact.addressLine1}
+              <span className="block text-muted-foreground">{contact.addressLine2}</span>
               <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-strong">
                 {t("footer.contact.directions", locale)}
                 <Navigation className="h-3 w-3 rtl:rotate-180" aria-hidden />
@@ -460,6 +427,10 @@ export function SiteHeader() {
   const loc = useRoute();
   const locale = (loc.locale as Locale) ?? "en";
   const { user } = useAuth();
+  const settings = useSiteSettings();
+  const NAV_GROUPS = settings.headerGroups;
+  const ADVISORS_ITEM = settings.advisorLink;
+  const COMPANY_LINKS = settings.companyLinks;
   const [open, setOpen] = React.useState(false);
   const [menuValue, setMenuValue] = React.useState("");
 
@@ -475,7 +446,7 @@ export function SiteHeader() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const active = useActiveTarget(loc.path);
+  const active = useActiveTarget(loc.path, NAV_GROUPS, ADVISORS_ITEM);
   const activeGroupId = active?.groupId ?? null;
   const advisorsActive = activeGroupId === "advisors";
   const closeMenu = () => setMenuValue("");
@@ -531,16 +502,16 @@ export function SiteHeader() {
                           groupActive && "text-brand-strong"
                         )}
                       >
-                        {t(group.key, locale)}
+                        {navLabel(group, locale)}
                         {groupActive && <ActiveUnderline />}
                       </NavigationMenuTrigger>
                       <NavigationMenuContent className="w-60 p-1.5 pr-1.5">
                         <div className="type-label px-3 pb-1 pt-1.5 text-muted-foreground">
-                          {t(group.key, locale)}
+                          {navLabel(group, locale)}
                         </div>
                         <ul className="grid gap-0.5">
-                          {group.items.map((item) => (
-                            <li key={item.key}>
+                          {enabled(group.items).map((item) => (
+                            <li key={item.to + (item.key ?? item.labelEn ?? item.labelAr)}>
                               <NavRow
                                 item={item}
                                 locale={locale}
@@ -564,7 +535,7 @@ export function SiteHeader() {
                       advisorsActive ? "text-brand-strong" : "text-foreground/80"
                     )}
                   >
-                    {t(ADVISORS_ITEM.key, locale)}
+                    {navLabel(ADVISORS_ITEM, locale)}
                     {advisorsActive && <ActiveUnderline />}
                   </Link>
                 </NavigationMenuItem>
@@ -575,13 +546,13 @@ export function SiteHeader() {
           {/* Tablet nav (1024–1279px): Properties + More + Advisors (compact) */}
           <div className="hidden items-center gap-0.5 lg:flex xl:hidden">
             <HoverDropdown
-              label={t("nav.groups.properties", locale)}
+              label={navLabel(NAV_GROUPS[0], locale)}
               active={activeGroupId === "properties"}
-              ariaLabel={t("nav.groups.properties", locale)}
+              ariaLabel={navLabel(NAV_GROUPS[0], locale)}
             >
-              {NAV_GROUPS[0].items.map((item) => (
+              {enabled(NAV_GROUPS[0].items).map((item) => (
                 <NavRow
-                  key={item.key}
+                  key={item.to + (item.key ?? item.labelEn ?? item.labelAr)}
                   item={item}
                   locale={locale}
                   active={isItemActive(loc.path, item.to)}
@@ -599,11 +570,11 @@ export function SiteHeader() {
                 <React.Fragment key={group.id}>
                   {gi > 0 && <DropdownMenuSeparator />}
                   <DropdownMenuLabel className="type-label px-2 pb-1 pt-1.5 text-muted-foreground">
-                    {t(group.key, locale)}
+                    {navLabel(group, locale)}
                   </DropdownMenuLabel>
-                  {group.items.map((item) => (
+                  {enabled(group.items).map((item) => (
                     <NavRow
-                      key={item.key}
+                      key={item.to + (item.key ?? item.labelEn ?? item.labelAr)}
                       item={item}
                       locale={locale}
                       active={isItemActive(loc.path, item.to)}
@@ -614,7 +585,7 @@ export function SiteHeader() {
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="type-label px-2 pb-1 pt-1.5 text-muted-foreground">
-                {t("nav.groups.company", locale)}
+                {locale === "ar" ? "الشركة" : "Company"}
               </DropdownMenuLabel>
               <NavRow
                 item={ADVISORS_ITEM}
@@ -622,24 +593,7 @@ export function SiteHeader() {
                 active={isItemActive(loc.path, ADVISORS_ITEM.to)}
                 onNavigate={closeMenu}
               />
-              <NavRow
-                item={{ to: "/about/team", key: "footer.company.team" }}
-                locale={locale}
-                active={isItemActive(loc.path, "/about/team")}
-                onNavigate={closeMenu}
-              />
-              <NavRow
-                item={{ to: "/about", key: "footer.company.about" }}
-                locale={locale}
-                active={isItemActive(loc.path, "/about")}
-                onNavigate={closeMenu}
-              />
-              <NavRow
-                item={{ to: "/contact", key: "footer.company.contact" }}
-                locale={locale}
-                active={isItemActive(loc.path, "/contact")}
-                onNavigate={closeMenu}
-              />
+              {enabled(COMPANY_LINKS).map((item) => <NavRow key={item.to + (item.key ?? item.labelEn ?? item.labelAr)} item={item} locale={locale} active={isItemActive(loc.path, item.to)} onNavigate={closeMenu} />)}
             </HoverDropdown>
 
             <Link
@@ -647,7 +601,7 @@ export function SiteHeader() {
               aria-current={advisorsActive ? "page" : undefined}
               className={cn(triggerBase, advisorsActive && "text-brand-strong")}
             >
-              {t(ADVISORS_ITEM.key, locale)}
+                {navLabel(ADVISORS_ITEM, locale)}
               {advisorsActive && <ActiveUnderline />}
             </Link>
           </div>
@@ -683,7 +637,7 @@ export function SiteHeader() {
 
             {/* Contact menu (≥1280px) — phone icon trigger + compact dropdown */}
             <div className="hidden xl:block">
-              <ContactMenu locale={locale} />
+              <ContactMenu locale={locale} settings={settings} />
             </div>
 
             {/* Locale switch (≥1280px; on smaller tiers it lives in the drawer) */}
@@ -725,7 +679,7 @@ export function SiteHeader() {
             </Button>
 
             {/* Hamburger drawer (<1280px) — full nav + contact + language */}
-            <MobileDrawer locale={locale} path={loc.path} open={open} setOpen={setOpen} />
+            <MobileDrawer locale={locale} path={loc.path} groups={NAV_GROUPS} advisor={ADVISORS_ITEM} companyLinks={COMPANY_LINKS} settings={settings} open={open} setOpen={setOpen} />
           </div>
         </div>
       </div>

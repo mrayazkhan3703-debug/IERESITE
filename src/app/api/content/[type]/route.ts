@@ -7,7 +7,7 @@ import { readContentBlocks } from "@/lib/content-blocks";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED_TYPES = new Set(["guides", "articles", "insights", "faqs", "testimonials"]);
+const ALLOWED_TYPES = new Set(["guides", "articles", "insights", "international", "pages", "faqs", "testimonials"]);
 
 export const GET = apiHandler(async (req, ctx: { params: Promise<{ type: string }> }) => {
   const { type } = await ctx.params;
@@ -42,17 +42,22 @@ export const GET = apiHandler(async (req, ctx: { params: Promise<{ type: string 
 
   const url = new URL(req.url);
   const slug = url.searchParams.get("slug");
+  const requestedLocale = url.searchParams.get("locale");
+  const locale = requestedLocale === "ar" ? "ar" : "en";
 
   if (slug) {
     const requestedSection = url.searchParams.get("section");
-    const section = ["guides", "insights", "international"].includes(requestedSection ?? "")
+    const section = ["guides", "insights", "international", "pages"].includes(requestedSection ?? "")
       ? requestedSection!
       : type === "articles" ? "insights" : "guides";
+    const typeFilter = section === "international" ? "INTERNATIONAL_GUIDE" : section === "pages" ? "PAGE" : section === "insights" ? { in: ["ARTICLE", "GUIDE"] } : { in: ["GUIDE", "AREA_GUIDE"] };
     const entry = await db.contentEntry.findFirst({
       where: {
         slug,
+        locale,
         ...publicContentWhere(),
-        contentType: type === "guides" ? { in: ["GUIDE", "AREA_GUIDE"] } : type === "reports" ? "MARKET_REPORT" : { in: ["ARTICLE", "GUIDE"] },
+        contentType: typeFilter,
+        ...(section === "international" ? { sourceName: { not: null }, sourceUrl: { startsWith: "https://" }, sourceVerifiedAt: { not: null, lte: new Date() }, freshnessReviewDueAt: { gt: new Date() } } : {}),
       },
       include: { translationGroup: { select: { entries: { select: { locale: true, slug: true, status: true, publishedAt: true } } } } },
     });
@@ -74,7 +79,7 @@ export const GET = apiHandler(async (req, ctx: { params: Promise<{ type: string 
         sourceVerifiedAt: entry.sourceVerifiedAt?.toISOString() ?? null,
         freshnessReviewDueAt: entry.freshnessReviewDueAt?.toISOString() ?? null,
         contentType: entry.contentType,
-        localeAlternates: publicContentLocaleAlternates(section, [
+      localeAlternates: publicContentLocaleAlternates(section, [
           { locale: entry.locale, slug: entry.slug, status: entry.status, publishedAt: entry.publishedAt },
           ...(entry.translationGroup?.entries ?? []),
         ]),
@@ -85,14 +90,15 @@ export const GET = apiHandler(async (req, ctx: { params: Promise<{ type: string 
   const entries = await db.contentEntry.findMany({
     where: {
       ...publicContentWhere(),
-      locale: "en",
-      contentType: type === "guides" ? { in: ["GUIDE", "AREA_GUIDE"] } : type === "reports" ? "MARKET_REPORT" : { in: ["ARTICLE", "GUIDE"] },
+      locale,
+      contentType: type === "international" ? "INTERNATIONAL_GUIDE" : type === "pages" ? "PAGE" : type === "guides" ? { in: ["GUIDE", "AREA_GUIDE"] } : { in: ["ARTICLE", "GUIDE"] },
+      ...(type === "international" ? { sourceName: { not: null }, sourceUrl: { startsWith: "https://" }, sourceVerifiedAt: { not: null, lte: new Date() }, freshnessReviewDueAt: { gt: new Date() } } : {}),
     },
     orderBy: { publishedAt: "desc" },
     take: 30,
     select: {
       id: true, slug: true, title: true, excerpt: true, category: true,
-      readingMinutes: true, publishedAt: true, sourceName: true, sourceVerifiedAt: true, contentType: true,
+      readingMinutes: true, publishedAt: true, sourceName: true, sourceUrl: true, sourceVerifiedAt: true, freshnessReviewDueAt: true, contentType: true,
     },
   });
 
@@ -101,6 +107,8 @@ export const GET = apiHandler(async (req, ctx: { params: Promise<{ type: string 
       ...e,
       publishedAt: e.publishedAt?.toISOString() ?? null,
       sourceVerifiedAt: e.sourceVerifiedAt?.toISOString() ?? null,
+      sourceUrl: e.sourceUrl,
+      freshnessReviewDueAt: e.freshnessReviewDueAt?.toISOString() ?? null,
     })),
   });
 });

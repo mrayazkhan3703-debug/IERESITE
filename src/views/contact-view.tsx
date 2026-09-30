@@ -5,11 +5,12 @@ import { usePageMeta } from "@/components/layout/app-shell";
 import { Breadcrumbs, SectionHeading } from "@/components/common";
 import { useLeadForm, LeadFormDialog } from "@/components/leads/lead-form";
 import { Button } from "@/components/ui/button";
-import { SITE_CONTACT, WHATSAPP_MESSAGES, companyWhatsappHref } from "@/lib/config";
+import { WHATSAPP_MESSAGES } from "@/lib/config";
 import { events } from "@/lib/analytics-tracker";
 import { localeOf, t } from "@/lib/i18n";
 import { useRoute, Link } from "@/lib/router";
 import { MapPin, Phone, MessageCircle, Navigation, CalendarClock } from "lucide-react";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 
 /**
  * Contact view (V3-A): real verified company contact only — office address
@@ -21,6 +22,9 @@ export default function ContactView() {
   const leadForm = useLeadForm();
   const loc = useRoute();
   const locale = localeOf(loc.locale);
+  const settings = useSiteSettings();
+  const contact = settings.contact;
+  const whatsappHref = `https://wa.me/${contact.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.generic)}`;
 
   usePageMeta({
     title: t("contact.meta.title", locale),
@@ -31,8 +35,8 @@ export default function ContactView() {
     {
       icon: MapPin,
       label: t("contact.office.label", locale),
-      lines: [SITE_CONTACT.addressLine1, SITE_CONTACT.addressLine2] as string[],
-      href: SITE_CONTACT.mapsUrl,
+      lines: [contact.addressLine1, contact.addressLine2].filter(Boolean) as string[],
+      href: contact.mapsUrl,
       action: t("contact.office.directions", locale),
       external: true,
       onClick: () => events.directionsClick("contact_page"),
@@ -40,8 +44,8 @@ export default function ContactView() {
     {
       icon: Phone,
       label: t("contact.phone.label", locale),
-      lines: [SITE_CONTACT.phone] as string[],
-      href: SITE_CONTACT.phoneHref,
+      lines: [contact.phoneDisplay] as string[],
+      href: `tel:${contact.phoneE164}`,
       action: t("contact.phone.call", locale),
       external: false,
       onClick: () => events.callClick("contact_page"),
@@ -49,8 +53,8 @@ export default function ContactView() {
     {
       icon: MessageCircle,
       label: "WhatsApp",
-      lines: [SITE_CONTACT.whatsappLabel] as string[],
-      href: companyWhatsappHref(WHATSAPP_MESSAGES.generic),
+      lines: [contact.whatsappDisplay] as string[],
+      href: whatsappHref,
       action: t("contact.whatsapp.open", locale),
       external: true,
       onClick: () => events.whatsappClick("contact_page"),
@@ -114,13 +118,13 @@ export default function ContactView() {
             </Button>
             <div className="mt-3 grid grid-cols-2 gap-2.5">
               <Button asChild variant="outline">
-                <a href={SITE_CONTACT.phoneHref} onClick={() => events.callClick("contact_page_cta")}>
+                <a href={`tel:${contact.phoneE164}`} onClick={() => events.callClick("contact_page_cta")}>
                   <Phone className="h-4 w-4" aria-hidden /> {t("nav.contact.call", locale)}
                 </a>
               </Button>
               <Button asChild variant="outline">
                 <a
-                  href={companyWhatsappHref(WHATSAPP_MESSAGES.generic)}
+                  href={whatsappHref}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => events.whatsappClick("contact_page_cta")}
@@ -130,8 +134,8 @@ export default function ContactView() {
               </Button>
             </div>
             <Button asChild variant="ghost" className="mt-2.5 w-full gap-2">
-              <Link to="/consultation">
-                <CalendarClock className="h-4 w-4" aria-hidden /> {t("contact.form.book", locale)}
+              <Link to={settings.globalCta.to}>
+                <CalendarClock className="h-4 w-4" aria-hidden /> {settings.globalCta.key ? t(settings.globalCta.key, locale) : (locale === "ar" ? settings.globalCta.labelAr : settings.globalCta.labelEn) || t("contact.form.book", locale)}
               </Link>
             </Button>
           </div>

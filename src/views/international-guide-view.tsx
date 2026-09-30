@@ -6,7 +6,7 @@ export default function IntlGuideView({ slug }: { slug: string }) {
   return (
     <GuideArticleView
       slug={slug}
-      base="guides"
+      base="international"
       baseLabel="International"
       fallbackCategory="International"
       leadContext={{ intent: "CONSULT", entityTitle: "International buyer consultation" }}

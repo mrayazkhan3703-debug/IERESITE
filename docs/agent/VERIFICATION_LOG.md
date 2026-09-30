@@ -76,3 +76,12 @@ Concise, append-only evidence. No secret values are recorded here.
 - PASS — At the owner's earlier request, Render service `IERESITE` was updated with `AUTH_MFA_REQUIRED=false`; deployment `dep-datvi0rncjis73a6iq60` is live. The login route uses this flag to skip MFA challenges for privileged accounts.
 - PASS — `/admin`, `/account/login?next=%2Fadmin`, `/`, `/properties`, `/properties/map`, `/advisor` and `/api/health` all returned HTTP 200 after the deployment.
 - LIMITATION — This disables the sign-in requirement; it does not erase the account's encrypted authenticator enrollment. An owner-specific authenticated login was not performed because no password was available in the workspace.
+
+## 2026-09-30 — Phases 08 and 09 local implementation checkpoint
+
+- PASS — Prisma schema validates with a local placeholder connection string; Prisma Client generation succeeds for the new settings/career models.
+- PASS — `tsc --noEmit` passes after adding the Site Settings, public CMS page, international provenance, career workflow, sitemap, and localized routes.
+- PASS — ESLint completes without diagnostics.
+- PASS — Next.js optimized production build compiles and generates all 122 static pages; route inventory includes `/pages/[slug]`, `/ar/pages/[slug]`, `/careers/[slug]`, `/ar/careers/[slug]`, the career public/admin APIs, and settings APIs.
+- LIMITATION — The Bun test suites and Docker-backed hosted checks have not yet run. The migration has not yet been applied to Render; hosted CI and the Render deployment/route smoke are pending.
+- PENDING — Phases 08–09 remain IN_PROGRESS until hosted CI, forward migration, production deployment and public/admin route smoke all pass. Phase 01 remains owner-deferred at USD 7/month; no worker was created and no queue-drain claim is made.

@@ -1,39 +1,39 @@
 "use client";
 
+import * as React from "react";
 import { CompanyView } from "./about-view";
-import { Link } from "@/lib/router";
+import { Link, useRoute } from "@/lib/router";
 import { Button } from "@/components/ui/button";
-import { ProvenanceBadge } from "@/components/common";
+import { EmptyState, LoadingState } from "@/components/common";
+import { BriefcaseBusiness } from "lucide-react";
+
+interface Opening {
+  slug: string; title: string; department: string; location: string; employmentType: string; workplaceType: string;
+  summary: string; description: string; closesAt: string | null;
+}
 
 export default function CareersView() {
-  return (
-    <CompanyView
-      page="Careers"
-      kicker="Join us"
-      title="Build the evidence layer of Dubai property"
-      intro="We hire for judgment: advisors who can defend a number, engineers who sweat provenance, and operators who treat a lead like a promise."
-    >
-      <div className="mt-8 space-y-4">
-        {[
-          { title: "Senior Property Consultant — Waterfront & Off-Plan", team: "Advisory", location: "Downtown Dubai" },
-          { title: "Investment Analyst (Market Intelligence)", team: "Research", location: "Downtown Dubai" },
-          { title: "Full-Stack Engineer (Platform)", team: "Engineering", location: "Dubai / Remote-friendly" },
-        ].map((r) => (
-          <div key={r.title} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-5">
-            <div>
-              <h2 className="font-display text-lg font-semibold">{r.title}</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">{r.team} · {r.location}</p>
-            </div>
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/contact" query={{ topic: `Application: ${r.title}` }}>Apply via contact</Link>
-            </Button>
-          </div>
-        ))}
-        <div className="rounded-lg border border-border/70 bg-sand/50 p-4 text-xs text-muted-foreground">
-          <ProvenanceBadge chip={{ sourceType: "DEMO" }} />
-          <span className="ml-2">Role descriptions are illustrative for this development deployment — confirm live openings with the team.</span>
+  const route = useRoute();
+  const locale = route.locale === "ar" ? "ar" : "en";
+  const [openings, setOpenings] = React.useState<Opening[] | null>(null);
+  const [loadFailed, setLoadFailed] = React.useState(false);
+  React.useEffect(() => {
+    let active = true;
+    fetch(`/api/careers/openings?locale=${locale}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (active) { setOpenings(data?.openings ?? []); setLoadFailed(!data); } })
+      .catch(() => { if (active) { setOpenings([]); setLoadFailed(true); } });
+    return () => { active = false; };
+  }, [locale]);
+
+  return <CompanyView page="Careers" kicker="Join us" title="Build the evidence layer of Dubai property" intro="Explore roles currently approved and published by the team.">
+    <div className="mt-8 space-y-4">
+      {openings === null ? <LoadingState rows={3} /> : loadFailed ? <EmptyState title="Openings could not be loaded" description="Refresh the page to retry." /> : openings.length === 0 ? <EmptyState title="No current openings" description="There are no published vacancies at this time. Please check again later." /> : openings.map((opening) => <article key={opening.slug} className="rounded-xl border border-border/70 bg-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex gap-3"><BriefcaseBusiness className="mt-1 h-5 w-5 text-brand" aria-hidden /><div><h2 className="font-display text-lg font-semibold"><Link to={`/careers/${opening.slug}`} className="hover:text-brand-strong">{opening.title}</Link></h2><p className="mt-0.5 text-sm text-muted-foreground">{opening.department} · {opening.location} · {opening.employmentType} · {opening.workplaceType}</p><p className="mt-3 max-w-3xl text-sm text-foreground/85">{opening.summary}</p></div></div>
+          <Button variant="outline" size="sm" asChild><Link to="/contact" query={{ topic: `Application: ${opening.title}` }}>Apply via contact</Link></Button>
         </div>
-      </div>
-    </CompanyView>
-  );
+      </article>)}
+    </div>
+  </CompanyView>;
 }

@@ -5,8 +5,8 @@
 - Current source checkpoint: `94190061a1eae85a943c5f542793c61d96c7007f`
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
 - Admin login MFA requirement: disabled at the owner's request with Render `AUTH_MFA_REQUIRED=false`; deploy `dep-datvi0rncjis73a6iq60` is live. Existing encrypted MFA enrollment data remains stored.
-- Last completed phase: Phase 05 (`768d447e73c5af0c40564aa9fa749c6addb799f9`)
-- Current phase status: Phases 02–07 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
+- Last completed phase: Phase 07 (`94190061a1eae85a943c5f542793c61d96c7007f`)
+- Current phase status: Phases 02–07 COMPLETE; Phases 08–09 are IN_PROGRESS pending hosted verification and deployment; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
 - Last verified migration: `20260929000200_project_unit_studio_provenance` (34/34 applied in hosted CI)
 - Last verified implementation deployment: `94190061a1eae85a943c5f542793c61d96c7007f` / Render deploy `dep-datv7fgu01pc73fr2c7g` (live; Phases 06–07)
 
@@ -50,10 +50,20 @@
 - Test and source evidence establishes CMS readiness, but the staging site still uses demo inventory. Do not represent demo or unsourced values as owner-approved real estate facts.
 - Phases 08 onward have not been started.
 
+## Phases 08 and 09 local implementation checkpoint
+
+- Phase 08 adds typed public Page and International Guide records to the existing revision-aware Content Studio. Page body blocks now include a fixed allowlisted module catalog; raw HTML, arbitrary scripts, and arbitrary component selection are not supported. International Guide review and publication require an HTTPS source, a verification date that is not in the future, and a future freshness-review date.
+- Phase 08 adds owner/admin Site Settings for safe local navigation/footer routes, verified public contact fields, social links, a bounded home-module order, the global CTA, and public default/fallback images. Settings writes are version-checked, revisioned, audited, and public image IDs are validated against the Media Library.
+- Phase 09 replaces illustrative public job listings with published CareerOpening records, a dedicated draft/review/publish/close workflow, immutable revision history, English/Arabic locale records, and public list/detail routes. The latest editor cannot review their own role. Expired and unpublished roles remain hidden.
+- Migration added: `20260930000100_site_settings_and_careers` (not yet applied to Render).
+- Local checks pass: Prisma schema validation/client generation, TypeScript `tsc --noEmit`, ESLint, and optimized Next.js production build (including `/pages/[slug]`, `/careers/[slug]`, APIs, and Arabic routes). Hosted tests, migration execution, Render deployment, and live route smoke remain pending.
+- No career/demo rows were seeded. The international buyer hub now shows only source-current published editorial records; until editors publish one, the truthful empty state is shown.
+- Phase 01 remains deferred exactly as recorded above. This run did not create a worker, drain the queue, or change the plan.
+
 ## Next phase
 
-- Phase 08: Page/Content Studio and settings, after Phases 06–07 pass hosted verification.
-- Read first: `docs/agent/PHASE_CHECKLIST.md`, `docs/agent/CMS_GAP_MATRIX.md`, `docs/agent/DESIGN_REFERENCE.md`, `src/features/admin/`, and the relevant project and unit APIs.
+- Finish hosted verification and deploy for Phases 08–09, then update the two phase checkpoints with run/deploy IDs and public route smoke evidence.
+- Once Phases 08–09 are complete, Phase 10 is next under the exactly-two-phases-per-run rule.
 
 ## Rollback
 
