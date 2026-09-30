@@ -2,13 +2,13 @@
 
 - Source baseline commit: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
 - Current branch: `codex/production-recovery-wave1`
-- Current source checkpoint: `94190061a1eae85a943c5f542793c61d96c7007f`
+- Current source checkpoint: `d07444ae0b188599c831a4010600a5f8309d3133` (tested correction head `ed7890ba1080aa69309e9ead43c8f1c1b19164b1` has the same code tree)
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
 - Admin login MFA requirement: disabled at the owner's request with Render `AUTH_MFA_REQUIRED=false`; deploy `dep-datvi0rncjis73a6iq60` is live. Existing encrypted MFA enrollment data remains stored.
-- Last completed phase: Phase 07 (`94190061a1eae85a943c5f542793c61d96c7007f`)
-- Current phase status: Phases 02–07 COMPLETE; Phases 08–09 are IN_PROGRESS pending hosted verification and deployment; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28.
-- Last verified migration: `20260929000200_project_unit_studio_provenance` (34/34 applied in hosted CI)
-- Last verified implementation deployment: `94190061a1eae85a943c5f542793c61d96c7007f` / Render deploy `dep-datv7fgu01pc73fr2c7g` (live; Phases 06–07)
+- Last completed phase: Phase 09 (`d07444ae0b188599c831a4010600a5f8309d3133`)
+- Current phase status: Phases 02–09 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28. Phases 10–19 remain NOT_STARTED.
+- Last verified migration: `20260930000200_career_details` (36/36 completed in hosted CI and shared Supabase)
+- Last verified implementation deployment: `d07444ae0b188599c831a4010600a5f8309d3133` / Render deploy `dep-daueu27f3r2c73ernrg0` (live; Phases 08–09 plus returning-visitor hydration correction)
 
 ## Completed phase evidence
 
@@ -48,27 +48,29 @@
 - Live health reports database and search index OK. It remains `degraded` only for `worker-heartbeat-stale-or-missing`; the worker status is `MISSING` because its USD 7/month service remains deferred.
 - The advisor public-profile gate requires an active, email-verified AGENT account; new profiles remain private. Developer verification requires an owner/admin and a source URL; payment-plan VERIFIED status requires an owner/admin and a source document.
 - Test and source evidence establishes CMS readiness, but the staging site still uses demo inventory. Do not represent demo or unsourced values as owner-approved real estate facts.
-- Phases 08 onward have not been started.
+- Phases 10 onward have not been started.
 
-## Phases 08 and 09 local implementation checkpoint
+## Phases 08 and 09 completed implementation
 
 - Phase 08 adds typed public Page and International Guide records to the existing revision-aware Content Studio. Page body blocks now include a fixed allowlisted module catalog; raw HTML, arbitrary scripts, and arbitrary component selection are not supported. International Guide review and publication require an HTTPS source, a verification date that is not in the future, and a future freshness-review date.
 - Phase 08 adds owner/admin Site Settings for safe local navigation/footer routes, verified public contact fields, social links, a bounded home-module order, the global CTA, and public default/fallback images. Settings writes are version-checked, revisioned, audited, and public image IDs are validated against the Media Library.
 - Phase 09 replaces illustrative public job listings with published CareerOpening records, a dedicated draft/review/publish/close workflow, immutable revision history, English/Arabic locale records, and public list/detail routes. The latest editor cannot review their own role. Expired and unpublished roles remain hidden.
-- Forward migrations added: `20260930000100_site_settings_and_careers` and `20260930000200_career_details` (not yet applied to Render). The second adds role requirements/responsibilities, salary disclosures, application destinations, date/SEO fields and RLS on the four new tables.
+- Forward migrations added and applied by Render startup to shared Supabase: `20260930000100_site_settings_and_careers` and `20260930000200_career_details`. The second adds role requirements/responsibilities, salary disclosures, application destinations, date/SEO fields and RLS on the four new tables. Both finished on 2026-09-30 without rollback; 36 completed migrations.
 - Final source review completes form-based bilingual navigation/core-page copy, existing interactive CMS modules, validated curated entity references, public image fallback, and reviewed career application/detail/restore workflows. Closed or archived careers restore only to private drafts.
-- New tests cover safe settings, exact locale selection, independent career approval/publication, expired/scheduled roles, immutable revisions, private media/entity rejection, source freshness, and browser form journeys. The earlier PR CI run `36688466859` passed; the expanded implementation requires a new exact-commit CI gate before merge.
-- Local checks pass: Prisma schema validation/client generation, TypeScript `tsc --noEmit`, ESLint, and optimized Next.js production build (including `/pages/[slug]`, `/careers/[slug]`, APIs, and Arabic routes). Hosted tests, migration execution, Render deployment, and live route smoke remain pending.
+- New tests cover safe settings, exact locale selection, independent career approval/publication, expired/scheduled roles, immutable revisions, private media/entity rejection, source freshness, and browser form journeys. CI `36699565960` (43) passes the full feature gate; correction CI `36702593667` (45) adds EN/AR saved-scenario hydration/reload regressions and passes all gates.
+- Local checks pass: Prisma validation/client generation, TypeScript, ESLint, optimized Next.js build (122 static pages) and focused Bun suites. Full local unit wrapper includes DB suites and cannot pass without disposable Postgres; hosted CI passes 253 unit/contract tests, 101 integration tests, 71 browser checks and 16 performance checks/budgets, plus worker/SMTP/storage/backup recovery and secret scans.
+- PR #1 and PR #2 are merged. Final Render deploy `dep-daueu27f3r2c73ernrg0` is live on `d07444ae0b188599c831a4010600a5f8309d3133`. Live route/API smoke has no server exception; anonymous Admin API access is denied and unpublished pages/roles return 404. Existing OWNER browser session loads Settings/Careers/Content Studio and restores its saved Scenario Lab without new console errors.
+- No environment variables changed in this wave. Health reports database/search healthy with 3 demo listings; only the owner-deferred worker remains degraded. No queue drain or production-cutover readiness is claimed.
 - No career/demo rows were seeded. The international buyer hub now shows only source-current published editorial records; until editors publish one, the truthful empty state is shown.
 - Phase 01 remains deferred exactly as recorded above. This run did not create a worker, drain the queue, or change the plan.
 
 ## Next phase
 
-- Finish hosted verification and deploy for Phases 08–09, then update the two phase checkpoints with run/deploy IDs and public route smoke evidence.
-- Once Phases 08–09 are complete, Phase 10 is next under the exactly-two-phases-per-run rule.
+- Next two phases: Phase 10 Market Intelligence operations/ingestion and Phase 11 Search/map production completion.
+- This run stops after verified Phases 08–09. Do not start a third phase; preserve the worker deferral and disabled live-provider gates.
 
 ## Rollback
 
 - Safe source tag: `iere-wave1-baseline-20260928` -> `fb6ae2208d108d7cb57d8b52826201e85c608a61`.
-- DB note: Phase 01 applied `20260928000100_worker_heartbeat`; Phase 06 applied `20260929000200_project_unit_studio_provenance` in the verified CI database. Use forward fixes and never reset the shared Supabase database.
+- DB note: all 36 migrations, including both 20260930 settings/career migrations, are applied to shared Supabase. Use forward fixes and never reset the shared database.
 - Workspace note: the original `F:\\IERE Website` checkout remains dirty and untouched. Wave 1 runs in the managed worktree at `C:\\Users\\mraya\\.codex\\worktrees\\production-recovery-wave1\\IERE Website`.

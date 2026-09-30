@@ -10,10 +10,10 @@ Baseline API/editor coverage compared with the canonical Prisma domain.
 | Developers | GET/POST/PATCH plus evidence-backed verification | Owner/admin verification requires an evidence URL and is audited; confirmed developer identity and source material still need owner input | 07 |
 | Advisors | GET/POST/PATCH plus invitation entry point and linked account profile | Profiles start private; public activation requires an active, email-verified AGENT account and profile; real agent invitations and details remain owner-managed | 07 |
 | Units | GET plus audited manual CRUD and source-preserving CSV/JSON import diff/apply | Imported facts and editorial overrides are stored separately with availability history; an owner-approved inventory feed remains to be supplied | 06 |
-| Content | GET/POST/PATCH; constrained create types | Pages/landing/legal/team, typed blocks, translations, preview/revisions and publishing | 08–09 |
-| Site settings/nav | Mostly source constants | Audited contact presentation, menus, CTA/social/default media and safe module ordering | 08 |
-| Careers | Hard-coded illustrative roles | Job-opening model/editor, review/publish/close and public read model | 09 |
-| International | Large source-controlled editorial blocks | Sourced, date-reviewed CMS sections and curated guide references | 09 |
+| Content | Revision-aware Page Studio with PAGE/editorial types, typed interactive modules, validated entity/media blocks, translations, preview and independent publication | Owner-managed real editorial content is still to be supplied; brand/system/legal constraints remain enforced | 08–09 |
+| Site settings/nav | Audited/versioned visual bilingual navigation/footer, core-page copy, contact, CTA/social/default media and constrained home ordering | Built-in defaults remain active until the owner saves verified public settings | 08 |
+| Careers | Dedicated role model/editor, requirements/application/salary/date/SEO fields, independent approve/publish, close/archive/private restore and public details | No real vacancies have been supplied; published inventory remains empty rather than illustrative | 09 |
+| International | Source-current reviewed CMS guides, source dates/links, locale-aware hub and homepage entry | No current verified guidance has been published; regulatory material requires evidence and freshness review | 09 |
 | Media | Upload, searchable/filterable library, metadata, public picker, usage graph, gallery attach/reorder/cover, property floor plans/documents, protected unused-asset deletion | Bulk upload and replace/archive workflows remain; live manual upload was not separately exercised | 04 |
 | Market | Reports/import/data-quality pieces | Source registry, actual file mapping/validation/apply, freshness and metric rebuild | 10 |
 | Search/map | Provider APIs and public views | Operational reindex diagnostics, stable map, URL/list sync and exclusion reasons | 02/11/15 |
