@@ -3,8 +3,8 @@ import { db } from "@/lib/db";
 import type { SessionUser } from "@/server/auth";
 import { HttpError, audit } from "@/server/auth";
 import { emitEvent } from "@/server/jobs/outbox";
-import path from "path";
 import fs from "fs/promises";
+import { localMediaPath } from "@/server/media/file-storage";
 import { deletePublicObject } from "@/server/storage/object-store";
 
 export interface MediaMetadataInput {
@@ -32,13 +32,13 @@ export async function updateMediaMetadata(actor: SessionUser, input: MediaMetada
       if (input.posterMediaId && !await tx.mediaAsset.findFirst({ where: { id: input.posterMediaId, isPrivate: false, mimeType: { startsWith: "image/" } } })) throw new HttpError(422, "Choose a public image as the video poster.", "INVALID_POSTER");
       const changed = await tx.mediaAsset.updateMany({
         where: { id: media.id, isPrivate: false, updatedAt: expectedUpdatedAt },
-        data: { altText, caption, ...(input.posterMediaId !== undefined ? { posterMediaId: input.posterMediaId } : {}), updatedAt: new Date() },
+        data: { ...(input.altText !== undefined ? { altText } : {}), ...(input.caption !== undefined ? { caption } : {}), ...(input.posterMediaId !== undefined ? { posterMediaId: input.posterMediaId } : {}), updatedAt: new Date() },
       });
       if (changed.count !== 1) throw new HttpError(409, "This media asset changed during the save. Refresh and retry.", "VERSION_CONFLICT");
       await audit({
         actorId: actor.id, organizationId: actor.organizationId, action: "media.metadata_update",
         resourceType: "media", resourceId: media.id,
-        before: { altText: media.altText, caption: media.caption }, after: { altText, caption }, ip,
+        before: { altText: media.altText, caption: media.caption, posterMediaId: media.posterMediaId }, after: { altText: input.altText === undefined ? media.altText : altText, caption: input.caption === undefined ? media.caption : caption, posterMediaId: input.posterMediaId === undefined ? media.posterMediaId : input.posterMediaId }, ip,
       }, tx);
       await emitEvent("media", media.id, "media.updated", { mediaId: media.id, by: actor.email }, tx);
       const updated = await tx.mediaAsset.findUniqueOrThrow({ where: { id: media.id }, select: { updatedAt: true } });
@@ -85,10 +85,10 @@ export async function deleteUnusedMedia(actor: SessionUser, mediaAssetId: string
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   const objectStorage = media.storageKey.startsWith("public/media/");
-  const keys = [media.storageKey, ...["thumb", "card", "hero"].map((variant) => objectStorage ? `${media.storageKey}.${variant}.webp` : `${media.id}.${variant}.webp`)];
+  const keys = [media.storageKey, ...["thumb", "card", "hero"].map((variant) => objectStorage || media.storageKey.startsWith("local/media/") ? `${media.storageKey}.${variant}.webp` : `${media.id}.${variant}.webp`)];
   const cleanup = await Promise.allSettled(keys.map(async (key) => {
     if (objectStorage) await deletePublicObject(key);
-    else await fs.unlink(path.join(process.cwd(), "public", "uploads", key));
+    else await fs.unlink(localMediaPath(key));
   }));
   return { ok: true as const, cleanupComplete: cleanup.every((item) => item.status === "fulfilled") };
 }

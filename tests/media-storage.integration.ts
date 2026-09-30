@@ -106,6 +106,39 @@ describe("S3-compatible public and private media delivery", () => {
     expect((await requestContent(stored.id)).status).toBe(404);
   });
 
+  test("strips metadata from original images as well as generated derivatives", async () => {
+    const bytes = await sharp({ create: { width: 19, height: 21, channels: 3, background: { r: 21, g: 23, b: 24 } } }).jpeg().withExif({ IFD0: { Artist: "Synthetic private metadata" } }).toBuffer();
+    expect((await sharp(bytes).metadata()).exif).toBeDefined();
+    const stored = await storeUpload(new File([new Uint8Array(bytes)], "exif-verification.jpg", { type: "image/jpeg" })); uploaded.push(stored);
+    const response = await requestContent(stored.id);
+    const metadata = await sharp(Buffer.from(await response.arrayBuffer())).metadata();
+    expect(metadata.exif).toBeUndefined(); expect(metadata.width).toBe(19);
+  });
+
+  test("gated report grants are scoped, expire, and revoke when unpublished", async () => {
+    const { issueReportDownloadGrant, validReportDownloadGrant } = await import("@/server/media/download-grant");
+    const bytes = Buffer.from("%PDF-1.4\n% Synthetic isolated grant verification " + crypto.randomUUID() + "\n%%EOF\n");
+    const stored = await storeUpload(new File([new Uint8Array(bytes)], "synthetic-grant.pdf", { type: "application/pdf" })); uploaded.push(stored);
+    const report = await db.marketReport.create({ data: { title: "Synthetic grant verification", slug: "grant-verification-" + crypto.randomUUID(), fileMediaId: stored.id, gated: true, status: "PUBLISHED", publishedAt: new Date() } });
+    try {
+      const base = process.env.TEST_BASE_URL ?? "http://127.0.0.1:3000";
+      expect([401, 403]).toContain((await fetch(base + stored.url)).status);
+      const url = await issueReportDownloadGrant(stored.id, report.id);
+      const token = new URL(url!, base).searchParams.get("grant");
+      expect(await validReportDownloadGrant(token, stored.id)).toBe(true);
+      expect(await validReportDownloadGrant(token, "different-media")).toBe(false);
+      const response = await fetch(base + url);
+      expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("content-security-policy")).toBe("sandbox");
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
+      await db.mediaDownloadGrant.updateMany({ where: { mediaId: stored.id }, data: { expiresAt: new Date(Date.now() - 1) } });
+      expect(await validReportDownloadGrant(token, stored.id)).toBe(false);
+      const next = await issueReportDownloadGrant(stored.id, report.id);
+      await db.marketReport.update({ where: { id: report.id }, data: { status: "DRAFT" } });
+      expect(await validReportDownloadGrant(new URL(next!, base).searchParams.get("grant"), stored.id)).toBe(false);
+    } finally { await db.mediaDownloadGrant.deleteMany({ where: { mediaId: stored.id } }); await db.marketReport.delete({ where: { id: report.id } }); }
+  });
+
   test("returns an existing public asset for checksum reuse", async () => {
     const bytes = await sharp({ create: { width: 13, height: 17, channels: 3, background: { r: 11, g: 12, b: 13 } } }).png().toBuffer();
     const file = new File([new Uint8Array(bytes)], "duplicate-reuse.png", { type: "image/png" });

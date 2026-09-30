@@ -1,7 +1,7 @@
 /**
  * Media pipeline (Q06): upload validation (MIME sniffing, size caps, extension
  * allowlist, filename sanitization), sharp derivative generation (EXIF stripped),
- * galleries/documents wiring. Local development can use public/uploads; Docker uses
+ * galleries/documents wiring. Local development uses protected local files; Docker uses
  * the S3-compatible object store with same-origin, privacy-checked delivery.
  */
 import { db } from "@/lib/db";
@@ -13,8 +13,9 @@ import crypto from "crypto";
 import { deletePrivateObject, deletePublicObject, getPublicObject, putPrivateObject, putPublicObject } from "@/server/storage/object-store";
 import { HttpError } from "@/server/auth";
 import { validateVideo } from "./video-validation";
+import { localMediaPath, readLocalMedia } from "./file-storage";
 
-const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
+
 
 const ALLOWED = new Map<string, { ext: string; kind: string }>([
   ["image/jpeg", { ext: "jpg", kind: "IMAGE" }],
@@ -75,7 +76,7 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
   if (file.size === 0 || file.size > maxBytes) {
     throw new HttpError(400, `Choose a nonempty file up to ${config.MEDIA_MAX_UPLOAD_MB}MB.`, "INVALID_FILE_SIZE");
   }
-  const buf = Buffer.from(await file.arrayBuffer());
+  let buf: Buffer = Buffer.from(await file.arrayBuffer());
   if (buf.length !== file.size || buf.length > maxBytes) throw new HttpError(400, "Invalid file size.", "INVALID_FILE_SIZE");
   const sniffed = sniffMime(buf);
   const mime = sniffed ?? file.type;
@@ -97,22 +98,24 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
     throw new HttpError(400, "Choose an asset kind compatible with the uploaded file.", "INVALID_MEDIA_KIND");
   }
   const videoDimensions = mime.startsWith("video/") ? await validateVideo(buf, mime) : null;
-  const validatedImage = mime.startsWith("image/") ? await imageDimensions(buf) : null;
-  if (mime.startsWith("image/") && !validatedImage) throw new HttpError(400, "This image is malformed or could not be decoded.", "INVALID_IMAGE");
+  const validatedImage = mime.startsWith("image/") ? await sanitizeImage(buf) : null;
+  if (mime.startsWith("image/") && !validatedImage) throw new HttpError(400, "This image is malformed, too large in pixels, or could not be decoded.", "INVALID_IMAGE");
+  if (validatedImage) buf = validatedImage.buffer;
+  if (buf.length > maxBytes) throw new HttpError(400, "Processed image exceeds the file-size limit.", "INVALID_FILE_SIZE");
 
   const id = crypto.randomUUID();
   const objectStorage = config.STORAGE_PROVIDER === "s3";
   if (objectStorage && !config.S3_ENDPOINT) throw new Error("Public media requires configured S3-compatible object storage");
   const key = opts?.private
     ? `private/portfolio/${opts.uploadedBy ?? "unowned"}/${id}.${allowed.ext}`
-    : objectStorage ? `public/media/${id}.${allowed.ext}` : `${id}.${allowed.ext}`;
+    : objectStorage ? `public/media/${id}.${allowed.ext}` : `local/media/${id}.${allowed.ext}`;
   if (opts?.private) {
     await putPrivateObject({ key, body: buf, contentType: mime });
   } else if (objectStorage) {
     await putPublicObject({ key, body: buf, contentType: mime });
   } else {
-    await fs.mkdir(UPLOAD_ROOT, { recursive: true });
-    await fs.writeFile(path.join(UPLOAD_ROOT, key), buf);
+    await fs.mkdir(path.dirname(localMediaPath(key)), { recursive: true });
+    await fs.writeFile(localMediaPath(key), buf);
   }
 
   let width: number | null = videoDimensions?.width ?? null;
@@ -139,7 +142,7 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
         kind,
         originalFilename: safeOriginalFilename(file.name),
         storageKey: key,
-        url: opts?.private ? `private-object://${key}` : objectStorage ? publicMediaUrl(id) : `/uploads/${key}`,
+        url: opts?.private ? `private-object://${key}` : publicMediaUrl(id),
         mimeType: mime,
         sizeBytes: buf.length,
         width,
@@ -176,14 +179,14 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
   };
 }
 
-async function imageDimensions(buf: Buffer): Promise<{ width: number; height: number } | null> {
+async function sanitizeImage(buf: Buffer): Promise<{ width: number; height: number; buffer: Buffer } | null> {
   try {
     const sharp = (await import("sharp")).default;
-    const meta = await sharp(buf).metadata();
-    return meta.width && meta.height ? { width: meta.width, height: meta.height } : null;
-  } catch {
-    return null;
-  }
+    // Decode the complete image, cap memory use, apply orientation and remove
+    // metadata from the original as well as derivatives. Keep its input format.
+    const { data, info } = await sharp(buf, { limitInputPixels: 40_000_000, failOn: "warning" }).rotate().toBuffer({ resolveWithObject: true });
+    return { width: info.width, height: info.height, buffer: data };
+  } catch { return null; }
 }
 
 /** Derivative generation: recompressed + EXIF stripped + bounded sizes (Q31 image budget) */
@@ -197,7 +200,7 @@ async function generateVariants(id: string, storageKey: string, buf: Buffer, obj
   ];
   for (const spec of specs) {
     signal?.throwIfAborted();
-    const outKey = objectStorage ? `${storageKey}.${spec.name}.webp` : `${id}.${spec.name}.webp`;
+    const outKey = objectStorage || storageKey.startsWith("local/media/") ? `${storageKey}.${spec.name}.webp` : `${id}.${spec.name}.webp`;
     const output = await sharp(buf)
       .rotate() // respects EXIF orientation, then strips it
       .resize({ width: spec.width, withoutEnlargement: true })
@@ -208,9 +211,9 @@ async function generateVariants(id: string, storageKey: string, buf: Buffer, obj
       await putPublicObject({ key: outKey, body: output, contentType: "image/webp" });
       variants[spec.name] = publicMediaUrl(id, spec.name);
     } else {
-      await fs.mkdir(UPLOAD_ROOT, { recursive: true });
-      await fs.writeFile(path.join(UPLOAD_ROOT, outKey), output);
-      variants[spec.name] = `/uploads/${outKey}`;
+      await fs.mkdir(path.dirname(localMediaPath(outKey)), { recursive: true });
+      await fs.writeFile(localMediaPath(outKey), output);
+      variants[spec.name] = publicMediaUrl(id, spec.name);
     }
   }
   return variants;
@@ -227,7 +230,7 @@ export async function processMediaJob(mediaId: string, signal?: AbortSignal): Pr
   const objectStorage = media.storageKey.startsWith("public/media/");
   const buf = objectStorage
     ? await getPublicObject(media.storageKey)
-    : await fs.readFile(path.join(UPLOAD_ROOT, media.storageKey));
+    : await readLocalMedia(media.storageKey);
   if (!buf) throw new Error(`Media object ${media.storageKey} not found`);
   signal?.throwIfAborted();
   const variants = await generateVariants(media.id, media.storageKey, buf, objectStorage, signal);
@@ -252,13 +255,13 @@ async function cleanupVariantMedia(id: string, storageKey: string, objectStorage
   if (objectStorage) {
     await Promise.all(["thumb", "card", "hero"].map((name) => deletePublicObject(`${storageKey}.${name}.webp`).catch(() => {})));
   } else {
-    await Promise.all(["thumb", "card", "hero"].map((name) => fs.unlink(path.join(UPLOAD_ROOT, `${id}.${name}.webp`)).catch(() => {})));
+    await Promise.all(["thumb", "card", "hero"].map((name) => fs.unlink(localMediaPath(storageKey.startsWith("local/media/") ? `${storageKey}.${name}.webp` : `${id}.${name}.webp`)).catch(() => {})));
   }
 }
 
 async function cleanupLocalMedia(id: string, storageKey: string): Promise<void> {
-  await Promise.all([storageKey, ...["thumb", "card", "hero"].map((name) => `${id}.${name}.webp`)]
-    .map((name) => fs.unlink(path.join(UPLOAD_ROOT, name)).catch(() => {})));
+  await Promise.all([storageKey, ...["thumb", "card", "hero"].map((name) => storageKey.startsWith("local/media/") ? `${storageKey}.${name}.webp` : `${id}.${name}.webp`)]
+    .map((name) => fs.unlink(localMediaPath(name)).catch(() => {})));
 }
 
 /** Best URL for a display context (variants when available) */

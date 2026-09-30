@@ -2,10 +2,29 @@ import { type NextRequest, NextResponse } from "next/server";
 import { lookupRedirect } from "@/server/seo/sitemap";
 import { isSafeInternalRedirectPath } from "@/server/seo/redirect-path";
 import { buildContentSecurityPolicy, createCspNonce } from "@/server/security/content-security-policy";
+import { db } from "@/lib/db";
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 export async function proxy(request: NextRequest) {
+  // Legacy local URLs also go through record-based access checks. Static PDFs
+  // must never bypass a later gated/sensitive entity association.
+  if (request.nextUrl.pathname.startsWith("/uploads/")) {
+    const pathname = request.nextUrl.pathname;
+    const asset = await db.mediaAsset.findFirst({ where: { isPrivate: false, OR: [{ url: pathname }, { variantsJson: { contains: JSON.stringify(pathname) } }] }, select: { id: true, url: true, variantsJson: true } });
+    if (!asset) return new NextResponse(null, { status: 404 });
+    const destination = request.nextUrl.clone();
+    destination.pathname = `/api/media/${encodeURIComponent(asset.id)}/content`;
+    if (asset.url !== pathname) {
+      const variants = JSON.parse(asset.variantsJson ?? "{}") as Record<string, string>;
+      const variant = Object.entries(variants).find(([, url]) => url === pathname)?.[0];
+      if (!variant || !["thumb", "card", "hero"].includes(variant)) return new NextResponse(null, { status: 404 });
+      destination.searchParams.set("variant", variant);
+    }
+    const response = NextResponse.redirect(destination, 307);
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
   const redirect = await lookupRedirect(request.nextUrl.pathname);
   if (redirect && isSafeInternalRedirectPath(redirect.to)) {
     const destination = request.nextUrl.clone();

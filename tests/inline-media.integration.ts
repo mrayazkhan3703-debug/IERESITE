@@ -92,12 +92,13 @@ describe("transactional inline entity attachments", () => {
     await expect(deleteUnusedMedia(actor, assets.image, null)).rejects.toMatchObject({ code: "MEDIA_IN_USE" });
     const grant = await issueReportDownloadGrant(assets.pdf, "nonexistent-report");
     expect(await validReportDownloadGrant(new URL(grant!, "http://localhost").searchParams.get("grant"), assets.pdf)).toBe(false);
+    expect((await db.mediaAsset.findUniqueOrThrow({ where: { id: assets.video } })).altText).toBe("Asset default");
   });
 
   test("protected documents cannot be downloaded by a guessed public media id", async () => {
     const property = await db.property.findFirstOrThrow({ where: { slug: prefix + "-property" } });
     await db.propertyDocument.create({ data: { propertyId: property.id, mediaId: assets.pdf, docType: "TITLE_DEED", gated: true } });
-    const response = await fetch("http://127.0.0.1:3000/api/media/" + assets.pdf + "/content");
+    const response = await fetch((process.env.TEST_BASE_URL ?? "http://127.0.0.1:3000") + "/api/media/" + assets.pdf + "/content");
     expect([401, 403]).toContain(response.status);
   });
 });

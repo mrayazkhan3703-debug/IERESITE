@@ -85,3 +85,6 @@ tool-results/
 /backup-runner.private.json.*.pending
 /backup-secrets/
 *.agekey
+
+# Protected local media adapter
+/.data/

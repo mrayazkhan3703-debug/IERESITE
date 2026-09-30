@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mediaMatchesMode, galleryAttachmentSchema, floorPlanAttachmentSchema, documentAttachmentSchema } from "@/lib/media-contract";
+import { localMediaPath } from "@/server/media/file-storage";
 import { parseByteRange } from "@/server/media/byte-range";
 
 describe("shared inline media contracts", () => {
@@ -31,4 +32,10 @@ describe("video byte range parsing", () => {
   test("rejects multipart, invalid and unsatisfiable ranges", () => {
     for (const value of ["bytes=0-1,3-4", "bytes=1000-", "bytes=9-2", "bytes=-0", "bytes=-", "bytes=a-1", "bytes=9007199254740993-"]) expect(parseByteRange(value, 1000)).toBeNull();
   });
+});
+
+test("local storage paths cannot escape the protected media adapter", () => {
+  expect(localMediaPath("local/media/123abc-def.png")).toContain(".data");
+  expect(localMediaPath("123abc-def.pdf")).toContain("uploads");
+  for (const key of ["../credentials", "local/media/../../secret", "local/media/test.exe/other", "private/portfolio/secret"]) expect(() => localMediaPath(key)).toThrow();
 });

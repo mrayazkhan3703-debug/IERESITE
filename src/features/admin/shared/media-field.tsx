@@ -42,11 +42,13 @@ export function MediaUploader({ mode, kind, altText, multiple = false, onUploade
   const [items, setItems] = React.useState<UploadItem[]>([]);
   const [policy, setPolicy] = React.useState<{ maxBytes: number; allowedMimeTypes: string[] } | null>(null);
   const [error, setError] = React.useState("");
+  const policyRequest = React.useRef<Promise<{ maxBytes: number; allowedMimeTypes: string[] } | null> | null>(null);
   const uploadId = React.useId();
   const register = React.useContext(UploadState);
   const input = React.useRef<HTMLInputElement>(null);
   const requests = React.useRef(new Map<string, XMLHttpRequest>());
   const running = React.useRef(false);
+  const cancelled = React.useRef(new Set<string>());
   const mounted = React.useRef(true);
   const uploaded = React.useRef(onUploaded);
   uploaded.current = onUploaded;
@@ -59,14 +61,16 @@ export function MediaUploader({ mode, kind, altText, multiple = false, onUploade
   }, []);
   const loadPolicy = React.useCallback(() => {
     setError("");
-    api.get<{ maxBytes: number; allowedMimeTypes: string[] }>("/api/media?policy=1").then(setPolicy).catch(() => setError("Upload policy could not be loaded. Try again."));
+    policyRequest.current = api.get<{ maxBytes: number; allowedMimeTypes: string[] }>("/api/media?policy=1").then((result) => { setPolicy(result); return result; }).catch(() => { setError("Upload policy could not be loaded. Try again."); return null; });
   }, []);
   React.useEffect(loadPolicy, [loadPolicy]);
   const update = (key: string, value: Partial<UploadItem>) => {
     if (mounted.current) setItems((previous) => previous.map((item) => item.key === key ? { ...item, ...value } : item));
   };
   async function send(item: UploadItem) {
-    if (!policy) return;
+    const policy = await policyRequest.current;
+    if (!mounted.current || cancelled.current.has(item.key)) return;
+    if (!policy) { update(item.key, { status: "failed", error: "Upload policy could not be loaded. Retry the policy, then retry this file." }); return; }
     if (item.file.size === 0 || item.file.size > policy.maxBytes || !policy.allowedMimeTypes.includes(item.file.type) || !mediaMatchesMode({ mimeType: item.file.type }, mode)) {
       update(item.key, { status: "failed", error: "Choose a supported file up to " + Math.floor(policy.maxBytes / 1048576) + " MB." });
       return;
@@ -105,11 +109,11 @@ export function MediaUploader({ mode, kind, altText, multiple = false, onUploade
   async function run(batch: UploadItem[]) {
     if (running.current) return;
     running.current = true;
-    try { for (const item of batch) { if (!mounted.current) break; await send(item); } }
+    try { for (const item of batch) { if (!mounted.current) break; if (!cancelled.current.has(item.key)) await send(item); } }
     finally { running.current = false; }
   }
   function choose(files: FileList | null) {
-    if (!files || running.current || !policy) return;
+    if (!files || running.current) return;
     const batch = Array.from(files).slice(0, multiple ? 60 : 1).map((file) => ({ key: crypto.randomUUID(), file, progress: 0, status: "waiting" as const }));
     setItems((previous) => [...previous, ...batch]);
     void run(batch);
@@ -124,8 +128,8 @@ export function MediaUploader({ mode, kind, altText, multiple = false, onUploade
       <span>{item.file.name} · {item.status === "processing" ? "Processing media…" : item.status}</span>
       {["waiting", "uploading", "processing"].includes(item.status) && <progress value={item.progress} max={100} aria-label={"Upload progress for " + item.file.name} className="block w-full" />}
       {item.error && <p className="text-destructive">{item.error}</p>}
-      {requests.current.has(item.key) && <Button type="button" variant="outline" size="sm" onClick={() => requests.current.get(item.key)?.abort()}>Cancel upload</Button>}
-      {["failed", "cancelled"].includes(item.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { update(item.key, { status: "waiting" }); void run([item]); }}>Retry</Button>}
+      {["waiting", "uploading", "processing"].includes(item.status) && <Button type="button" variant="outline" size="sm" onClick={() => { cancelled.current.add(item.key); requests.current.get(item.key)?.abort(); update(item.key, { status: "cancelled", error: "Upload cancelled." }); }}>Cancel upload</Button>}
+      {["failed", "cancelled"].includes(item.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { if (running.current) return; cancelled.current.delete(item.key); update(item.key, { status: "waiting" }); void run([item]); }}>Retry</Button>}
       {item.existing && <Button type="button" size="sm" onClick={() => { uploaded.current(item.existing!); update(item.key, { status: "done", error: undefined, existing: undefined }); }}>Use existing asset</Button>}
     </li>)}</ul>
   </div>;
@@ -165,6 +169,17 @@ export function MediaPicker({ open, onOpenChange, mode, onSelect }: {
   </DialogContent></Dialog>;
 }
 
+function AttachmentPreview({ row }: { row: MediaAttachment }) {
+  const [asset, setAsset] = React.useState<MediaAssetChoice | null>(null);
+  React.useEffect(() => {
+    if (row.url) return;
+    let active = true;
+    api.get<MediaAssetChoice>("/api/media/" + encodeURIComponent(row.mediaId)).then((next) => { if (active) setAsset(next); }).catch(() => {});
+    return () => { active = false; };
+  }, [row.mediaId, row.url]);
+  return row.url ? <MediaPreview asset={{ url: row.url, mimeType: row.mimeType ?? (row.kind === "VIDEO" ? "video/mp4" : row.kind === "DOCUMENT" ? "application/pdf" : "image/jpeg"), altText: row.altText, posterUrl: row.posterUrl }} /> : asset ? <MediaPreview asset={asset} /> : <p className="text-xs">Loading media preview�</p>;
+}
+
 export function MediaField({ label, value, onChange, mode = "single-image", kind, onBusyChange }: {
   label: string; value: string; onChange: (id: string) => void; mode?: MediaMode; kind?: string; onBusyChange?: (busy: boolean) => void;
 }) {
@@ -173,6 +188,9 @@ export function MediaField({ label, value, onChange, mode = "single-image", kind
   const [upload, setUpload] = React.useState(false);
   const [picker, setPicker] = React.useState(false);
   const [posterSaving, setPosterSaving] = React.useState(false);
+  const [uploadBusy, setUploadBusy] = React.useState(false);
+  const busy = uploadBusy || posterSaving;
+  const busyChange = React.useCallback((next: boolean) => { setUploadBusy(next); onBusyChange?.(next); }, [onBusyChange]);
   React.useEffect(() => {
     let active = true; setError("");
     if (!value) { setAsset(null); return; }
@@ -193,8 +211,8 @@ export function MediaField({ label, value, onChange, mode = "single-image", kind
     <h4 className="text-sm font-medium">{label}</h4>
     {asset && <MediaPreview asset={asset} />}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setUpload((value) => !value)}>{value ? "Replace / Upload New" : "Upload New"}</Button><Button type="button" variant="outline" size="sm" onClick={() => setPicker(true)}>Choose Existing</Button>{value && <Button type="button" variant="outline" size="sm" onClick={() => { setAsset(null); onChange(""); }}>Remove</Button>}</div>
-    {upload && <MediaUploader mode={mode} kind={kind} onUploaded={select} onBusyChange={onBusyChange} />}
+    <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setUpload((value) => !value)}>{value ? "Replace / Upload New" : "Upload New"}</Button><Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setPicker(true)}>Choose Existing</Button>{value && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setAsset(null); onChange(""); }}>Remove</Button>}</div>
+    {upload && <MediaUploader mode={mode} kind={kind} onUploaded={select} onBusyChange={busyChange} />}
     {asset?.mimeType.startsWith("video/") && <div><p className="text-xs text-muted-foreground">The poster belongs to this video asset and is shared wherever this video is used. No poster uses a neutral player background.</p><MediaField label="Video poster image" value={asset.posterMediaId ?? ""} onChange={(id) => { void savePoster(id); }} />{posterSaving && <p role="status">Saving video poster…</p>}</div>}
     <MediaPicker open={picker} onOpenChange={setPicker} mode={mode} onSelect={select} />
   </div>;
@@ -208,41 +226,45 @@ export function MediaGalleryManager({ label, value, onChange, mode = "gallery", 
   React.useEffect(() => { current.current = value; }, [value]);
   const [upload, setUpload] = React.useState(false);
   const [picker, setPicker] = React.useState(false);
-  const [replace, setReplace] = React.useState<number | null>(null);
+  const [replace, setReplace] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const busyChange = React.useCallback((next: boolean) => { setBusy(next); onBusyChange?.(next); }, [onBusyChange]);
   const [error, setError] = React.useState("");
   const dragged = React.useRef<number | null>(null);
   const select = (asset: MediaAssetChoice) => {
     const rows = [...current.current];
-    if (rows.some((row, index) => row.mediaId === asset.id && index !== replace)) { setError("This asset is already attached."); return; }
+    const replaceIndex = replace === null ? -1 : rows.findIndex((row) => row.mediaId === replace);
+    if (replace !== null && replaceIndex === -1) { setError("The attachment was removed. Choose the replacement again."); return; }
+    if (rows.some((row, index) => row.mediaId === asset.id && index !== replaceIndex)) { setError("This asset is already attached."); return; }
     setError("");
     const row: MediaAttachment = { mediaId: asset.id, url: asset.url, kind: asset.kind, mimeType: asset.mimeType, altText: asset.altText, caption: asset.caption, posterUrl: asset.posterUrl };
-    if (replace !== null) { row.isCover = rows[replace]?.isCover && asset.mimeType.startsWith("image/"); rows[replace] = { ...rows[replace], ...row, altText: rows[replace]?.altText ?? row.altText, caption: rows[replace]?.caption ?? row.caption }; }
+    if (replace !== null) { row.isCover = rows[replaceIndex]?.isCover && asset.mimeType.startsWith("image/"); rows[replaceIndex] = { ...rows[replaceIndex], ...row, altText: rows[replaceIndex]?.altText ?? row.altText, caption: rows[replaceIndex]?.caption ?? row.caption }; setReplace(null); setUpload(false); }
     else { row.isCover = primary && asset.mimeType.startsWith("image/") && !rows.some((item) => item.isCover); rows.push(row); }
     current.current = rows; onChange(rows);
   };
   const move = (from: number, to: number) => {
-    if (to < 0 || to >= value.length || from === to) return;
+    if (busy || to < 0 || to >= value.length || from === to) return;
     const rows = [...value]; rows.splice(to, 0, rows.splice(from, 1)[0]); onChange(rows);
   };
   return <section aria-label={label} className="space-y-3 rounded-lg border p-3"><h4 className="font-medium">{label}</h4>
-    <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => { setReplace(null); setUpload(true); }}>+ Upload files</Button><Button type="button" variant="outline" onClick={() => { setReplace(null); setPicker(true); }}>Choose Existing</Button></div>
+    <div className="flex gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => { setReplace(null); setUpload(true); }}>+ Upload files</Button><Button type="button" variant="outline" disabled={busy} onClick={() => { setReplace(null); setPicker(true); }}>Choose Existing</Button></div>
     <p className="text-xs text-muted-foreground">Attachment changes are saved with this form. Removing an attachment preserves the asset in Media Library.</p>
     {error && <p role="alert" className="text-destructive">{error}</p>}
-    {upload && <MediaUploader mode={mode} kind={kind} multiple={replace === null} onUploaded={select} onBusyChange={onBusyChange} />}
+    {upload && <MediaUploader mode={mode} kind={kind} multiple={replace === null} onUploaded={select} onBusyChange={busyChange} />}
     <MediaPicker open={picker} onOpenChange={setPicker} mode={mode} onSelect={select} />
-    <ol className="grid gap-3 sm:grid-cols-2">{value.map((row, index) => <li key={row.mediaId} draggable onDragStart={() => { dragged.current = index; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (dragged.current !== null) move(dragged.current, index); dragged.current = null; }} className="space-y-2 rounded-lg border p-3">
-      {row.url && <MediaPreview asset={{ url: row.url, mimeType: row.mimeType ?? (row.kind === "VIDEO" ? "video/mp4" : row.kind === "DOCUMENT" ? "application/pdf" : "image/jpeg"), altText: row.altText, posterUrl: row.posterUrl }} />}
+    <ol className="grid gap-3 sm:grid-cols-2">{value.map((row, index) => <li key={row.mediaId} draggable={!busy} onDragStart={() => { dragged.current = index; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (dragged.current !== null) move(dragged.current, index); dragged.current = null; }} className="space-y-2 rounded-lg border p-3">
+      <AttachmentPreview row={row} />
       <p className="text-xs">{row.kind || "Media"}{row.isCover ? " · Cover / Primary" : ""}</p>
       {row.kind === "VIDEO" && <VideoPosterField mediaId={row.mediaId} onSaved={(posterUrl) => onChange(value.map((item, at) => at === index ? { ...item, posterUrl } : item))} />}
       {mode !== "document" && mode !== "floor-plan" && <><Input aria-label={"Caption for media " + (index + 1)} placeholder="Caption" value={row.caption ?? ""} maxLength={500} onChange={(event) => onChange(value.map((item, at) => at === index ? { ...item, caption: event.target.value } : item))} />
       <Input aria-label={"Alt text for media " + (index + 1)} placeholder="Alt text" value={row.altText ?? ""} maxLength={300} onChange={(event) => onChange(value.map((item, at) => at === index ? { ...item, altText: event.target.value } : item))} /></>}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={index === 0} aria-label={"Move media " + (index + 1) + " up"} onClick={() => move(index, index - 1)}>Move up</Button>
-        <Button type="button" variant="outline" size="sm" disabled={index === value.length - 1} aria-label={"Move media " + (index + 1) + " down"} onClick={() => move(index, index + 1)}>Move down</Button>
-        {primary && row.kind !== "VIDEO" && row.kind !== "DOCUMENT" && <Button type="button" variant="outline" size="sm" onClick={() => onChange(value.map((item, at) => ({ ...item, isCover: at === index })))}>Set Cover</Button>}
-        <Button type="button" variant="outline" size="sm" onClick={() => { setReplace(index); setUpload(true); }}>Replace</Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => { setReplace(index); setPicker(true); }}>Choose replacement</Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => onChange(value.filter((_, at) => at !== index))}>Remove</Button>
+        <Button type="button" variant="outline" size="sm" disabled={busy || index === 0} aria-label={"Move media " + (index + 1) + " up"} onClick={() => move(index, index - 1)}>Move up</Button>
+        <Button type="button" variant="outline" size="sm" disabled={busy || index === value.length - 1} aria-label={"Move media " + (index + 1) + " down"} onClick={() => move(index, index + 1)}>Move down</Button>
+        {primary && row.kind !== "VIDEO" && row.kind !== "DOCUMENT" && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onChange(value.map((item, at) => ({ ...item, isCover: at === index })))}>Set Cover</Button>}
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setReplace(row.mediaId); setUpload(true); }}>Replace</Button>
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setReplace(row.mediaId); setPicker(true); }}>Choose replacement</Button>
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onChange(value.filter((_, at) => at !== index))}>Remove</Button>
       </div>
     </li>)}</ol>
   </section>;
