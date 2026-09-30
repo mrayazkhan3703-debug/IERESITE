@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test, spyOn } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "@/lib/db";
+import { cache } from "@/server/cache";
 import { autocomplete, rebuildIndex, reindexProperty, search } from "@/server/search/service";
 import { searchStateSchema } from "@/server/search/types";
 import { mapClustersPostgres } from "@/server/search/postgres-provider";
@@ -232,13 +233,21 @@ describe("PostgreSQL search projection", () => {
   });
 
   test("projection query failure falls back to current canonical visibility", async () => {
-    const projectionFault = spyOn(db, "$queryRaw").mockRejectedValue(new Error("Synthetic projection query failure"));
+    if (!["db", "postgres", "localhost", "127.0.0.1"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Projection outage fixture requires the disposable database.");
+    // Prisma's method proxy does not reliably accept method spies. Temporarily
+    // remove the projection name in the disposable stack, keeping canonical
+    // tables intact and restoring the same table even when an assertion fails.
+    cache.invalidatePrefix("search:");
+    await db.$executeRaw`ALTER TABLE "SearchDocument" RENAME TO "SearchDocument_projection_fault"`;
     try {
       const result = await search(searchStateSchema.parse({ q: "zaffre", communities: ["pg-search-contract-community"], sort: "newest", pageSize: 48 }));
       expect(result.degraded).toBe(true);
       expect(result.results.map((row) => row.slug)).toContain(`${prefix}-arabic-villa`);
       expect(result.results.map((row) => row.slug)).not.toContain(`${prefix}-zaffre-residence`);
-      expect(result.results.map((row) => row.slug)).not.toContain(`${prefix}-draft-residence`);
-    } finally { projectionFault.mockRestore(); }
+      expect(result.results.map((row) => row.slug)).not.toContain(`${prefix}-draft`);
+    } finally {
+      await db.$executeRaw`ALTER TABLE "SearchDocument_projection_fault" RENAME TO "SearchDocument"`;
+      cache.invalidatePrefix("search:");
+    }
   });
 });
