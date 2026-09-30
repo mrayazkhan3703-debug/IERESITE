@@ -177,7 +177,7 @@ function AttachmentPreview({ row }: { row: MediaAttachment }) {
     api.get<MediaAssetChoice>("/api/media/" + encodeURIComponent(row.mediaId)).then((next) => { if (active) setAsset(next); }).catch(() => {});
     return () => { active = false; };
   }, [row.mediaId, row.url]);
-  return row.url ? <MediaPreview asset={{ url: row.url, mimeType: row.mimeType ?? (row.kind === "VIDEO" ? "video/mp4" : row.kind === "DOCUMENT" ? "application/pdf" : "image/jpeg"), altText: row.altText, posterUrl: row.posterUrl }} /> : asset ? <MediaPreview asset={asset} /> : <p className="text-xs">Loading media preview…</p>;
+  return row.url ? <MediaPreview asset={{ url: row.url, mimeType: row.mimeType ?? (row.kind === "VIDEO" ? "video/mp4" : row.kind === "DOCUMENT" ? "application/pdf" : "image/jpeg"), altText: row.altText, posterUrl: row.posterUrl }} /> : asset ? <MediaPreview asset={asset} /> : <p className="text-xs">Loading media previewâ€¦</p>;
 }
 
 export function MediaField({ label, value, onChange, mode = "single-image", kind, onBusyChange }: {

@@ -93,7 +93,7 @@ test("inline uploads retry interruption, reuse duplicates, cancel and retain lib
   const retried = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST");
   await field.getByRole("button", { name: "Retry", exact: true }).click();
   const response = await retried; expect(response.status()).toBe(201); const asset = await response.json(); mediaIds.push(asset.id);
-  await expect(field.getByText(file.name + " · done", { exact: true })).toBeVisible();
+  await expect(field.getByText(file.name + " Â· done", { exact: true })).toBeVisible();
   const duplicate = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST");
   await field.getByLabel("Upload new media").setInputFiles(file); expect((await duplicate).status()).toBe(409);
   await field.getByRole("button", { name: "Use existing asset", exact: true }).click();
