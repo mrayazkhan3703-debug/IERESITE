@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { MediaForm } from "@/features/admin/shared/media-field";
+import { PublicMediaPicker } from "@/features/admin/shared/public-media-picker";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -224,7 +226,7 @@ export function MarketReportsSection({ canEdit, canReview }: { canEdit: boolean;
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader><DialogTitle>{editing ? "Edit market report" : "Create market report draft"}</DialogTitle><DialogDescription>Only enter source facts you have. The interface does not verify reports, DLD data, URLs, or methodology. Saving changes always withdraws a currently published report until review and publication happen again.</DialogDescription></DialogHeader>
-          <form onSubmit={save} className="space-y-5">
+          <MediaForm onSubmit={save} className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5"><Label htmlFor="report-title">Title</Label><Input id="report-title" required maxLength={300} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></div>
               <div className="space-y-1.5"><Label htmlFor="report-slug">URL slug</Label><Input id="report-slug" required maxLength={180} value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /><p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens.</p></div>
@@ -236,8 +238,8 @@ export function MarketReportsSection({ canEdit, canReview }: { canEdit: boolean;
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="report-methodology">Methodology / source notes</Label><Textarea id="report-methodology" rows={3} maxLength={5000} value={form.methodology} onChange={(event) => setForm({ ...form, methodology: event.target.value })} /></div>
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="report-body">Report body (Markdown; raw HTML is not rendered)</Label><Textarea id="report-body" rows={12} maxLength={50000} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} /></div>
               <fieldset className="space-y-3 rounded-lg border p-4 sm:col-span-2"><legend className="px-2 text-sm font-semibold">Live data embed</legend><p className="text-xs text-muted-foreground">Add up to three fixed explorer summaries. These display current recorded data and retain the report's reviewed Markdown history.</p><div className="grid gap-3 sm:grid-cols-2"><div><Label htmlFor="report-embed-kind">Data view</Label><select id="report-embed-kind" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={embedKind} onChange={(e) => setEmbedKind(e.target.value)}><option value="transactions">Transactions</option><option value="rents">Rents</option><option value="metrics">Community metrics</option></select></div><div><Label htmlFor="report-embed-community">Community slug (optional)</Label><Input id="report-embed-community" value={embedCommunity} onChange={(e) => setEmbedCommunity(e.target.value)} /></div></div><Button type="button" variant="outline" onClick={() => { if (embedCommunity && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(embedCommunity)) { toast.error("Use a valid community slug"); return; } setForm({ ...form, body: `${form.body}\n\n[[market-data:${embedKind}${embedCommunity ? `:${embedCommunity}` : ""}]]\n` }); }}>Insert market data embed</Button></fieldset>
-              <div className="space-y-1.5"><Label htmlFor="report-cover">Public cover image</Label><Select value={form.coverMediaId || "none"} onValueChange={(value) => setForm({ ...form, coverMediaId: value === "none" ? "" : value })}><SelectTrigger id="report-cover"><SelectValue placeholder="No image" /></SelectTrigger><SelectContent><SelectItem value="none">No image</SelectItem>{assets.filter((asset) => asset.kind === "IMAGE").map((asset) => <SelectItem key={asset.id} value={asset.id}>{mediaLabel(asset)}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1.5"><Label htmlFor="report-file">Public report document</Label><Select value={form.fileMediaId || "none"} onValueChange={(value) => setForm({ ...form, fileMediaId: value === "none" ? "" : value })}><SelectTrigger id="report-file"><SelectValue placeholder="No document" /></SelectTrigger><SelectContent><SelectItem value="none">No document</SelectItem>{assets.filter((asset) => asset.kind === "DOCUMENT").map((asset) => <SelectItem key={asset.id} value={asset.id}>{mediaLabel(asset)}</SelectItem>)}</SelectContent></Select></div>
+              <PublicMediaPicker label="Report cover image" value={form.coverMediaId} onChange={(coverMediaId) => setForm({ ...form, coverMediaId })} />
+              <PublicMediaPicker label="Report PDF" allowedKinds={["DOCUMENT", "BROCHURE"]} value={form.fileMediaId} onChange={(fileMediaId) => setForm({ ...form, fileMediaId })} />
             </div>
             <div className="space-y-3 rounded-lg border border-border/70 p-4">
               <label className="flex items-start justify-between gap-4"><span><span className="block text-sm font-medium">Illustrative material</span><span className="text-xs text-muted-foreground">Keep enabled for sample, placeholder, or simulated reports. Turning it off does not mark a source as verified.</span></span><Switch checked={form.isIllustrative} onCheckedChange={(isIllustrative) => setForm({ ...form, isIllustrative })} /></label>
@@ -245,7 +247,7 @@ export function MarketReportsSection({ canEdit, canReview }: { canEdit: boolean;
               <label className="flex items-start justify-between gap-4"><span><span className="block text-sm font-medium">Submit this revision for review</span><span className="text-xs text-muted-foreground">Submission stays unpublished until a different authorized reviewer approves and an authorized user publishes.</span></span><Switch checked={form.submitForReview} onCheckedChange={(submitForReview) => setForm({ ...form, submitForReview })} /></label>
             </div>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : form.submitForReview ? "Save and submit" : "Save draft"}</Button></DialogFooter>
-          </form>
+          </MediaForm>
         </DialogContent>
       </Dialog>
 

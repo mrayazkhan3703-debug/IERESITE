@@ -49,10 +49,10 @@ export async function putPublicObject(input: { key: string; body: Buffer; conten
   }));
 }
 
-export async function getPublicObject(key: string): Promise<Buffer | null> {
+export async function getPublicObject(key: string, range?: { start: number; end: number }): Promise<Buffer | null> {
   const config = storageConfig();
   try {
-    const response = await client(config.S3_ENDPOINT!).send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+    const response = await client(config.S3_ENDPOINT!).send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key, ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}) }));
     if (!response.Body) return null;
     return Buffer.from(await response.Body.transformToByteArray());
   } catch (error) {

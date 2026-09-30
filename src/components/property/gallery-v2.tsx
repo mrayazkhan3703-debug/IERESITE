@@ -257,6 +257,7 @@ export function GalleryV2({
               {media[index].kind === "VIDEO" ? (
                 /* Genuine video asset — plays inline in the lightbox (§14.1) */
                 <video
+                  poster={media[index].posterUrl ?? undefined}
                   src={media[index].url}
                   controls
                   autoPlay

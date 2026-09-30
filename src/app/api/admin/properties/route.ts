@@ -7,6 +7,7 @@ import { clientIp } from "@/server/rate-limit";
 import { createPropertyCommand, updatePropertyCommand } from "@/server/domain/property-command";
 import { canManageCatalogResource, catalogReadFilter } from "@/server/domain/resource-policy";
 import { adminCatalogSourceView } from "@/server/domain/catalog-source";
+import { entityMediaSchema, floorPlanAttachmentSchema } from "@/lib/media-contract";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export const GET = apiHandler(async (req) => {
       include: {
         community: { select: { name: true } },
         listings: { orderBy: { createdAt: "desc" }, take: 1, include: { agent: { select: { name: true } }, statusHistory: { orderBy: { createdAt: "desc" }, take: 10 }, priceHistory: { orderBy: { recordedAt: "desc" }, take: 10 } } },
-        media: { orderBy: { sortOrder: "asc" }, select: { mediaId: true, isCover: true, sortOrder: true, media: { select: { url: true, altText: true, kind: true } } } },
+        media: { orderBy: { sortOrder: "asc" }, select: { mediaId: true, isCover: true, sortOrder: true, altText: true, caption: true, media: { select: { url: true, altText: true, caption: true, kind: true, mimeType: true, poster: { select: { url: true } } } } } },
         project: { select: { id: true, name: true } },
         developer: { select: { id: true, name: true } },
         amenities: { select: { amenityId: true } },
@@ -112,7 +113,7 @@ export const GET = apiHandler(async (req) => {
       mediaCount: p._count.media,
       coverMediaId: p.media.find((item) => item.isCover)?.mediaId ?? null,
       cover: p.media.find((item) => item.isCover) ? { url: p.media.find((item) => item.isCover)!.media.url, altText: p.media.find((item) => item.isCover)!.media.altText } : null,
-      gallery: p.media.map((item) => ({ mediaId: item.mediaId, isCover: item.isCover, sortOrder: item.sortOrder, url: item.media.url, altText: item.media.altText })),
+      gallery: p.media.map((item) => ({ mediaId: item.mediaId, isCover: item.isCover, sortOrder: item.sortOrder, url: item.media.url, altText: item.altText ?? item.media.altText, caption: item.caption ?? item.media.caption, kind: item.media.kind, mimeType: item.media.mimeType, posterUrl: item.media.poster?.url ?? null })),
       floorPlans: p.floorPlans.map((item) => ({ id: item.id, mediaId: item.mediaId, bedrooms: item.bedrooms, areaSqft: item.areaSqft, priceMinor: item.priceMinor?.toString() ?? null, label: item.label, url: item.media.url })),
       documents: p.documents.map((item) => ({ id: item.id, mediaId: item.mediaId, docType: item.docType, label: item.label, gated: item.gated, url: item.media.url, mimeType: item.media.mimeType })),
       priceHistory: p.priceHistory.map((item) => ({ priceMinor: item.priceMinor.toString(), currency: item.currency, sourceType: item.sourceType, recordedAt: item.recordedAt.toISOString() })),
@@ -131,6 +132,8 @@ export const GET = apiHandler(async (req) => {
 });
 
 const patchSchema = z.object({
+  ...entityMediaSchema,
+  floorPlans: z.array(floorPlanAttachmentSchema).max(30).optional(),
   propertyId: z.string(),
   expectedUpdatedAt: z.string().datetime(),
   title: z.string().trim().min(1).max(200).optional(),
@@ -178,6 +181,8 @@ const patchSchema = z.object({
 });
 
 const createSchema = z.object({
+  ...entityMediaSchema,
+  floorPlans: z.array(floorPlanAttachmentSchema).max(30).optional(),
   communityId: z.string().min(1),
   title: z.string().trim().min(1).max(200),
   slug: z.string().trim().min(1).max(160),

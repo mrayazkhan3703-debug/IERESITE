@@ -59,7 +59,7 @@ export const GET = apiHandler(async (req) => {
       include: {
         developer: true,
         community: true,
-        media: { orderBy: { sortOrder: "asc" }, include: { media: true }, take: 1 },
+        media: { where: { section: "GALLERY", media: { mimeType: { startsWith: "image/" } } }, orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: true }, take: 1 },
       },
       orderBy: [{ createdAt: "desc" }],
       take: limit,

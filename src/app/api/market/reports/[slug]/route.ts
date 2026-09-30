@@ -6,6 +6,7 @@ import { submitLead } from "@/server/domain/lead-service";
 import { publicMarketReportWhere } from "@/server/domain/visibility";
 import { publicDocumentDownloadUrl } from "@/server/media/public-download-url";
 import { grantedAnalyticsSessionId } from "@/server/privacy/analytics-attribution";
+import { issueReportDownloadGrant } from "@/server/media/download-grant";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export const POST = apiHandler(
       entityTitle: report.title,
       pagePath: `/market/reports/${report.slug}`,
     }, { attributionSessionId: await grantedAnalyticsSessionId(req) });
-    return NextResponse.json({ ...result, downloadUrl: await publicDocumentDownloadUrl(report.fileMediaId) }, { status: 201 });
+    return NextResponse.json({ ...result, downloadUrl: report.gated ? await issueReportDownloadGrant(report.fileMediaId, report.id) : await publicDocumentDownloadUrl(report.fileMediaId) }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   },
   { rateLimit: { limit: 10, windowMs: 3600_000, key: "reportgate" } }
 );

@@ -385,6 +385,7 @@ export default function ProjectDetailView({ slug }: { slug: string }) {
           {/* Construction progress */}
           <section aria-labelledby="construction-heading">
             <h2 id="construction-heading" className="font-display text-xl font-semibold">{t("project.construction.title", locale)}</h2>
+            {Boolean(data.progressMedia?.length) && <GalleryV2 media={data.progressMedia!} title={t("project.construction.title", locale)} locale={locale} hasFloorPlans={false} />}
             <div className="mt-4 space-y-3">
               {data.completionPercent !== null && (
                 <div>

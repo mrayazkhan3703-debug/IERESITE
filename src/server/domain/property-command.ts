@@ -7,8 +7,10 @@ import { requirePublicMedia } from "@/server/domain/media-policy";
 import { canCreateCatalogResource, canManageCatalogResource } from "@/server/domain/resource-policy";
 import { parseCatalogJson } from "@/server/domain/catalog-source";
 import { reindexProperty } from "@/server/search/service";
+import type { EntityMediaInput } from "@/lib/media-contract";
+import { saveEntityMedia } from "./entity-media";
 
-export interface PropertyCommandInput {
+export interface PropertyCommandInput extends EntityMediaInput {
   propertyId: string;
   expectedUpdatedAt: string;
   title?: string;
@@ -53,7 +55,7 @@ export interface PropertyCommandInput {
   resetSourceFields?: Array<"title" | "description" | "propertyType" | "bedrooms" | "bathrooms" | "priceAed" | "availabilityStatus">;
 }
 
-export interface NewPropertyCommandInput {
+export interface NewPropertyCommandInput extends EntityMediaInput {
   communityId: string;
   title: string;
   slug: string;
@@ -204,6 +206,7 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
       if (!listing) throw new Error("Created property listing was not returned.");
       await tx.priceHistory.create({ data: { propertyId: property.id, listingId: listing.id, priceMinor, currency: "AED", sourceType: "INTERNAL" } });
       if (coverMediaId) await tx.propertyMedia.create({ data: { propertyId: property.id, mediaId: coverMediaId, isCover: true, sortOrder: 0 } });
+      await saveEntityMedia(tx, "PROPERTY", property.id, input);
       const after = {
         title: property.title, slug: property.slug, description: property.description, propertyType: property.propertyType,
         bedrooms: property.bedrooms, bathrooms: property.bathrooms, communityId: property.communityId,
@@ -490,7 +493,8 @@ export async function updatePropertyCommand(
     });
     if (changed.count !== 1) throw new HttpError(409, "This property changed since it was loaded. Refresh and review the latest values.", "VERSION_CONFLICT");
 
-    if (input.coverMediaId !== undefined) {
+    await saveEntityMedia(tx, "PROPERTY", property.id, input);
+    if (input.coverMediaId !== undefined && input.gallery === undefined) {
       await tx.propertyMedia.updateMany({ where: { propertyId: property.id, isCover: true }, data: { isCover: false } });
       if (coverMediaId) {
         const existingMediaLink = await tx.propertyMedia.findFirst({ where: { propertyId: property.id, mediaId: coverMediaId } });

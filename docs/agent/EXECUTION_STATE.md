@@ -12,6 +12,17 @@
 
 ## Completed phase evidence
 
+## Active inline media release (owner-approved scope, 2026-09-30)
+
+- Status: IN_PROGRESS. Source remains undeployed until the exact candidate passes hosted Docker CI and browser/live storage verification.
+- Shared MediaField, MediaPicker, MediaUploader, MediaGalleryManager and MediaForm extend existing MediaAsset/R2 upload APIs.
+- Property/Project create/edit attachments now save inside the version-checked entity transaction. Detachment preserves library assets.
+- Pending forward migration: 20260930180000_inline_media (poster references, attachment overrides, project primary selection, short-lived report download grants).
+- Completed local checks during implementation: TypeScript typecheck, full ESLint, optimized Next build, four new media contract/range unit tests, repository filename/context hygiene.
+- Database-dependent suite is pending hosted verification; local Docker daemon is unavailable. A local combined unit command also selected existing database-dependent integration.test.ts files and failed without DATABASE_URL; that run is not acceptance evidence.
+- Remaining media acceptance: complete all module/locale/viewport journeys, interrupted/retry/duplicate cases, protected-document delivery and full integration suites; verify exact CI commit; deploy and verify unpublished live media record.
+- Phases 12–19 remain queued after this media release. External CRM synchronization and paid Render worker remain deferred.
+
 - Phase 00: baseline, topology, source map, design reference, phase checklist and CMS gap matrix recorded.
 - Files changed: `docs/agent/{EXECUTION_STATE,VERIFICATION_LOG,SOURCE_MAP,DESIGN_REFERENCE,PHASE_CHECKLIST,CMS_GAP_MATRIX}.md`.
 - Migrations: none.

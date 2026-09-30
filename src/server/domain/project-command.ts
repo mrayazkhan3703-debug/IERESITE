@@ -5,8 +5,10 @@ import { HttpError, audit } from "@/server/auth";
 import { emitEvent } from "@/server/jobs/outbox";
 import { requirePublicMedia } from "@/server/domain/media-policy";
 import { canCreateCatalogResource, canManageCatalogResource, catalogReadFilter } from "@/server/domain/resource-policy";
+import type { EntityMediaInput } from "@/lib/media-contract";
+import { saveEntityMedia } from "./entity-media";
 
-export interface ProjectCommandInput {
+export interface ProjectCommandInput extends EntityMediaInput {
   projectId: string;
   expectedUpdatedAt: string;
   developerId?: string;
@@ -37,7 +39,7 @@ export interface ProjectCommandInput {
   amenityIds?: string[];
 }
 
-export interface NewProjectCommandInput {
+export interface NewProjectCommandInput extends EntityMediaInput {
   developerId: string;
   communityId: string;
   name: string;
@@ -148,6 +150,7 @@ export async function createProjectCommand(actor: SessionUser, input: NewProject
         },
       });
       const after = {
+        mediaAttachments: input,
         developerId: project.developerId, communityId: project.communityId, name: project.name, slug: project.slug,
         tagline: project.tagline, summary: project.summary, description: project.description,
         projectType: project.projectType, status: project.status, lat: project.lat, lng: project.lng,
@@ -165,6 +168,7 @@ export async function createProjectCommand(actor: SessionUser, input: NewProject
         await tx.projectAmenity.createMany({ data: [...new Set(input.amenityIds)].map((amenityId) => ({ projectId: project.id, amenityId })) });
       }
       await tx.projectStatusHistory.create({ data: { projectId: project.id, fromStatus: null, toStatus: project.status, changedBy: actor.id, reason: "Initial Admin draft creation" } });
+      await saveEntityMedia(tx, "PROJECT", project.id, input);
       await audit({ actorId: actor.id, organizationId: actor.organizationId, action: "project.create", resourceType: "project", resourceId: project.id, before: null, after, ip }, tx);
       await emitEvent("project", project.id, "project.updated", { projectId: project.id, by: actor.email }, tx);
       return { id: project.id, updatedAt: project.updatedAt.toISOString(), publicationStatus: project.publicationStatus };
@@ -208,6 +212,7 @@ export async function updateProjectCommand(actor: SessionUser, input: ProjectCom
       if (!nextName || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(nextSlug)) {
         throw new HttpError(422, "Project name and a URL-safe slug are required.", "PROJECT_VALIDATION");
       }
+      await saveEntityMedia(tx, "PROJECT", project.id, input);
       if (input.publicationStatus === "PUBLISHED") {
         if (!nextName.trim()) throw new HttpError(422, "A project name is required before publishing.", "PUBLICATION_VALIDATION");
         if (nextCommunity.publicationStatus !== "PUBLISHED") {
@@ -219,7 +224,7 @@ export async function updateProjectCommand(actor: SessionUser, input: ProjectCom
         if (!(input.summary ?? project.summary)?.trim() || !(input.description ?? project.description)?.trim()) {
           throw new HttpError(422, "Add a project summary and description before publishing.", "PUBLICATION_VALIDATION");
         }
-        if (!project.media.some((item) => item.media.kind === "IMAGE" && !item.media.isPrivate)) {
+        if (!await tx.projectMedia.findFirst({ where: { projectId: project.id, section: "GALLERY", media: { mimeType: { startsWith: "image/" }, isPrivate: false } } })) {
           throw new HttpError(422, "Add at least one public image to the project gallery before publishing.", "PUBLICATION_VALIDATION");
         }
       }

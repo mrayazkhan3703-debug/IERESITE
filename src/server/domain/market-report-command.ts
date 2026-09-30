@@ -124,7 +124,7 @@ function state(report: {
 
 async function ensureMedia(tx: Prisma.TransactionClient, id: string | null, kind: "IMAGE" | "DOCUMENT") {
   if (!id) return null;
-  const asset = await tx.mediaAsset.findFirst({ where: { id, isPrivate: false, kind }, select: { id: true } });
+  const asset = await tx.mediaAsset.findFirst({ where: { id, isPrivate: false, mimeType: kind === "IMAGE" ? { startsWith: "image/" } : "application/pdf" }, select: { id: true } });
   if (!asset) throw new HttpError(422, `Choose an available public ${kind.toLowerCase()} from the Media Library.`, "MEDIA_NOT_AVAILABLE");
   return asset.id;
 }

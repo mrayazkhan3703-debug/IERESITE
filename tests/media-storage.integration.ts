@@ -5,6 +5,11 @@ import { processMediaJob, storeUpload, type StoredMedia } from "@/server/media/p
 import { deletePrivateObject, deletePublicObject, putPrivateObject } from "@/server/storage/object-store";
 import { GET as getMediaContent } from "@/app/api/media/[id]/content/route";
 import { openVerifiedCsvSnapshot, persistCsvSnapshot, SnapshotIntegrityError } from "@/server/ingestion/snapshot";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, readFile, unlink, rmdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const uploaded: StoredMedia[] = [];
 const privateKeys: string[] = [];
@@ -99,6 +104,41 @@ describe("S3-compatible public and private media delivery", () => {
     const stored = await uploadFixture(true);
     expect(stored.storageKey).toMatch(/^private\/portfolio\//);
     expect((await requestContent(stored.id)).status).toBe(404);
+  });
+
+  test("returns an existing public asset for checksum reuse", async () => {
+    const bytes = await sharp({ create: { width: 13, height: 17, channels: 3, background: { r: 11, g: 12, b: 13 } } }).png().toBuffer();
+    const file = new File([new Uint8Array(bytes)], "duplicate-reuse.png", { type: "image/png" });
+    const stored = await storeUpload(file); uploaded.push(stored);
+    await expect(storeUpload(file)).rejects.toMatchObject({ status: 409, code: "DUPLICATE_MEDIA", existingAsset: { id: stored.id, url: stored.url } });
+  });
+
+  test("validates MP4 and WebM streams and delivers byte ranges", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "iere-video-test-"));
+    const execute = promisify(execFile);
+    try {
+      for (const [ext, codec, mime] of [["mp4", "libx264", "video/mp4"], ["webm", "libvpx-vp9", "video/webm"]] as const) {
+        const filename = path.join(directory, "fixture." + ext);
+        await execute("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=gray:s=64x48:d=1", "-c:v", codec, "-pix_fmt", "yuv420p", "-an", filename], { timeout: 15000, maxBuffer: 65536 });
+        const bytes = await readFile(filename);
+        const stored = await storeUpload(new File([new Uint8Array(bytes)], "synthetic-verification." + ext, { type: mime }));
+        uploaded.push(stored);
+        expect(stored.kind).toBe("VIDEO"); expect(stored.width).toBe(64); expect(stored.height).toBe(48);
+        const response = await getMediaContent(new Request("http://localhost/api/media/" + stored.id + "/content", { headers: { range: "bytes=0-31" } }), { params: Promise.resolve({ id: stored.id }) });
+        expect(response.status).toBe(206);
+        expect(response.headers.get("content-range")).toBe("bytes 0-31/" + bytes.length);
+        expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes.subarray(0, 32));
+        const invalid = await getMediaContent(new Request("http://localhost/api/media/" + stored.id + "/content", { headers: { range: "bytes=" + bytes.length + "-" } }), { params: Promise.resolve({ id: stored.id }) });
+        expect(invalid.status).toBe(416);
+        await unlink(filename);
+      }
+    } finally { await rmdir(directory).catch(() => {}); }
+  }, 45000);
+
+  test("rejects malformed containers and empty or oversized uploads", async () => {
+    await expect(storeUpload(new File([], "empty.jpg", { type: "image/jpeg" }))).rejects.toMatchObject({ code: "INVALID_FILE_SIZE" });
+    await expect(storeUpload(new File([new Uint8Array(26 * 1024 * 1024)], "large.mp4", { type: "video/mp4" }))).rejects.toMatchObject({ code: "INVALID_FILE_SIZE" });
+    await expect(storeUpload(new File([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0, 0, 0, 0, 0])], "broken.webm", { type: "video/webm" }))).rejects.toMatchObject({ code: "INVALID_VIDEO" });
   });
 
   test("treats deleted and private media derivative work as a terminal no-op", async () => {

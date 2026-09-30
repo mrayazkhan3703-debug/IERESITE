@@ -84,7 +84,7 @@ function validate(input: SeoMetadataInput): SeoValues {
 
 async function ensurePublicImage(tx: Prisma.TransactionClient, id: string | null) {
   if (!id) return null;
-  const media = await tx.mediaAsset.findFirst({ where: { id, isPrivate: false, kind: "IMAGE" }, select: { id: true } });
+  const media = await tx.mediaAsset.findFirst({ where: { id, isPrivate: false, mimeType: { startsWith: "image/" } }, select: { id: true } });
   if (!media) throw new HttpError(422, "Choose an existing public image from the Media Library.", "MEDIA_NOT_AVAILABLE");
   return media.id;
 }

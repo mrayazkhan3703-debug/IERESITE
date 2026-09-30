@@ -6,7 +6,7 @@ export async function publicDocumentDownloadUrls(mediaIds: string[]) {
   if (!ids.length) return new Map<string, string>();
   const assets = await db.mediaAsset.findMany({
     where: {
-      id: { in: ids }, isPrivate: false, kind: "DOCUMENT",
+      id: { in: ids }, isPrivate: false, mimeType: "application/pdf",
       OR: [{ storageKey: { startsWith: "public/media/" } }, { url: { startsWith: "/uploads/" } }],
     },
     select: { id: true, storageKey: true, url: true },

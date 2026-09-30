@@ -14,8 +14,8 @@ import {
   publicListingWindowWhere,
 } from "@/server/domain/visibility";
 
-function mediaDto(m: { id: string; url: string; altText: string | null; caption: string | null; width: number | null; height: number | null; kind: string }): MediaDTO {
-  return { id: m.id, url: m.url, altText: m.altText, caption: m.caption, width: m.width, height: m.height, kind: m.kind };
+function mediaDto(m: { id: string; url: string; altText: string | null; caption: string | null; width: number | null; height: number | null; kind: string; mimeType?: string; poster?: { url: string } | null }): MediaDTO {
+  return { id: m.id, url: m.url, altText: m.altText, caption: m.caption, width: m.width, height: m.height, kind: m.kind, mimeType: m.mimeType, posterUrl: m.poster?.url ?? null };
 }
 
 export interface PropertyDetail {
@@ -90,9 +90,9 @@ export async function getPropertyDetail(
       community: true,
       project: { include: { developer: true, paymentPlans: { where: { verificationStatus: { in: ["PUBLISHED", "VERIFIED"] } }, include: { installments: true }, orderBy: { isDefault: "desc" } } } },
       developer: true,
-      media: { orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }], include: { media: true } },
-      floorPlans: { orderBy: { bedrooms: "asc" }, include: { media: true } },
-      documents: { include: { media: true } },
+      media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } } },
+      floorPlans: { orderBy: { bedrooms: "asc" }, include: { media: { include: { poster: { select: { url: true } } } } } },
+      documents: { include: { media: { include: { poster: { select: { url: true } } } } } },
       amenities: { include: { amenity: true } },
       listings: {
         ...(!options?.previewScope ? { where: publicListingWindowWhere() } : {}),
@@ -122,7 +122,7 @@ export async function getPropertyDetail(
       project: { include: { developer: true } },
       developer: true,
       listings: { where: publicListingWindowWhere(), orderBy: { createdAt: "desc" } },
-      media: { orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }], include: { media: true }, take: 1 },
+      media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 },
     },
     take: 6,
   });
@@ -257,7 +257,7 @@ export async function getPropertyDetail(
           photoUrl: agent.photoUrl,
         }
       : null,
-    media: property.media.map((m) => mediaDto(m.media)),
+    media: property.media.map((m) => mediaDto({ ...m.media, altText: m.altText ?? m.media.altText, caption: m.caption ?? m.media.caption })),
     floorPlans: property.floorPlans.map((fp) => ({
       id: fp.id,
       label: fp.label,
@@ -330,11 +330,11 @@ export async function getProjectDetail(slug: string) {
     include: {
       developer: true,
       community: true,
-      media: { orderBy: [{ sortOrder: "asc" }], include: { media: true } },
+      media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } } },
       amenities: { include: { amenity: true } },
       paymentPlans: { where: { verificationStatus: { in: ["PUBLISHED", "VERIFIED"] } }, include: { installments: true }, orderBy: { isDefault: "desc" } },
       statusHistory: { orderBy: { createdAt: "desc" }, take: 6 },
-      documents: { include: { media: true } },
+      documents: { include: { media: { include: { poster: { select: { url: true } } } } } },
     },
   });
   if (!project) return null;
@@ -349,7 +349,7 @@ export async function getProjectDetail(slug: string) {
     include: {
       community: true,
       listings: { where: publicListingWindowWhere(), orderBy: { createdAt: "desc" } },
-      media: { orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }], include: { media: true }, take: 1 },
+      media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 },
     },
     take: 12,
   });
@@ -392,7 +392,7 @@ export async function getProjectDetail(slug: string) {
       lat: project.community.lat,
       lng: project.community.lng,
     },
-    media: project.media.map((m) => mediaDto(m.media)),
+    media: project.media.map((m) => mediaDto({ ...m.media, altText: m.altText ?? m.media.altText, caption: m.caption ?? m.media.caption })),
     amenities: project.amenities.map((a) => ({ key: a.amenity.key, name: a.amenity.name })),
     paymentPlans: project.paymentPlans.map((p) => ({
       id: p.id,
@@ -481,14 +481,14 @@ export async function getCommunityDetail(slug: string) {
       where: { communityId: community.id, ...PUBLIC_PROPERTY_WHERE },
       include: {
         listings: { where: publicListingWindowWhere(), orderBy: { createdAt: "desc" } },
-        media: { orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }], include: { media: true }, take: 1 },
+        media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 },
         project: { include: { developer: true } },
       },
       take: 9,
     }),
     db.project.findMany({
       where: { communityId: community.id, ...PUBLIC_PROJECT_WHERE },
-      include: { developer: true, media: { orderBy: { sortOrder: "asc" }, include: { media: true }, take: 1 } },
+      include: { developer: true, media: { where: { section: "GALLERY", media: { mimeType: { startsWith: "image/" } } }, orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 } },
       take: 6,
     }),
     db.marketMetric.findMany({
@@ -587,7 +587,7 @@ export async function getDeveloperDetail(slug: string) {
   if (!developer) return null;
   const projects = await db.project.findMany({
     where: { developerId: developer.id, ...PUBLIC_PROJECT_WHERE },
-    include: { community: true, media: { orderBy: { sortOrder: "asc" }, include: { media: true }, take: 1 } },
+    include: { community: true, media: { where: { section: "GALLERY", media: { mimeType: { startsWith: "image/" } } }, orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 } },
     orderBy: { createdAt: "desc" },
   });
   const logo = developer.logoMediaId
@@ -667,7 +667,7 @@ export async function getAgentDetail(slug: string): Promise<(AgentDTO & { listin
         include: {
           community: true,
           project: { include: { developer: true } },
-          media: { orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }], include: { media: true }, take: 1 },
+          media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 },
         },
       },
     },
@@ -935,6 +935,7 @@ export interface ProjectDetailV2 {
   developer: { id: string; name: string; slug: string; summary: string | null; verificationStatus: string; lastVerifiedAt: string | null };
   community: { id: string; name: string; slug: string; summary: string | null; lat: number; lng: number };
   media: MediaDTO[];
+  progressMedia?: MediaDTO[];
   brochure: MediaDTO | null;
   amenities: { key: string; name: string }[];
   paymentPlans: {
@@ -985,11 +986,11 @@ export async function getProjectDetailV2(slug: string): Promise<ProjectDetailV2 
     include: {
       developer: true,
       community: true,
-      media: { orderBy: [{ sortOrder: "asc" }], include: { media: true } },
+      media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } } },
       amenities: { include: { amenity: true } },
       paymentPlans: { where: { verificationStatus: { in: ["PUBLISHED", "VERIFIED"] } }, include: { installments: true }, orderBy: { isDefault: "desc" } },
       statusHistory: { orderBy: { createdAt: "desc" }, take: 6 },
-      documents: { include: { media: true } },
+      documents: { include: { media: { include: { poster: { select: { url: true } } } } } },
     },
   });
   if (!project) return null;
@@ -1005,7 +1006,7 @@ export async function getProjectDetailV2(slug: string): Promise<ProjectDetailV2 
       include: {
         community: true,
         listings: { where: publicListingWindowWhere(), orderBy: { createdAt: "desc" }, include: { agent: true } },
-        media: { orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }], include: { media: true }, take: 1 },
+        media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 },
       },
       take: 12,
     }),
@@ -1081,7 +1082,8 @@ export async function getProjectDetailV2(slug: string): Promise<ProjectDetailV2 
       lat: project.community.lat,
       lng: project.community.lng,
     },
-    media: project.media.map((m) => mediaDto(m.media)),
+    media: project.media.filter((m) => m.section === "GALLERY").map((m) => mediaDto({ ...m.media, altText: m.altText ?? m.media.altText, caption: m.caption ?? m.media.caption })),
+    progressMedia: project.media.filter((m) => m.section === "PROGRESS").map((m) => mediaDto({ ...m.media, altText: m.altText ?? m.media.altText, caption: m.caption ?? m.media.caption })),
     brochure: brochure ? mediaDto(brochure) : null,
     amenities: project.amenities.map((a) => ({ key: a.amenity.key, name: a.amenity.name })),
     paymentPlans: project.paymentPlans.map((p) => ({
@@ -1249,14 +1251,14 @@ export async function getCommunityDetailV2(slug: string): Promise<CommunityDetai
       where: { communityId: community.id, ...PUBLIC_PROPERTY_WHERE },
       include: {
         listings: { where: publicListingWindowWhere(), orderBy: { createdAt: "desc" } },
-        media: { orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }], include: { media: true }, take: 1 },
+        media: { orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 },
         project: { include: { developer: true } },
       },
       take: 30,
     }),
     db.project.findMany({
       where: { communityId: community.id, ...PUBLIC_PROJECT_WHERE },
-      include: { developer: true, media: { orderBy: { sortOrder: "asc" }, include: { media: true }, take: 1 } },
+      include: { developer: true, media: { where: { section: "GALLERY", media: { mimeType: { startsWith: "image/" } } }, orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 } },
       orderBy: { createdAt: "desc" },
       take: 12,
     }),
@@ -1422,7 +1424,7 @@ export async function getDeveloperDetailV2(slug: string): Promise<DeveloperDetai
     where: { developerId: developer.id, ...PUBLIC_PROJECT_WHERE },
     include: {
       community: true,
-      media: { orderBy: { sortOrder: "asc" }, include: { media: true }, take: 1 },
+      media: { where: { section: "GALLERY", media: { mimeType: { startsWith: "image/" } } }, orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }], include: { media: { include: { poster: { select: { url: true } } } } }, take: 1 },
       paymentPlans: { where: { verificationStatus: { in: ["PUBLISHED", "VERIFIED"] } }, include: { installments: true }, orderBy: { isDefault: "desc" } },
     },
     orderBy: { createdAt: "desc" },

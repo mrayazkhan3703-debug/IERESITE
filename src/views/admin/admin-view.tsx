@@ -38,12 +38,11 @@ import { cn } from "@/lib/utils";
 import type { MetricState } from "@/lib/data-state";
 import { ADMIN_SECTIONS, adminSectionFromLocation, canViewAdminSection, type AdminSection } from "@/features/admin/admin-sections";
 import { OverviewSection } from "@/features/admin/overview-section";
+import { MediaForm, MediaUploader } from "@/features/admin/shared/media-field";
 import { PublicMediaPicker } from "@/features/admin/shared/public-media-picker";
 import { confirmDiscardChanges, useUnsavedChanges } from "@/features/admin/shared/admin-primitives";
 import { MapLocationPicker } from "@/features/admin/shared/map-location-picker";
-import { MediaGalleryEditor } from "@/features/admin/shared/media-gallery-editor";
-import { PropertyAssetEditor } from "@/features/admin/shared/property-asset-editor";
-import { ProjectAssetEditor } from "@/features/admin/shared/project-asset-editor";
+import { EntityMediaEditor, emptyMediaDraft, readMediaDraft, mediaDraftPayload } from "@/features/admin/shared/entity-media-editor";
 import { ProjectPaymentPlanEditor } from "@/features/admin/shared/project-payment-plan-editor";
 import { UnitEditorDialog, UnitImportDialog, type UnitRow, type UnitProject, type UnitProperty } from "@/features/admin/shared/unit-studio-actions";
 import { AdminShell } from "@/features/admin/admin-shell";
@@ -453,6 +452,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [mediaDraft, setMediaDraft] = React.useState(emptyMediaDraft);
   const [reindexing, setReindexing] = React.useState(false);
   const [resetSourceFields, setResetSourceFields] = React.useState<SourceField[]>([]);
   const [form, setForm] = React.useState(emptyPropertyForm);
@@ -479,6 +479,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
 
   const openCreate = () => {
     setEditing(null);
+    setMediaDraft(emptyMediaDraft());
     setCreating(true);
     setResetSourceFields([]);
     setForm({ ...emptyPropertyForm(), availability: "" });
@@ -500,6 +501,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   const openEditor = (property: Record<string, unknown>) => {
     setCreating(false);
     setEditing(property);
+    setMediaDraft(readMediaDraft(property));
     setResetSourceFields([]);
     setForm({ ...emptyPropertyForm(),
       title: String(property.title ?? ""),
@@ -590,6 +592,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           listingType: form.listingType, rentFrequency: form.rentFrequency || null,
           priceAed: Number(form.priceAed), availabilityStatus: form.availability,
           coverMediaId: form.coverMediaId || null,
+          ...mediaDraftPayload(mediaDraft),
           projectId: form.projectId || null, developerId: form.developerId || null,
           subType: form.subType || null, builtUpAreaSqft: form.builtUpAreaSqft ? Number(form.builtUpAreaSqft) : null,
           plotAreaSqft: form.plotAreaSqft ? Number(form.plotAreaSqft) : null, furnishing: form.furnishing || null, view: form.view || null,
@@ -617,6 +620,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           availabilityStatus: form.availability,
           isFeatured: form.featured,
           coverMediaId: form.coverMediaId || null,
+          ...mediaDraftPayload(mediaDraft),
           subType: form.subType || null, builtUpAreaSqft: form.builtUpAreaSqft ? Number(form.builtUpAreaSqft) : null,
           plotAreaSqft: form.plotAreaSqft ? Number(form.plotAreaSqft) : null, furnishing: form.furnishing || null, view: form.view || null,
           floor: form.floor !== "" ? Number(form.floor) : null, totalFloors: form.totalFloors ? Number(form.totalFloors) : null,
@@ -726,7 +730,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
             <DialogTitle>{creating ? "Create property" : "Edit property"}</DialogTitle>
             <DialogDescription>{creating ? "New properties are internal drafts. Enter known listing and location facts only; coordinates are attributed to manual Admin input and are not externally verified." : "Changes are version checked and recorded with an audit entry. Publishing validates the linked public listing and community."}</DialogDescription>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={saveEditor}>
+          <MediaForm className="space-y-4" onSubmit={saveEditor}>
             {!creating && editing && <section className="space-y-2 rounded-lg border border-border/70 bg-secondary/20 p-3" aria-label="Property publish readiness">
               <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">Publish readiness</h3><p className="text-xs text-muted-foreground">The API rechecks these requirements when you save. A blocked publish leaves the property unchanged.</p></div><div className="flex flex-wrap gap-2"><a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/admin/properties/${encodeURIComponent(String(editing.slug))}/preview`} target="_blank" rel="noopener noreferrer">Preview saved record</a>{editing.publicationStatus === "PUBLISHED" && <a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/properties/${encodeURIComponent(String(editing.slug))}`} target="_blank" rel="noopener noreferrer">Open public page</a>}<a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/admin/seo-metadata?q=${encodeURIComponent(`properties/${String(editing.slug)}`)}`}>SEO metadata</a></div></div>
               <ul className="grid gap-1 text-xs sm:grid-cols-2">{propertyReadiness.map((item) => <li key={item.label} className={item.ready ? "text-success" : "text-muted-foreground"}>{item.ready ? "✓" : "○"} {item.label}</li>)}</ul>
@@ -769,9 +773,8 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
             </div>
             <label className="block space-y-1.5 text-sm font-medium">Highlights<Textarea value={form.highlights} maxLength={7500} rows={4} onChange={(e) => setForm({ ...form, highlights: e.target.value })} placeholder="One highlight per line" /></label>
             <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Amenities</legend><div className="grid gap-2 sm:grid-cols-2">{propertyOptions.amenities.map((amenity) => <label key={String(amenity.id)} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.amenityIds.includes(String(amenity.id))} onChange={(event) => setForm({ ...form, amenityIds: event.target.checked ? [...form.amenityIds, String(amenity.id)] : form.amenityIds.filter((id) => id !== amenity.id) })} />{String(amenity.name)}</label>)}</div></fieldset>
-            <PublicMediaPicker label="Public property cover image" value={form.coverMediaId} onChange={(coverMediaId) => setForm({ ...form, coverMediaId })} />
-            {!creating && editing && <MediaGalleryEditor entity="property" entityId={String(editing.id)} initialGallery={Array.isArray(editing.gallery) ? editing.gallery as { mediaId: string; isCover?: boolean; url?: string; altText?: string | null }[] : []} onChanged={load} />}
-            {!creating && editing && <PropertyAssetEditor propertyId={String(editing.id)} floorPlans={Array.isArray(editing.floorPlans) ? editing.floorPlans as { id: string; mediaId: string; bedrooms: number | null; areaSqft: number | null; priceMinor: string | null; label: string | null; url: string }[] : []} documents={Array.isArray(editing.documents) ? editing.documents as { id: string; mediaId: string; docType: string; label: string | null; gated: boolean; url: string; mimeType: string }[] : []} onChanged={load} />}
+            <EntityMediaEditor value={mediaDraft} onChange={(draft) => { setMediaDraft(draft); setForm({ ...form, coverMediaId: draft.gallery.find((row) => row.isCover)?.mediaId ?? "" }); }} />
+            <PublicMediaPicker label="Cover image" value={form.coverMediaId} onChange={(coverMediaId) => { setForm({ ...form, coverMediaId }); setMediaDraft((draft) => ({ ...draft, gallery: coverMediaId ? [...draft.gallery.filter((row) => row.mediaId !== coverMediaId).map((row) => ({ ...row, isCover: false })), { mediaId: coverMediaId, kind: "IMAGE", isCover: true }] : draft.gallery.filter((row) => !row.isCover) })); }} />
             {!creating && editing && <section className="space-y-2 rounded-lg border border-border/70 p-3"><h3 className="text-sm font-semibold">Source and editorial history</h3><p className="text-xs text-muted-foreground">Source: {String(editing.sourceType ?? "INTERNAL")} · last source update: {editing.sourceUpdatedAt ? formatDate(String(editing.sourceUpdatedAt)) : "not supplied"} · retrieved: {editing.retrievedAt ? formatDate(String(editing.retrievedAt)) : "not supplied"}</p><div className="grid gap-3 sm:grid-cols-2"><div><p className="mb-1 text-xs font-medium">Price history</p>{Array.isArray(editing.priceHistory) && editing.priceHistory.length ? <ul className="space-y-1 text-xs">{(editing.priceHistory as { priceMinor: string; currency: string; sourceType: string; recordedAt: string }[]).map((item, index) => <li key={`${item.recordedAt}-${index}`}>{formatMoney(item.priceMinor, { currency: item.currency })} · {formatDate(item.recordedAt)} · {item.sourceType}</li>)}</ul> : <p className="text-xs text-muted-foreground">No history recorded.</p>}</div><div><p className="mb-1 text-xs font-medium">Availability history</p>{Array.isArray(editing.statusHistory) && editing.statusHistory.length ? <ul className="space-y-1 text-xs">{(editing.statusHistory as { fromStatus: string | null; toStatus: string; reason: string | null; createdAt: string }[]).map((item, index) => <li key={`${item.createdAt}-${index}`}>{item.fromStatus ?? "Created"} → {item.toStatus} · {formatDate(item.createdAt)}{item.reason ? ` · ${item.reason}` : ""}</li>)}</ul> : <p className="text-xs text-muted-foreground">No status changes recorded.</p>}</div></div></section>}
             <div className="grid gap-3 sm:grid-cols-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.offPlan} onChange={(e) => setForm({ ...form, offPlan: e.target.checked })} /> Off-plan listing</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.exclusive} onChange={(e) => setForm({ ...form, exclusive: e.target.checked })} /> Exclusive listing</label></div>
             {!creating && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} /> Featured listing</label>}
@@ -780,7 +783,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
               <Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button>
               <Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft property" : "Save changes"}</Button>
             </DialogFooter>
-          </form>
+          </MediaForm>
         </DialogContent>
       </Dialog>
     </div>
@@ -794,6 +797,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [mediaDraft, setMediaDraft] = React.useState(emptyMediaDraft);
   const [form, setForm] = React.useState({
     name: "", slug: "", tagline: "", summary: "", description: "",
     developerId: "", communityId: "", lat: "", lng: "", locationPrecision: "PROJECT",
@@ -826,6 +830,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
 
   const openCreate = () => {
     setEditing(null);
+    setMediaDraft(emptyMediaDraft());
     setCreating(true);
     setForm({
       name: "", slug: "", tagline: "", summary: "", description: "", developerId: "", communityId: "",
@@ -839,6 +844,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
   const openEditor = (project: Record<string, unknown>) => {
     setCreating(false);
     setEditing(project);
+    setMediaDraft(readMediaDraft(project));
     setForm({
       name: String(project.name ?? ""),
       slug: String(project.slug ?? ""),
@@ -866,8 +872,10 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
     if (!editing && !creating) return;
     setSaving(true);
     try {
+      const { startingPrice, highlightsText, keyAmenitiesText, ...projectFields } = form;
       const fields = {
-        ...form,
+        ...mediaDraftPayload(mediaDraft, true),
+        ...projectFields,
         tagline: form.tagline || null,
         summary: form.summary || null,
         description: form.description || null,
@@ -881,10 +889,10 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
         constructionSourceUrl: form.constructionSourceUrl || null,
         constructionSourceVerifiedAt: form.constructionSourceVerifiedAt ? new Date(form.constructionSourceVerifiedAt).toISOString() : null,
         totalUnits: form.totalUnits === "" ? null : Number(form.totalUnits),
-        startingPriceMinor: form.startingPrice ? toMinor(form.startingPrice).toString() : null,
+        startingPriceMinor: startingPrice ? toMinor(startingPrice).toString() : null,
         currency: form.currency.toUpperCase(),
-        highlights: form.highlightsText.split("\n").map((item) => item.trim()).filter(Boolean),
-        keyAmenities: form.keyAmenitiesText.split("\n").map((item) => item.trim()).filter(Boolean),
+        highlights: highlightsText.split("\n").map((item) => item.trim()).filter(Boolean),
+        keyAmenities: keyAmenitiesText.split("\n").map((item) => item.trim()).filter(Boolean),
       };
       if (creating) {
         const createFields = Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "publicationStatus"));
@@ -937,7 +945,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>{creating ? "Create project" : "Edit project"}</DialogTitle><DialogDescription>{creating ? "New projects are saved as internal drafts. Enter known facts and source evidence; location is attributed to manual Admin input." : "Updates are version checked and audited. Public plans require verification; URL changes create a permanent redirect."}</DialogDescription></DialogHeader>
-          <form className="space-y-4" onSubmit={saveEditor}>
+          <MediaForm className="space-y-4" onSubmit={saveEditor}>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
@@ -964,14 +972,12 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
             <label className="block space-y-1.5 text-sm font-medium">Project highlights<Textarea maxLength={9000} rows={4} value={form.highlightsText} onChange={(event) => setForm({ ...form, highlightsText: event.target.value })} placeholder="One known highlight per line" /></label>
             <label className="block space-y-1.5 text-sm font-medium">Key amenities<Textarea maxLength={3600} rows={3} value={form.keyAmenitiesText} onChange={(event) => setForm({ ...form, keyAmenitiesText: event.target.value })} placeholder="One amenity per line" /></label>
             <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Amenity catalogue</legend>{relations.amenities.length ? <div className="grid gap-2 sm:grid-cols-2">{relations.amenities.map((amenity) => <label key={String(amenity.id)} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.amenityIds.includes(String(amenity.id))} onChange={(event) => setForm({ ...form, amenityIds: event.target.checked ? [...form.amenityIds, String(amenity.id)] : form.amenityIds.filter((id) => id !== String(amenity.id)) })} />{String(amenity.name)}</label>)}</div> : <p className="text-xs text-muted-foreground">No amenities are available in the catalogue yet.</p>}</fieldset>
+            <EntityMediaEditor project value={mediaDraft} onChange={setMediaDraft} />
             <PublicMediaPicker label="Public project brochure or image" value={form.brochureMediaId} allowedKinds={["IMAGE", "DOCUMENT"]} onChange={(brochureMediaId) => setForm({ ...form, brochureMediaId })} />
-            {!creating && editing && <MediaGalleryEditor entity="project" entityId={String(editing.id)} initialGallery={Array.isArray(editing.gallery) ? editing.gallery as { mediaId: string; isCover?: boolean; url?: string; altText?: string | null }[] : []} onChanged={load} />}
-            {!creating && editing && <MediaGalleryEditor entity="project" entityId={String(editing.id)} section="PROGRESS" initialGallery={Array.isArray(editing.progressGallery) ? editing.progressGallery as { mediaId: string; isCover?: boolean; url?: string; altText?: string | null }[] : []} onChanged={load} />}
-            {!creating && editing && <ProjectAssetEditor projectId={String(editing.id)} documents={Array.isArray(editing.documents) ? editing.documents as { id: string; mediaId: string; docType: string; label: string | null; gated: boolean; mimeType: string }[] : []} onChanged={load} />}
             {!creating && editing && <ProjectPaymentPlanEditor projectId={String(editing.id)} initialCount={Number(editing.paymentPlanCount ?? 0)} onChanged={load} />}
             {creating && relations.developers.length === 0 && relations.communities.length === 0 && <p className="text-sm text-muted-foreground">Create a developer and community before creating a project.</p>}
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft project" : "Save changes"}</Button></DialogFooter>
-          </form>
+          </MediaForm>
         </DialogContent>
       </Dialog>}
     </div>
@@ -1089,7 +1095,7 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>{creating ? "Create community" : "Edit community"}</DialogTitle><DialogDescription>{creating ? "New communities are saved as internal drafts. Coordinates are recorded as manually entered and are not externally verified; review the location precision before saving." : "Slug changes preserve the previous URL. A community with published projects cannot be unpublished until those projects are also taken offline."}</DialogDescription></DialogHeader>
-          <form className="space-y-4" onSubmit={saveEditor}>
+          <MediaForm className="space-y-4" onSubmit={saveEditor}>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
@@ -1121,7 +1127,7 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
             </div>
             <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">To publish: add a summary, description and public cover; set valid coordinates and a usable location precision. Do not publish unverified amenity claims. Source: {form.sourceType}{editing?.sourceUpdatedAt ? ` · updated ${formatDate(String(editing.sourceUpdatedAt))}` : " · freshness date not supplied"}</p>
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft community" : "Save changes"}</Button></DialogFooter>
-          </form>
+          </MediaForm>
         </DialogContent>
       </Dialog>}
     </div>
@@ -1222,7 +1228,7 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>{creating ? "Create developer" : "Edit developer"}</DialogTitle><DialogDescription>{creating ? "New records start UNVERIFIED and stay out of public developer results until linked to a published project. Enter only known facts." : "Updates are version checked and audited. A verification claim must have an HTTP or HTTPS source."}</DialogDescription></DialogHeader>
-          <form className="space-y-4" onSubmit={saveEditor}>
+          <MediaForm className="space-y-4" onSubmit={saveEditor}>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
@@ -1240,7 +1246,7 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
               {!creating && <label className="block space-y-1.5 text-sm font-medium">Verification evidence URL<Input type="url" maxLength={2048} value={form.verificationEvidenceUrl} onChange={(event) => setForm({ ...form, verificationEvidenceUrl: event.target.value })} placeholder="https://official-source.example" /></label>}
             </div>
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create unverified developer" : "Save changes"}</Button></DialogFooter>
-          </form>
+          </MediaForm>
         </DialogContent>
       </Dialog>}
     </div>
@@ -1348,7 +1354,7 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>{creating ? "Create advisor profile" : "Edit advisor profile"}</DialogTitle><DialogDescription>{creating ? "Link an active, email-verified AGENT account. New profiles start inactive and private; no account, role, or real profile facts are invented." : "Changes are audited and scoped by linked account organization. Related projects below are derived from assigned listings."}</DialogDescription></DialogHeader>
-          <form className="space-y-4" onSubmit={saveEditor}>
+          <MediaForm className="space-y-4" onSubmit={saveEditor}>
             {creating && <label className="block space-y-1.5 text-sm font-medium">Active, verified AGENT account<Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={linkableUsers.length === 0}><SelectTrigger><SelectValue placeholder="Choose an account" /></SelectTrigger><SelectContent>{linkableUsers.map((user) => <SelectItem key={user.id} value={user.id}>{user.name ? `${user.name} — ${user.email}` : user.email}</SelectItem>)}</SelectContent></Select>{linkableUsers.length === 0 && <span className="text-xs text-muted-foreground">No eligible account is available. <Link className="underline" to="/admin/users">Open Users &amp; Access to invite an AGENT account</Link>. The invitee must accept and verify their email first.</span>}</label>}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
@@ -1371,7 +1377,7 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
               <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Public advisor directory</span><span className="text-xs text-muted-foreground">A bio and active status are required.</span></span><Switch checked={form.publicAdvisor} disabled={!form.active} onCheckedChange={(publicAdvisor) => setForm({ ...form, publicAdvisor })} /></label>
             </div>}
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving || (creating && !selectedUserId)}>{saving ? "Saving…" : creating ? "Create inactive profile" : "Save changes"}</Button></DialogFooter>
-          </form>
+          </MediaForm>
         </DialogContent>
       </Dialog>}
     </div>
@@ -1700,13 +1706,13 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
               <div className="prose prose-sm max-w-none dark:prose-invert"><ContentBody body={form.bodyMode === "MARKDOWN" ? form.body : ""} blocks={form.bodyMode === "BLOCKS" ? form.blocks : null} locale={form.locale === "ar" ? "ar" : "en"} /></div>
             </div>
           ) : (
-            <form className="space-y-4" onSubmit={save}>
+            <MediaForm className="space-y-4" onSubmit={save}>
               <div className="flex flex-wrap justify-between gap-2">{creating ? <div className="grid flex-1 gap-3 sm:grid-cols-2"><label className="space-y-1.5 text-sm font-medium">Content type<Select value={form.contentType} onValueChange={(contentType) => setForm({ ...form, contentType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["GUIDE", "AREA_GUIDE", "ARTICLE", "PAGE", "INTERNATIONAL_GUIDE"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label><label className="space-y-1.5 text-sm font-medium">Locale<Select value={form.locale} onValueChange={(locale) => setForm({ ...form, locale })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="en">English</SelectItem><SelectItem value="ar">Arabic</SelectItem></SelectContent></Select></label></div> : <div className="flex gap-2"><Badge variant="outline">{String(editing?.contentType)}</Badge><Badge variant="outline">{String(editing?.locale).toUpperCase()}</Badge></div>}<Button type="button" size="sm" variant="outline" onClick={() => setPreview(true)}>Preview</Button></div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block space-y-1.5 text-sm font-medium">Title<Input required maxLength={300} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
                 <label className="block space-y-1.5 text-sm font-medium">Slug<Input required maxLength={180} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
                 <label className="block space-y-1.5 text-sm font-medium">Category<Input maxLength={100} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
-                <label className="block space-y-1.5 text-sm font-medium">Public cover image<Select value={form.coverMediaId || "none"} onValueChange={(value) => setForm({ ...form, coverMediaId: value === "none" ? "" : value })}><SelectTrigger><SelectValue placeholder="No cover image" /></SelectTrigger><SelectContent><SelectItem value="none">No cover image</SelectItem>{mediaAssets.map((asset) => <SelectItem key={String(asset.id)} value={String(asset.id)}>{String(asset.altText || asset.id)} · {formatNumber(Number(asset.sizeBytes) / 1024, "en-AE", { maximumFractionDigits: 0 })} KB</SelectItem>)}</SelectContent></Select></label>
+                <PublicMediaPicker label="Cover image" value={form.coverMediaId} onChange={(coverMediaId) => setForm({ ...form, coverMediaId })} />
               </div>
               {selectedCover && isPublicMediaUrl(selectedCover.url) && <div className="max-w-xs overflow-hidden rounded-lg border border-border/70"><Image src={selectedCover.url} alt={String(selectedCover.altText ?? "")} width={640} height={360} unoptimized className="h-36 w-full object-cover" /></div>}
               <label className="block space-y-1.5 text-sm font-medium">Excerpt<Textarea maxLength={1000} rows={2} value={form.excerpt} onChange={(event) => setForm({ ...form, excerpt: event.target.value })} /></label>
@@ -1720,7 +1726,7 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
                     {block.type === "quote" && <><Textarea rows={3} maxLength={3000} value={block.text} onChange={(event) => updateBlock(index, { text: event.target.value })} aria-label={`Quote ${index + 1}`} /><Input maxLength={160} placeholder="Attribution (optional)" value={block.attribution ?? ""} onChange={(event) => updateBlock(index, { attribution: event.target.value })} /></>}
                     {block.type === "list" && <><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={block.ordered} onChange={(event) => updateBlock(index, { ordered: event.target.checked })} /> Numbered list</label><Textarea rows={Math.min(8, Math.max(3, block.items.length))} maxLength={15000} value={block.items.join("\n")} onChange={(event) => updateBlock(index, { items: event.target.value.split("\n").slice(0, 30) })} aria-label={`List items ${index + 1}`} /><p className="text-xs text-muted-foreground">One list item per line (maximum 30).</p></>}
                     {block.type === "link" && <div className="grid gap-2 sm:grid-cols-2"><label className="space-y-1 text-xs">Link label<Input maxLength={200} value={block.label} onChange={(event) => updateBlock(index, { label: event.target.value })} /></label><label className="space-y-1 text-xs">Destination (HTTP(S), mailto, or same-site path)<Input maxLength={2000} value={block.href} onChange={(event) => updateBlock(index, { href: event.target.value })} /></label></div>}
-                    {block.type === "image" && <div className="grid gap-2 sm:grid-cols-2"><label className="space-y-1 text-xs">Public Media Library image<Select value={block.mediaId || "none"} onValueChange={(mediaId) => updateBlock(index, { mediaId: mediaId === "none" ? "" : mediaId })}><SelectTrigger><SelectValue placeholder="Choose image" /></SelectTrigger><SelectContent><SelectItem value="none">Choose image</SelectItem>{mediaAssets.filter((asset) => asset.kind === "IMAGE" && typeof asset.url === "string" && asset.url.startsWith("/api/media/")).map((asset) => <SelectItem key={String(asset.id)} value={String(asset.id)}>{String(asset.altText || asset.id)}</SelectItem>)}</SelectContent></Select></label><div className="space-y-2"><label className="block space-y-1 text-xs">Alternative text<Input maxLength={300} value={block.altText} onChange={(event) => updateBlock(index, { altText: event.target.value })} /></label><label className="block space-y-1 text-xs">Caption (optional)<Input maxLength={500} value={block.caption ?? ""} onChange={(event) => updateBlock(index, { caption: event.target.value })} /></label></div></div>}
+                    {block.type === "image" && <div className="grid gap-2 sm:grid-cols-2"><PublicMediaPicker label="Content block image" value={block.mediaId} onChange={(mediaId) => updateBlock(index, { mediaId })} /><div className="space-y-2"><label className="block space-y-1 text-xs">Alternative text<Input maxLength={300} value={block.altText} onChange={(event) => updateBlock(index, { altText: event.target.value })} /></label><label className="block space-y-1 text-xs">Caption (optional)<Input maxLength={500} value={block.caption ?? ""} onChange={(event) => updateBlock(index, { caption: event.target.value })} /></label></div></div>}
                     {block.type === "module" && <label className="block space-y-1 text-xs">Prebuilt public module<select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={block.id} onChange={(event) => updateBlock(index, { id: event.target.value as Extract<ContentBlock, { type: "module" }>["id"] })}><option value="property-search">Property search</option><option value="calculator-hub">Calculator hub</option><option value="market-intelligence">Market intelligence</option><option value="property-map">Property map</option><option value="advisor-contact">Advisor contact</option><option value="featured-properties">Featured properties</option></select></label>}
                     {block.type === "entity" && <div className="grid gap-2 sm:grid-cols-3"><label className="space-y-1 text-xs">Reference type<select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={block.entity} onChange={(event) => updateBlock(index, { entity: event.target.value as Extract<ContentBlock, { type: "entity" }>["entity"] })}>{["property", "project", "community", "developer", "advisor"].map((entity) => <option key={entity} value={entity}>{entity}</option>)}</select></label><label className="space-y-1 text-xs">Published entity URL slug<Input maxLength={180} value={block.slug} onChange={(event) => updateBlock(index, { slug: event.target.value })} placeholder="Copy the last part of its public URL" /></label><label className="space-y-1 text-xs">Link label<Input maxLength={200} value={block.label} onChange={(event) => updateBlock(index, { label: event.target.value })} /></label></div>}
                   </section>)}
@@ -1731,7 +1737,7 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
               {form.contentType === "INTERNATIONAL_GUIDE" && <section className="grid gap-3 rounded-lg border border-info/30 bg-info/5 p-4 sm:grid-cols-2"><div className="sm:col-span-2"><h3 className="text-sm font-semibold">Source and freshness review</h3><p className="mt-1 text-xs text-muted-foreground">A verified HTTPS source, verification date and future review date are required before this guide can enter review or be published.</p></div><label className="space-y-1.5 text-sm font-medium">Source organization<Input maxLength={200} value={form.sourceName} onChange={(event) => setForm({ ...form, sourceName: event.target.value })} /></label><label className="space-y-1.5 text-sm font-medium">Authoritative source URL<Input type="url" maxLength={2000} placeholder="https://…" value={form.sourceUrl} onChange={(event) => setForm({ ...form, sourceUrl: event.target.value })} /></label><label className="space-y-1.5 text-sm font-medium">Verified date<Input type="date" value={form.sourceVerifiedAt} onChange={(event) => setForm({ ...form, sourceVerifiedAt: event.target.value })} /></label><label className="space-y-1.5 text-sm font-medium">Review due date<Input type="date" value={form.freshnessReviewDueAt} onChange={(event) => setForm({ ...form, freshnessReviewDueAt: event.target.value })} /></label></section>}
               {!creating && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.submitForReview} onChange={(event) => setForm({ ...form, submitForReview: event.target.checked })} /> Submit changes for review</label>}
               <DialogFooter><Button type="button" variant="outline" onClick={() => { if (confirmDiscardChanges(dirty)) { setCreating(false); setEditing(null); } }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft" : "Save revision"}</Button></DialogFooter>
-            </form>
+            </MediaForm>
           )}
         </DialogContent>
       </Dialog>}
@@ -1812,7 +1818,6 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
 
 function MediaSection({ canEdit }: { canEdit: boolean }) {
   const [assets, setAssets] = React.useState<Record<string, unknown>[] | null>(null);
-  const [files, setFiles] = React.useState<File[]>([]);
   const [q, setQ] = React.useState("");
   const [kindFilter, setKindFilter] = React.useState("");
   const [usageFilter, setUsageFilter] = React.useState("");
@@ -1822,9 +1827,7 @@ function MediaSection({ canEdit }: { canEdit: boolean }) {
   const [minHeight, setMinHeight] = React.useState("");
   const [uploader, setUploader] = React.useState("");
   const [listMode, setListMode] = React.useState(false);
-  const [uploadKind, setUploadKind] = React.useState("IMAGE");
-  const [maxUploadBytes, setMaxUploadBytes] = React.useState(25 * 1024 * 1024);
-  const [uploadProgress, setUploadProgress] = React.useState<{ name: string; status: "queued" | "uploading" | "uploaded" | "failed"; progress: number; error?: string; file: File }[]>([]);
+  const [uploadKind, setUploadKind] = React.useState("AUTO");
   const [selected, setSelected] = React.useState<string[]>([]);
   const [uploadAltText, setUploadAltText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -1848,79 +1851,6 @@ function MediaSection({ canEdit }: { canEdit: boolean }) {
       .catch(() => setAssets([]));
   }, [q, kindFilter, usageFilter, dateFrom, dateTo, minWidth, minHeight, uploader]);
   React.useEffect(() => { load(); }, [load]);
-  React.useEffect(() => { api.get<{ maxBytes: number }>("/api/media?policy=1").then((policy) => setMaxUploadBytes(policy.maxBytes)).catch(() => {}); }, []);
-
-  const upload = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!files.length) return;
-    setBusy(true);
-    try {
-      const progress: { name: string; status: "queued" | "uploading" | "uploaded" | "failed"; progress: number; error?: string; file: File }[] = files.map((file) => ({ name: file.name, status: "queued", progress: 0, file }));
-      setUploadProgress(progress);
-      const failedFiles: File[] = [];
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-        if (file.size > maxUploadBytes || !["image/jpeg", "image/png", "image/webp", "image/avif", "application/pdf"].includes(file.type)) {
-          const reason = file.size > maxUploadBytes ? `File exceeds ${(maxUploadBytes / 1048576).toFixed(0)} MB.` : "Unsupported file type.";
-          progress[index] = { ...progress[index], status: "failed", error: reason };
-          failedFiles.push(file);
-          setUploadProgress([...progress]);
-          continue;
-        }
-        const body = new FormData();
-        body.append("file", file);
-        body.append("altText", uploadAltText);
-        body.append("kind", uploadKind);
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const request = new XMLHttpRequest();
-            request.open("POST", "/api/media");
-            request.withCredentials = true;
-            request.setRequestHeader("x-requested-with", "fetch");
-            request.upload.onprogress = (event) => {
-              if (!event.lengthComputable) return;
-              progress[index] = { ...progress[index], status: "uploading", progress: Math.min(99, Math.round((event.loaded / event.total) * 100)) };
-              setUploadProgress([...progress]);
-            };
-            request.onerror = () => reject(new Error("Network error while uploading."));
-            request.onload = () => {
-              let payload: { error?: string } = {};
-              try { payload = JSON.parse(request.responseText) as { error?: string }; } catch { /* keep a safe generic response */ }
-              if (request.status >= 200 && request.status < 300) resolve();
-              else reject(new Error(payload.error || `Upload failed (${request.status}).`));
-            };
-            request.send(body);
-          });
-          progress[index] = { ...progress[index], status: "uploaded", progress: 100 };
-        } catch (error) {
-          progress[index] = { ...progress[index], status: "failed", error: error instanceof Error ? error.message : "Upload failed." };
-          failedFiles.push(file);
-        }
-        setUploadProgress([...progress]);
-      }
-      const uploaded = progress.filter((item) => item.status === "uploaded").length;
-      if (uploaded) toast.success(`${uploaded} public asset${uploaded === 1 ? "" : "s"} uploaded`);
-      setFiles(failedFiles);
-      if (!failedFiles.length) setUploadAltText("");
-      load();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Media upload failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const retryFailed = async () => {
-    const failed = uploadProgress.filter((item) => item.status === "failed").map((item) => item.file);
-    if (!failed.length) return;
-    setFiles(failed);
-    setUploadProgress([]);
-    window.setTimeout(() => {
-      const form = document.getElementById("media-upload-form") as HTMLFormElement | null;
-      form?.requestSubmit();
-    }, 0);
-  };
-
   const deleteSelected = async () => {
     if (!selected.length || !window.confirm(`Delete ${selected.length} selected asset(s) that have no tracked uses? Used assets will remain protected.`)) return;
     setBusy(true);
@@ -1985,14 +1915,12 @@ function MediaSection({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-6">
       <header><h1 className="font-display text-2xl font-semibold">Media library</h1><p className="mt-1 max-w-3xl text-sm text-muted-foreground">Bulk upload, find and reuse public assets. Private portfolio documents are excluded; assets referenced by a property, project, content entry or other catalog record cannot be deleted.</p></header>
-      {canEdit && <form id="media-upload-form" onSubmit={upload} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFiles(Array.from(event.dataTransfer.files)); }} className="grid gap-3 rounded-xl border border-dashed border-border/70 p-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
-        <label className="block space-y-1.5 text-sm font-medium">Drop files here or choose multiple<Input required multiple type="file" accept="image/jpeg,image/png,image/webp,image/avif,application/pdf" onChange={(event) => setFiles(Array.from(event.currentTarget.files ?? []))} /></label>
-        <label className="block space-y-1.5 text-sm font-medium">Alt text<Input maxLength={300} value={uploadAltText} onChange={(event) => setUploadAltText(event.target.value)} placeholder="Describe the visible image; leave blank if decorative" /></label>
-        <label className="block space-y-1.5 text-sm font-medium">Asset type<Select value={uploadKind} onValueChange={setUploadKind}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["IMAGE", "LOGO", "FLOOR_PLAN", "BROCHURE", "DOCUMENT"].map((kind) => <SelectItem key={kind} value={kind}>{kind.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
-        <Button type="submit" disabled={busy || !files.length}>{busy ? "Uploading…" : `Upload ${files.length || "selected"} asset${files.length === 1 ? "" : "s"}`}</Button>
-      </form>}
-      {uploadProgress.length > 0 && <div className="space-y-2 rounded-lg border border-border/70 p-3">{uploadProgress.map((item, index) => <div key={`${item.file.name}-${item.file.lastModified}-${index}`} className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="truncate">{item.name}</span><span>{item.status === "uploaded" ? "Uploaded" : item.status === "failed" ? item.error : `${item.status === "uploading" ? "Uploading" : "Queued"} · ${item.progress}%`}</span><progress className="h-2 w-full" max={100} value={item.progress} aria-label={`${item.name} upload progress`} /></div>)}{uploadProgress.some((item) => item.status === "failed") && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={retryFailed}>Retry failed files</Button>}</div>}
-      <div className="flex flex-wrap items-center gap-2"><Input className="max-w-sm" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search filename, alt, caption or ID" aria-label="Search media" /><Select value={kindFilter || "all"} onValueChange={(value) => setKindFilter(value === "all" ? "" : value)}><SelectTrigger className="w-48" aria-label="Filter media type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All asset types</SelectItem>{["IMAGE", "LOGO", "FLOOR_PLAN", "BROCHURE", "DOCUMENT"].map((kind) => <SelectItem key={kind} value={kind}>{kind.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select><Select value={usageFilter || "all"} onValueChange={(value) => setUsageFilter(value === "all" ? "" : value)}><SelectTrigger className="w-44" aria-label="Filter media usage"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Any usage</SelectItem><SelectItem value="orphaned">Unreferenced assets</SelectItem><SelectItem value="used">Used assets</SelectItem></SelectContent></Select><Input className="w-40" type="date" aria-label="Uploaded after" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /><Input className="w-40" type="date" aria-label="Uploaded before" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /><Input className="w-28" type="number" min="1" aria-label="Minimum image width" placeholder="Min width" value={minWidth} onChange={(event) => setMinWidth(event.target.value)} /><Input className="w-28" type="number" min="1" aria-label="Minimum image height" placeholder="Min height" value={minHeight} onChange={(event) => setMinHeight(event.target.value)} /><Input className="w-40" aria-label="Uploader ID" placeholder="Uploader ID" value={uploader} onChange={(event) => setUploader(event.target.value)} /><Button type="button" size="sm" variant="outline" onClick={() => setListMode((value) => !value)}>{listMode ? "Grid view" : "List view"}</Button>{canEdit && selected.length > 0 && <><span className="text-xs text-muted-foreground">{selected.length} selected</span><Input className="w-48" aria-label="Caption for assets without one" maxLength={1000} placeholder="Fill missing captions" value={bulkCaption} onChange={(event) => setBulkCaption(event.target.value)} /><Button type="button" size="sm" variant="outline" disabled={busy || !bulkCaption.trim()} onClick={() => void fillMissingMetadata()}>Fill missing captions</Button><Button type="button" size="sm" variant="destructive" disabled={busy} onClick={deleteSelected}>Delete unused selected</Button></>}</div>
+      {canEdit && <section className="space-y-3 rounded-xl border p-4">
+        <label className="block space-y-1.5 text-sm font-medium">Alt text for uploads<Input maxLength={300} value={uploadAltText} onChange={(event) => setUploadAltText(event.target.value)} /></label>
+        <label className="block space-y-1.5 text-sm font-medium">Asset type<Select value={uploadKind} onValueChange={setUploadKind}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["AUTO", "IMAGE", "LOGO", "FLOOR_PLAN", "BROCHURE", "DOCUMENT", "VIDEO"].map((kind) => <SelectItem key={kind} value={kind}>{kind.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
+        <MediaUploader mode="library" kind={uploadKind === "AUTO" ? undefined : uploadKind} altText={uploadAltText} multiple onUploaded={load} onBusyChange={setBusy} />
+      </section>}
+      <div className="flex flex-wrap items-center gap-2"><Input className="max-w-sm" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search filename, alt, caption or ID" aria-label="Search media" /><Select value={kindFilter || "all"} onValueChange={(value) => setKindFilter(value === "all" ? "" : value)}><SelectTrigger className="w-48" aria-label="Filter media type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All asset types</SelectItem>{["IMAGE", "LOGO", "FLOOR_PLAN", "BROCHURE", "DOCUMENT", "VIDEO"].map((kind) => <SelectItem key={kind} value={kind}>{kind.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select><Select value={usageFilter || "all"} onValueChange={(value) => setUsageFilter(value === "all" ? "" : value)}><SelectTrigger className="w-44" aria-label="Filter media usage"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Any usage</SelectItem><SelectItem value="orphaned">Unreferenced assets</SelectItem><SelectItem value="used">Used assets</SelectItem></SelectContent></Select><Input className="w-40" type="date" aria-label="Uploaded after" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /><Input className="w-40" type="date" aria-label="Uploaded before" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /><Input className="w-28" type="number" min="1" aria-label="Minimum image width" placeholder="Min width" value={minWidth} onChange={(event) => setMinWidth(event.target.value)} /><Input className="w-28" type="number" min="1" aria-label="Minimum image height" placeholder="Min height" value={minHeight} onChange={(event) => setMinHeight(event.target.value)} /><Input className="w-40" aria-label="Uploader ID" placeholder="Uploader ID" value={uploader} onChange={(event) => setUploader(event.target.value)} /><Button type="button" size="sm" variant="outline" onClick={() => setListMode((value) => !value)}>{listMode ? "Grid view" : "List view"}</Button>{canEdit && selected.length > 0 && <><span className="text-xs text-muted-foreground">{selected.length} selected</span><Input className="w-48" aria-label="Caption for assets without one" maxLength={1000} placeholder="Fill missing captions" value={bulkCaption} onChange={(event) => setBulkCaption(event.target.value)} /><Button type="button" size="sm" variant="outline" disabled={busy || !bulkCaption.trim()} onClick={() => void fillMissingMetadata()}>Fill missing captions</Button><Button type="button" size="sm" variant="destructive" disabled={busy} onClick={deleteSelected}>Delete unused selected</Button></>}</div>
       {assets === null ? <LoadingState rows={4} /> : assets.length === 0 ? <EmptyState title="No public media assets" description="Upload a validated image or PDF to start the library." /> : (
         <div className={listMode ? "space-y-2" : "grid gap-3 md:grid-cols-2 xl:grid-cols-3"}>
           {assets.map((asset) => <article key={String(asset.id)} className="space-y-3 rounded-xl border border-border/70 p-4">

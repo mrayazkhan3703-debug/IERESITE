@@ -12,6 +12,7 @@ import fs from "fs/promises";
 import crypto from "crypto";
 import { deletePrivateObject, deletePublicObject, getPublicObject, putPrivateObject, putPublicObject } from "@/server/storage/object-store";
 import { HttpError } from "@/server/auth";
+import { validateVideo } from "./video-validation";
 
 const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
 
@@ -21,6 +22,8 @@ const ALLOWED = new Map<string, { ext: string; kind: string }>([
   ["image/webp", { ext: "webp", kind: "IMAGE" }],
   ["image/avif", { ext: "avif", kind: "IMAGE" }],
   ["application/pdf", { ext: "pdf", kind: "DOCUMENT" }],
+  ["video/mp4", { ext: "mp4", kind: "VIDEO" }],
+  ["video/webm", { ext: "webm", kind: "VIDEO" }],
 ]);
 
 /** Magic-byte sniffing — never trust the client MIME */
@@ -32,7 +35,9 @@ function sniffMime(buf: Buffer): string | null {
   if (buf.subarray(4, 8).toString() === "ftyp") {
     const brand = buf.subarray(8, 12).toString();
     if (brand.startsWith("avif") || brand.startsWith("avis")) return "image/avif";
+    if (["isom", "iso2", "avc1", "mp41", "mp42", "M4V "].includes(brand)) return "video/mp4";
   }
+  if (buf.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return "video/webm";
   if (buf.subarray(0, 5).toString() === "%PDF-") return "application/pdf";
   return null;
 }
@@ -52,34 +57,48 @@ export interface StoredMedia {
   width: number | null;
   height: number | null;
   storageKey: string;
+  originalFilename?: string | null;
+  altText?: string | null;
+  caption?: string | null;
+  updatedAt?: string;
 }
 
-export async function storeUpload(file: File, opts?: { altText?: string; uploadedBy?: string; private?: boolean; kind?: "IMAGE" | "LOGO" | "FLOOR_PLAN" | "DOCUMENT" | "BROCHURE" }): Promise<StoredMedia> {
+export class DuplicateMediaError extends HttpError {
+  constructor(public readonly existingAsset: { id: string; url: string; kind: string; mimeType: string; altText: string | null; caption: string | null; originalFilename: string | null }) {
+    super(409, "This file already exists in Media Library. Choose Use existing asset to attach it.", "DUPLICATE_MEDIA");
+  }
+}
+
+export async function storeUpload(file: File, opts?: { altText?: string; uploadedBy?: string; private?: boolean; kind?: "IMAGE" | "LOGO" | "FLOOR_PLAN" | "DOCUMENT" | "BROCHURE" | "VIDEO" }): Promise<StoredMedia> {
   const config = (await import("@/lib/config")).getConfig();
   const maxBytes = config.MEDIA_MAX_UPLOAD_MB * 1024 * 1024;
-  if (file.size > maxBytes) {
-    throw new Error(`File exceeds ${config.MEDIA_MAX_UPLOAD_MB}MB limit`);
+  if (file.size === 0 || file.size > maxBytes) {
+    throw new HttpError(400, `Choose a nonempty file up to ${config.MEDIA_MAX_UPLOAD_MB}MB.`, "INVALID_FILE_SIZE");
   }
   const buf = Buffer.from(await file.arrayBuffer());
+  if (buf.length !== file.size || buf.length > maxBytes) throw new HttpError(400, "Invalid file size.", "INVALID_FILE_SIZE");
   const sniffed = sniffMime(buf);
   const mime = sniffed ?? file.type;
   const allowed = ALLOWED.get(mime);
   if (!sniffed || !allowed) {
-    throw new Error("Unsupported file type (allowed: JPEG, PNG, WebP, AVIF, PDF)");
+    throw new HttpError(400, "Unsupported file type (allowed: JPEG, PNG, WebP, AVIF, PDF, MP4, WebM).", "INVALID_FILE_TYPE");
   }
   const checksum = crypto.createHash("sha256").update(buf).digest("hex");
   // Public and private assets have separate visibility and lifecycle rules.
   // A private portfolio document/image must not be blocked just because the
   // same bytes already exist in the public library (or disclose that asset).
   if (!opts?.private) {
-    const duplicate = await db.mediaAsset.findFirst({ where: { checksum, isPrivate: false }, select: { id: true } });
-    if (duplicate) throw new HttpError(409, `This file matches existing asset ${duplicate.id}; reuse it from the Media Library instead of uploading a duplicate.`, "DUPLICATE_MEDIA");
+    const duplicate = await db.mediaAsset.findFirst({ where: { checksum, isPrivate: false }, select: { id: true, url: true, kind: true, mimeType: true, altText: true, caption: true, originalFilename: true } });
+    if (duplicate) throw new DuplicateMediaError(duplicate);
   }
   const kind = opts?.kind ?? allowed.kind as "IMAGE" | "DOCUMENT";
   const imageKind = ["IMAGE", "LOGO", "FLOOR_PLAN"].includes(kind);
-  if ((mime.startsWith("image/") && !imageKind) || (mime === "application/pdf" && !["DOCUMENT", "BROCHURE", "FLOOR_PLAN"].includes(kind))) {
-    throw new Error("Choose an asset kind compatible with the uploaded file.");
+  if ((mime.startsWith("image/") && !imageKind) || (mime === "application/pdf" && !["DOCUMENT", "BROCHURE", "FLOOR_PLAN"].includes(kind)) || (mime.startsWith("video/") && kind !== "VIDEO")) {
+    throw new HttpError(400, "Choose an asset kind compatible with the uploaded file.", "INVALID_MEDIA_KIND");
   }
+  const videoDimensions = mime.startsWith("video/") ? await validateVideo(buf, mime) : null;
+  const validatedImage = mime.startsWith("image/") ? await imageDimensions(buf) : null;
+  if (mime.startsWith("image/") && !validatedImage) throw new HttpError(400, "This image is malformed or could not be decoded.", "INVALID_IMAGE");
 
   const id = crypto.randomUUID();
   const objectStorage = config.STORAGE_PROVIDER === "s3";
@@ -96,12 +115,12 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
     await fs.writeFile(path.join(UPLOAD_ROOT, key), buf);
   }
 
-  let width: number | null = null;
-  let height: number | null = null;
+  let width: number | null = videoDimensions?.width ?? null;
+  let height: number | null = videoDimensions?.height ?? null;
   let variants: Record<string, string> | null = null;
 
   if (mime.startsWith("image/") && !opts?.private) {
-    const dims = await imageDimensions(buf);
+    const dims = validatedImage;
     width = dims?.width ?? null;
     height = dims?.height ?? null;
     try {
@@ -150,6 +169,10 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
     width,
     height,
     storageKey: key,
+    originalFilename: media.originalFilename,
+    altText: media.altText,
+    caption: media.caption,
+    updatedAt: media.updatedAt.toISOString(),
   };
 }
 

@@ -57,28 +57,8 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   const mediaErrors: string[] = [];
   page.on("pageerror", (error) => mediaErrors.push(error.message));
 
-  await page.goto("/admin/media");
   const imageBytes = readFileSync(resolve(process.cwd(), "public/images/properties/apartment-marina-living.jpg"));
   const floorPlanBytes = readFileSync(resolve(process.cwd(), "public/images/brand/floorplan-sample.jpg"));
-  await page.getByLabel(/Drop files here or choose multiple/).setInputFiles([
-    { name: "property-gallery.jpg", mimeType: "image/jpeg", buffer: imageBytes },
-    { name: "property-floor-plan.jpg", mimeType: "image/jpeg", buffer: floorPlanBytes },
-  ]);
-  const uploadResponses: import("@playwright/test").Response[] = [];
-  const captureUpload = (response: import("@playwright/test").Response) => {
-    if (new URL(response.url()).pathname === "/api/media" && response.request().method() === "POST") uploadResponses.push(response);
-  };
-  page.on("response", captureUpload);
-  await page.getByRole("button", { name: "Upload 2 assets" }).click();
-  await expect.poll(() => uploadResponses.length, { timeout: 30_000 }).toBe(2);
-  page.off("response", captureUpload);
-  for (const response of uploadResponses) {
-    expect(response.status()).toBe(201);
-    mediaIds.push(String((await response.json()).id));
-  }
-  await expect(page.getByText("File: property-gallery.jpg", { exact: true })).toBeVisible();
-  await expect(page.getByText("File: property-floor-plan.jpg", { exact: true })).toBeVisible();
-
   await page.goto("/admin/properties");
   await expect(page.getByRole("heading", { name: "Properties" })).toBeVisible();
   await page.getByRole("button", { name: "Create property" }).click();
@@ -97,8 +77,13 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   await dialog.getByRole("combobox", { name: "Listing advisor", exact: true }).click();
   await page.getByRole("option", { name: "Synthetic Property Studio Advisor", exact: true }).click();
   await dialog.getByRole("group", { name: "Amenities" }).getByText("Synthetic Pool", { exact: true }).click();
-  await dialog.getByRole("combobox", { name: "Public property cover image", exact: true }).click();
-  await page.getByRole("option", { name: new RegExp(mediaIds[0]!.slice(0, 18)) }).click();
+  const coverField = dialog.getByRole("group", { name: "Cover image", exact: true });
+  await coverField.getByRole("button", { name: "Upload New", exact: true }).click();
+  const coverUpload = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/media" && response.request().method() === "POST");
+  await coverField.getByLabel("Upload new media").setInputFiles({ name: "property-gallery.jpg", mimeType: "image/jpeg", buffer: imageBytes });
+  const uploadedCover = await coverUpload;
+  expect(uploadedCover.status()).toBe(201); mediaIds.push(String((await uploadedCover.json()).id));
+  await expect(coverField.getByText(/property-gallery.jpg · done/)).toBeVisible();
   const createResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/properties" && response.request().method() === "POST");
   await dialog.getByRole("button", { name: "Create draft property" }).click();
   const created = await createResponse;
@@ -109,27 +94,30 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   await expect(row).toContainText("DRAFT");
   await row.getByRole("button", { name: "Edit" }).click();
   const editor = page.getByRole("dialog");
-  const galleryPicker = editor.getByRole("combobox", { name: "Select a gallery image", exact: true });
-  await galleryPicker.click();
-  await page.getByRole("option", { name: new RegExp(mediaIds[1]!.slice(0, 18)) }).click();
-  const galleryResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/media/gallery" && response.request().method() === "POST");
-  await editor.getByRole("button", { name: "Add image", exact: true }).click();
-  expect((await galleryResponse).status()).toBe(201);
-  await editor.getByRole("combobox", { name: "Select floor plan", exact: true }).click();
-  await page.getByRole("option", { name: new RegExp(mediaIds[1]!.slice(0, 18)) }).click();
-  await editor.getByLabel("Floor plan label").fill("Type A floor plan");
-  await editor.getByLabel("Floor plan bedrooms").fill("2");
-  await editor.getByLabel("Floor plan area").fill("1325");
-  const floorPlanResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/properties/media" && response.request().method() === "POST");
-  await editor.getByRole("button", { name: "Add floor plan", exact: true }).click();
-  expect((await floorPlanResponse).status()).toBe(201);
+  const floorPlans = editor.getByRole("region", { name: "Floor plans", exact: true });
+  await floorPlans.getByRole("button", { name: "+ Upload files", exact: true }).click();
+  const planUpload = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/media" && response.request().method() === "POST");
+  await floorPlans.getByLabel("Upload new media").setInputFiles({ name: "property-floor-plan.jpg", mimeType: "image/jpeg", buffer: floorPlanBytes });
+  const uploadedPlan = await planUpload;
+  expect(uploadedPlan.status()).toBe(201); mediaIds.push(String((await uploadedPlan.json()).id));
+  await expect(floorPlans.getByText(/property-floor-plan.jpg · done/)).toBeVisible();
+  await editor.getByLabel("Floor plan 1 label").fill("Type A floor plan");
+  await editor.getByLabel("Floor plan 1 bedrooms").fill("2");
+  await editor.getByLabel("Floor plan 1 areaSqft").fill("1325");
+  const gallery = editor.getByRole("region", { name: "Gallery", exact: true });
+  await gallery.getByRole("button", { name: "Choose Existing", exact: true }).click();
+  const library = page.getByRole("dialog", { name: "Choose existing media", exact: true });
+  await library.getByLabel("Search Media Library").fill("property-floor-plan.jpg");
+  await library.getByRole("button", { name: "property-floor-plan.jpg", exact: true }).click();
+  // Staged attachments have not changed the saved record yet.
+  expect(await db.propertyFloorPlan.count({ where: { propertyId: createdProperty.id } })).toBe(0);
   const previewPromise = page.context().waitForEvent("page");
   await editor.getByRole("link", { name: "Preview saved record" }).click();
   const preview = await previewPromise;
   await expect(preview).toHaveURL(new RegExp(`/admin/properties/${slug}/preview$`));
   await expect(preview.getByText("Private draft preview.", { exact: false })).toBeVisible();
   await expect(preview.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
-  await expect(preview.getByText("Type A floor plan", { exact: false })).toBeVisible();
+  await expect(preview.getByText("Type A floor plan", { exact: false })).toHaveCount(0);
   await preview.close();
   await editor.getByLabel("Short description").fill("A verified waterfront residence.");
   await editor.getByLabel("Built-up area (sq ft)").fill("1325");
@@ -173,8 +161,10 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   await expect(seoDialog.getByLabel("Route key")).toHaveValue(propertyRouteKey);
   await seoDialog.getByLabel("Title override (optional)").fill(seoTitle);
   await seoDialog.getByLabel("Description override (optional)").fill(seoDescription);
-  await seoDialog.getByRole("combobox", { name: "Public Open Graph image", exact: true }).click();
-  await page.getByRole("option", { name: new RegExp(mediaIds[0]!.slice(0, 18)) }).click();
+  await seoDialog.getByRole("group", { name: "Open Graph image", exact: true }).getByRole("button", { name: "Choose Existing", exact: true }).click();
+  const seoLibrary = page.getByRole("dialog", { name: "Choose existing media", exact: true });
+  await seoLibrary.getByLabel("Search Media Library").fill("property-gallery.jpg");
+  await seoLibrary.getByRole("button", { name: "property-gallery.jpg", exact: true }).click();
   const seoResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/seo-metadata" && response.request().method() === "POST");
   await seoDialog.getByRole("button", { name: "Create route metadata" }).click();
   expect((await seoResponse).status()).toBe(201);

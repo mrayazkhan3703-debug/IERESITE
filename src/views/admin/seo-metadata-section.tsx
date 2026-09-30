@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { MediaForm } from "@/features/admin/shared/media-field";
+import { PublicMediaPicker } from "@/features/admin/shared/public-media-picker";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -127,21 +129,21 @@ export function SeoMetadataSection({ canEdit }: { canEdit: boolean }) {
 
     {canEdit && <Dialog open={creating || editing !== null} onOpenChange={(open) => { if (!open && !saving) { setCreating(false); setEditing(null); } }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{creating ? "Add SEO route metadata" : "Edit SEO route metadata"}</DialogTitle><DialogDescription>Use a known public route key without leading slash (for example, “home”, “about”, or “guides/example-slug”). System/private pages are rejected. Empty values use the server-generated defaults.</DialogDescription></DialogHeader>
-        <form className="space-y-4" onSubmit={save}>
+        <MediaForm className="space-y-4" onSubmit={save}>
           <label className="block space-y-1.5 text-sm font-medium">Route key<Input required maxLength={300} pattern="[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*" value={form.routeKey} onChange={(event) => setForm({ ...form, routeKey: event.target.value })} placeholder="home or guides/example-slug" disabled={!creating} /></label>
           <label className="block space-y-1.5 text-sm font-medium">Title override (optional)<Input maxLength={300} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
           <label className="block space-y-1.5 text-sm font-medium">Description override (optional)<Textarea maxLength={1000} rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
           <label className="block space-y-1.5 text-sm font-medium">Canonical path override (optional)<Input maxLength={500} pattern="/[A-Za-z0-9._~/-]*" value={form.canonicalPath} onChange={(event) => setForm({ ...form, canonicalPath: event.target.value })} placeholder="/guides/example-slug" /></label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm"><span><span className="block font-medium">Noindex</span><span className="text-xs text-muted-foreground">Exclude from robots and sitemap.</span></span><Switch checked={form.noindex} onCheckedChange={(noindex) => setForm({ ...form, noindex })} /></label>
-            <label className="block space-y-1.5 text-sm font-medium">Public Open Graph image<Select value={form.ogImageMediaId || "none"} onValueChange={(ogImageMediaId) => setForm({ ...form, ogImageMediaId: ogImageMediaId === "none" ? "" : ogImageMediaId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Use site default</SelectItem>{images.map((image) => <SelectItem key={image.id} value={image.id}>{imageLabel(image)}</SelectItem>)}</SelectContent></Select></label>
+            <PublicMediaPicker label="Open Graph image" value={form.ogImageMediaId} onChange={(ogImageMediaId) => setForm({ ...form, ogImageMediaId })} />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block space-y-1.5 text-sm font-medium">Sitemap priority (0–1)<Input type="number" min={0} max={1} step={0.1} value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} /></label>
             <label className="block space-y-1.5 text-sm font-medium">Sitemap change frequency<Select value={form.changefreq || "default"} onValueChange={(changefreq) => setForm({ ...form, changefreq: changefreq === "default" ? "" : changefreq })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="default">Use default</SelectItem>{["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"].map((freq) => <SelectItem key={freq} value={freq}>{freq}</SelectItem>)}</SelectContent></Select></label>
           </div>
           <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={() => { setCreating(false); setEditing(null); }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create route metadata" : "Save changes"}</Button></DialogFooter>
-        </form>
+        </MediaForm>
       </DialogContent>
     </Dialog>}
 

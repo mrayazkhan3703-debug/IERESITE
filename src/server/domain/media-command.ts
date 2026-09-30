@@ -12,6 +12,7 @@ export interface MediaMetadataInput {
   expectedUpdatedAt: string;
   altText?: string | null;
   caption?: string | null;
+  posterMediaId?: string | null;
 }
 
 export async function updateMediaMetadata(actor: SessionUser, input: MediaMetadataInput, ip: string | null) {
@@ -27,9 +28,11 @@ export async function updateMediaMetadata(actor: SessionUser, input: MediaMetada
       if (media.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
         throw new HttpError(409, "This media asset changed since it was loaded. Refresh before saving.", "VERSION_CONFLICT");
       }
+      if (input.posterMediaId !== undefined && !media.mimeType.startsWith("video/")) throw new HttpError(422, "Only videos can have a poster.", "INVALID_POSTER");
+      if (input.posterMediaId && !await tx.mediaAsset.findFirst({ where: { id: input.posterMediaId, isPrivate: false, mimeType: { startsWith: "image/" } } })) throw new HttpError(422, "Choose a public image as the video poster.", "INVALID_POSTER");
       const changed = await tx.mediaAsset.updateMany({
         where: { id: media.id, isPrivate: false, updatedAt: expectedUpdatedAt },
-        data: { altText, caption, updatedAt: new Date() },
+        data: { altText, caption, ...(input.posterMediaId !== undefined ? { posterMediaId: input.posterMediaId } : {}), updatedAt: new Date() },
       });
       if (changed.count !== 1) throw new HttpError(409, "This media asset changed during the save. Refresh and retry.", "VERSION_CONFLICT");
       await audit({
@@ -63,7 +66,16 @@ export async function deleteUnusedMedia(actor: SessionUser, mediaAssetId: string
       tx.contentEntry.count({ where: { heroImageMediaId: asset.id } }), tx.marketReport.count({ where: { coverMediaId: asset.id } }),
       tx.marketReport.count({ where: { fileMediaId: asset.id } }), tx.seoMetadata.count({ where: { ogImageMediaId: asset.id } }),
     ]);
-    const uses = propertyMedia + projectMedia + floorPlans + documents + portfolioDocuments + agents + projects + developers + communities + contentCovers + contentHeroes + reportsCovers + reportsFiles + seo;
+    const retainedUses = await Promise.all([
+      tx.mediaAsset.count({ where: { posterMediaId: asset.id } }),
+      tx.contentEntry.count({ where: { bodyJson: { contains: asset.id } } }),
+      tx.siteSetting.count({ where: { settingsJson: { contains: asset.id } } }),
+      tx.contentRevision.count({ where: { snapshotJson: { contains: asset.id } } }),
+      tx.siteSettingRevision.count({ where: { snapshotJson: { contains: asset.id } } }),
+      tx.marketReportRevision.count({ where: { snapshotJson: { contains: asset.id } } }),
+      tx.seoMetadataRevision.count({ where: { snapshotJson: { contains: asset.id } } }),
+    ]);
+    const uses = propertyMedia + projectMedia + floorPlans + documents + portfolioDocuments + agents + projects + developers + communities + contentCovers + contentHeroes + reportsCovers + reportsFiles + seo + retainedUses.reduce((sum, count) => sum + count, 0);
     if (uses) throw new HttpError(409, `This asset has ${uses} tracked use${uses === 1 ? "" : "s"}; detach or replace those references before deleting it.`, "MEDIA_IN_USE");
     await tx.mediaProcessingJob.deleteMany({ where: { mediaId: asset.id } });
     await audit({ actorId: actor.id, organizationId: actor.organizationId, action: "media.delete", resourceType: "media", resourceId: asset.id, before: { storageKey: asset.storageKey, kind: asset.kind, sizeBytes: asset.sizeBytes }, after: null, ip }, tx);

@@ -33,6 +33,7 @@ export interface ProjectDetailV2 {
   developer: { id: string; name: string; slug: string; summary: string | null; verificationStatus: string; lastVerifiedAt: string | null };
   community: { id: string; name: string; slug: string; summary: string | null; lat: number; lng: number };
   media: MediaDTO[];
+  progressMedia?: MediaDTO[];
   amenities: { key: string; name: string }[];
   paymentPlans: {
     id: string;

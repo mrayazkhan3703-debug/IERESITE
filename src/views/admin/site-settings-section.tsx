@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/common";
 import { DEFAULT_SITE_SETTINGS, HOME_MODULE_IDS, PAGE_COPY_LABELS, type PageCopyKey, type HomeModuleId, type SiteSettings } from "@/lib/site-settings";
+import { MediaForm } from "@/features/admin/shared/media-field";
 import { PublicMediaPicker } from "@/features/admin/shared/public-media-picker";
 import { NavigationEditor } from "./navigation-editor";
 import { useUnsavedChanges } from "@/features/admin/shared/admin-primitives";
@@ -66,7 +67,7 @@ export function SiteSettingsSection() {
 
   if (!settings) return loadFailed ? <div className="rounded-xl border border-border/70 p-5"><h1 className="font-display text-2xl font-semibold">Site settings</h1><p className="mt-2 text-sm text-muted-foreground">Settings did not load. Refresh the page or check that this account has owner/admin access.</p><Button className="mt-4" variant="outline" onClick={() => void load()}>Try again</Button></div> : <LoadingState rows={5} />;
   const customCta = settings.globalCta;
-  return <form className="space-y-6" onSubmit={save}>
+  return <MediaForm className="space-y-6" onSubmit={save}>
     <header><h1 className="font-display text-2xl font-semibold">Site settings</h1><p className="mt-1 max-w-3xl text-sm text-muted-foreground">Edit public contact details, navigation, footer, the home page module order and the main call to action. URLs are limited to HTTPS or safe same-site public routes. Every save creates a version and audit record.</p></header>
 
     <section className="grid gap-4 rounded-xl border border-border/70 bg-card p-5 sm:grid-cols-2">
@@ -110,5 +111,5 @@ export function SiteSettingsSection() {
 
     <section className="flex flex-wrap items-end gap-3 rounded-xl border border-border/70 bg-card p-5"><label className="min-w-64 flex-1 space-y-1 text-sm">Change note<Input maxLength={300} value={changeNote} onChange={(event) => setChangeNote(event.target.value)} placeholder="Why are these settings changing?" /></label><Badge variant="outline">Version {version}</Badge><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save site settings"}</Button></section>
     <section className="rounded-xl border border-border/70 bg-card p-5"><h2 className="font-display text-lg font-semibold">Recent revisions</h2>{revisions.length ? <ol className="mt-3 space-y-2">{revisions.map((revision) => <li key={revision.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"><span><Badge variant="outline">v{revision.version}</Badge><span className="ml-2">{revision.changeNote ?? "No note"}</span></span><span className="text-xs text-muted-foreground">{new Date(revision.createdAt).toLocaleString()}</span></li>)}</ol> : <p className="mt-2 text-sm text-muted-foreground">No settings revisions yet.</p>}</section>
-  </form>;
+  </MediaForm>;
 }

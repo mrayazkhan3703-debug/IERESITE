@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /** GET media asset metadata by id (public for published assets) */
 export const GET = apiHandler(async (_req, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const media = await db.mediaAsset.findFirst({ where: { id, isPrivate: false } });
+  const media = await db.mediaAsset.findFirst({ where: { id, isPrivate: false }, include: { poster: { select: { url: true } } } });
   if (!media) return NextResponse.json({ error: "Media not found" }, { status: 404 });
   return NextResponse.json({
     id: media.id,
@@ -22,6 +22,11 @@ export const GET = apiHandler(async (_req, ctx: { params: Promise<{ id: string }
     width: media.width,
     height: media.height,
     altText: media.altText,
+    caption: media.caption,
+    originalFilename: media.originalFilename,
+    updatedAt: media.updatedAt.toISOString(),
+    posterMediaId: media.posterMediaId,
+    posterUrl: media.poster?.url ?? null,
   });
 });
 
@@ -29,6 +34,7 @@ const metadataSchema = z.object({
   expectedUpdatedAt: z.string().datetime(),
   altText: z.string().trim().max(300).nullable(),
   caption: z.string().trim().max(1000).nullable(),
+  posterMediaId: z.string().min(1).nullable().optional(),
 }).strict();
 
 export const PATCH = apiHandler(async (req, ctx: { params: Promise<{ id: string }> }) => {
@@ -40,5 +46,6 @@ export const PATCH = apiHandler(async (req, ctx: { params: Promise<{ id: string 
     expectedUpdatedAt: input.expectedUpdatedAt,
     altText: input.altText,
     caption: input.caption,
+    posterMediaId: input.posterMediaId,
   }, clientIp(req)));
 });

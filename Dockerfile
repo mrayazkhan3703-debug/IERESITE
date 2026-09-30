@@ -5,6 +5,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 FROM dependencies AS build
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 COPY . .
 ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -14,6 +15,7 @@ RUN bun run build
 FROM oven/bun:1.3.4-debian@sha256:9d9504d425a8b85c5cf162c1c354f9403e15583e0f3e1de3750ce3723d3e89ac AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=build --chown=bun:bun /app /app
 # COPY owns the contents, not the pre-existing WORKDIR. Non-root diagnostics

@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { clientIp } from "@/server/rate-limit";
 import { createProjectCommand, updateProjectCommand } from "@/server/domain/project-command";
 import { canManageCatalogResource, catalogReadFilter } from "@/server/domain/resource-policy";
+import { entityMediaSchema, galleryAttachmentSchema } from "@/lib/media-contract";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export const GET = apiHandler(async (req) => {
       take: 50,
       include: {
         community: { select: { name: true } }, developer: { select: { name: true, verificationStatus: true } },
-        media: { where: { section: { in: ["GALLERY", "PROGRESS"] } }, orderBy: { sortOrder: "asc" }, include: { media: { select: { url: true, altText: true } } } },
+        media: { where: { section: { in: ["GALLERY", "PROGRESS"] } }, orderBy: { sortOrder: "asc" }, include: { media: { select: { url: true, altText: true, caption: true, kind: true, mimeType: true, poster: { select: { url: true } } } } } },
         amenities: { include: { amenity: { select: { id: true, name: true } } } },
         paymentPlans: { select: { id: true, verificationStatus: true, isDefault: true } },
         documents: { include: { media: { select: { url: true, mimeType: true, altText: true } } } },
@@ -46,8 +47,8 @@ export const GET = apiHandler(async (req) => {
       status: project.status,
       publicationStatus: project.publicationStatus,
       brochureMediaId: project.brochureMediaId,
-      gallery: project.media.filter((item) => item.section === "GALLERY").map((item) => ({ mediaId: item.mediaId, sortOrder: item.sortOrder, url: item.media.url, altText: item.media.altText })),
-      progressGallery: project.media.filter((item) => item.section === "PROGRESS").map((item) => ({ mediaId: item.mediaId, sortOrder: item.sortOrder, url: item.media.url, altText: item.media.altText })),
+      gallery: project.media.filter((item) => item.section === "GALLERY").map((item) => ({ mediaId: item.mediaId, isCover: item.isCover, sortOrder: item.sortOrder, url: item.media.url, altText: item.altText ?? item.media.altText, caption: item.caption ?? item.media.caption, kind: item.media.kind, mimeType: item.media.mimeType, posterUrl: item.media.poster?.url ?? null })),
+      progressGallery: project.media.filter((item) => item.section === "PROGRESS").map((item) => ({ mediaId: item.mediaId, isCover: item.isCover, sortOrder: item.sortOrder, url: item.media.url, altText: item.altText ?? item.media.altText, caption: item.caption ?? item.media.caption, kind: item.media.kind, mimeType: item.media.mimeType, posterUrl: item.media.poster?.url ?? null })),
       launchDate: project.launchDate?.toISOString().slice(0, 10) ?? null,
       handoverDate: project.handoverDate?.toISOString().slice(0, 10) ?? null,
       completionPercent: project.completionPercent,
@@ -81,6 +82,8 @@ function safeStringArray(value: string | null): string[] {
 }
 
 const patchSchema = z.object({
+  ...entityMediaSchema,
+  progressGallery: z.array(galleryAttachmentSchema).max(60).optional(),
   projectId: z.string().min(1),
   expectedUpdatedAt: z.string().datetime(),
   developerId: z.string().min(1).optional(),
@@ -114,6 +117,8 @@ const patchSchema = z.object({
 });
 
 const createSchema = z.object({
+  ...entityMediaSchema,
+  progressGallery: z.array(galleryAttachmentSchema).max(60).optional(),
   developerId: z.string().min(1),
   communityId: z.string().min(1),
   name: z.string().trim().min(1).max(200),

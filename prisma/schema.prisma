@@ -898,6 +898,9 @@ model MediaAsset {
   height       Int?
   altText      String?
   caption      String?
+  posterMediaId String?
+  poster        MediaAsset? @relation("VideoPoster", fields: [posterMediaId], references: [id], onDelete: Restrict)
+  posterFor     MediaAsset[] @relation("VideoPoster")
   variantsJson String? // JSON {thumb, card, hero, webp...}
   checksum     String?
   exifStripped Boolean  @default(true)
@@ -915,6 +918,7 @@ model MediaAsset {
 
   @@index([kind])
   @@index([isPrivate])
+  @@index([posterMediaId])
 }
 
 model PropertyMedia {
@@ -923,6 +927,8 @@ model PropertyMedia {
   mediaId    String
   sortOrder  Int      @default(0)
   isCover    Boolean  @default(false)
+  altText    String?
+  caption    String?
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
 
   property Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -931,12 +937,26 @@ model PropertyMedia {
   @@index([propertyId, sortOrder])
 }
 
+// Short-lived download permission issued only after the entity's consent gate.
+model MediaDownloadGrant {
+  tokenHash String @id
+  mediaId String
+  sourceType String
+  sourceId String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([expiresAt])
+}
+
 model ProjectMedia {
   id        String   @id @default(cuid())
   projectId String
   mediaId   String
   section   String   @default("GALLERY") // GALLERY|PROGRESS|BROCHURE
   sortOrder Int      @default(0)
+  isCover   Boolean  @default(false)
+  altText   String?
+  caption   String?
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   project Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)

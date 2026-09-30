@@ -8,6 +8,8 @@ export interface MediaDTO {
   width?: number | null;
   height?: number | null;
   kind?: string;
+  mimeType?: string;
+  posterUrl?: string | null;
 }
 
 export interface PriceDTO {

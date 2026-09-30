@@ -121,7 +121,7 @@ function ensureStandaloneReportIsManagedSeparately(contentType: string) {
 
 async function ensurePublicImage(tx: Prisma.TransactionClient, mediaAssetId: string | null | undefined) {
   if (!mediaAssetId) return null;
-  const media = await tx.mediaAsset.findFirst({ where: { id: mediaAssetId, isPrivate: false, kind: "IMAGE" }, select: { id: true } });
+  const media = await tx.mediaAsset.findFirst({ where: { id: mediaAssetId, isPrivate: false, mimeType: { startsWith: "image/" } }, select: { id: true } });
   if (!media) throw new HttpError(422, "Choose an available public image from the Media Library.", "MEDIA_NOT_AVAILABLE");
   return media.id;
 }
@@ -147,7 +147,7 @@ async function ensurePublicBlockImages(tx: Prisma.TransactionClient, blocks: Con
   const ids = [...new Set((blocks ?? []).flatMap((block) => block.type === "image" ? [block.mediaId] : []))];
   if (!ids.length) return;
   const assets = await tx.mediaAsset.findMany({
-    where: { id: { in: ids }, isPrivate: false, kind: "IMAGE", storageKey: { startsWith: "public/media/" } },
+    where: { id: { in: ids }, isPrivate: false, mimeType: { startsWith: "image/" }, storageKey: { startsWith: "public/media/" } },
     select: { id: true },
   });
   if (assets.length !== ids.length) throw new HttpError(422, "Rich-content images must use available public Media Library images.", "MEDIA_NOT_AVAILABLE");
