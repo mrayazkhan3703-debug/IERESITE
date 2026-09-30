@@ -32,7 +32,8 @@ import { formatNumber, formatDate } from "@/lib/money";
 import { formatAEDPrecise } from "@/lib/format-precise";
 import { resolveMetricState } from "@/lib/data-state";
 import { localeOf, t } from "@/lib/i18n";
-import { SITE_CONTACT, WHATSAPP_MESSAGES, companyWhatsappHref } from "@/lib/config";
+import { WHATSAPP_MESSAGES } from "@/lib/config";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 import { events } from "@/lib/analytics-tracker";
 import {
   handoverPresentation,
@@ -50,6 +51,7 @@ import { Badge } from "@/components/ui/badge";
 import { ShieldCheck, ExternalLink, Phone, MapPin, HardHat, CheckCircle2, Layers, FileText, Info, MessageCircle } from "lucide-react";
 
 export default function DeveloperDetailView({ slug }: { slug: string }) {
+  const contact = useSiteSettings().contact;
   const [data, setData] = React.useState<DeveloperDetailV2 | null>(null);
   const [notFound, setNotFound] = React.useState(false);
   const [communityMetrics, setCommunityMetrics] = React.useState<CommunityDetailV2 | null>(null);
@@ -381,13 +383,13 @@ export default function DeveloperDetailView({ slug }: { slug: string }) {
               {t("developer.panel.request", locale)}
             </Button>
             <Button asChild variant="outline" className="mt-2.5 w-full gap-2">
-              <a href={SITE_CONTACT.phoneHref} className="num" onClick={() => events.callClick("developer_panel")}>
-                <Phone className="h-4 w-4" aria-hidden /> {SITE_CONTACT.phone}
+              <a href={`tel:${contact.phoneE164}`} className="num" onClick={() => events.callClick("developer_panel")}>
+                <Phone className="h-4 w-4" aria-hidden /> {contact.phoneDisplay}
               </a>
             </Button>
             <Button asChild variant="ghost" className="mt-2.5 w-full gap-2 text-muted-foreground">
               <a
-                href={companyWhatsappHref(WHATSAPP_MESSAGES.generic)}
+                href={`https://wa.me/${contact.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.generic)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => events.whatsappClick("developer_panel")}

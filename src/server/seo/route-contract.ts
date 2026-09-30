@@ -1,3 +1,4 @@
+import { publicCareerWhere } from "@/server/domain/career-query";
 import type { Metadata } from "next";
 import { cache } from "react";
 import { db } from "@/lib/db";
@@ -11,6 +12,7 @@ import {
 import { publicContentWhere, publicMarketReportWhere } from "@/server/domain/visibility";
 import { publicContentLocaleAlternates } from "@/server/seo/content-locale";
 import { OG_IMAGE } from "@/lib/seo-schema";
+import { parseSiteSettings } from "@/lib/site-settings";
 
 export type RouteContract = {
   title: string;
@@ -81,6 +83,8 @@ const DYNAMIC_ROUTES: Array<{ pattern: RegExp; contract: RouteContract }> = [
   { pattern: /^\/guides\/[^/]+$/, contract: { title: "Guide" } },
   { pattern: /^\/international\/[^/]+$/, contract: { title: "International Guide" } },
   { pattern: /^\/insights\/[^/]+$/, contract: { title: "Insight" } },
+  { pattern: /^\/pages\/[^/]+$/, contract: { title: "Page" } },
+  { pattern: /^\/careers\/[^/]+$/, contract: { title: "Career opening" } },
 ];
 
 export function resolveSpaRoute(path: string): RouteContract | null {
@@ -92,7 +96,7 @@ export function resolveSpaRoute(path: string): RouteContract | null {
   return DYNAMIC_ROUTES.find((route) => route.pattern.test(normalized))?.contract ?? null;
 }
 
-async function resolveSpaRoutePageBase(path: string): Promise<RouteContract | null> {
+async function resolveSpaRoutePageBase(path: string, locale: "en" | "ar"): Promise<RouteContract | null> {
   const contract = resolveSpaRoute(path);
   if (!contract) return null;
   const normalizedPath = path.length > 1 ? path.replace(/\/$/, "") : path;
@@ -131,21 +135,36 @@ async function resolveSpaRoutePageBase(path: string): Promise<RouteContract | nu
     });
     return entity ? { title: entity.title, description: entity.summary } : null;
   }
-  if (parts.length === 2 && ["guides", "international", "insights"].includes(parts[0])) {
-    const contentType =
+  if (parts.length === 2 && parts[0] === "careers") {
+    const now = new Date();
+    const where = { slug, ...publicCareerWhere(locale, now) };
+    const opening = await db.careerOpening.findFirst({ where, select: { slug: true, locale: true, title: true, summary: true, seoTitle: true, seoDescription: true } });
+    if (!opening) return null;
+    const peerLocale = locale === "en" ? "ar" : "en";
+    const peer = await db.careerOpening.findFirst({ where: { ...where, locale: peerLocale }, select: { slug: true, locale: true } });
+    if (!peer) return { title: opening.seoTitle || opening.title, description: opening.seoDescription || opening.summary, localeAlternates: null };
+    const englishSlug = locale === "en" ? opening.slug : peer.slug;
+    const arabicSlug = locale === "ar" ? opening.slug : peer.slug;
+    return { title: opening.seoTitle || opening.title, description: opening.seoDescription || opening.summary, localeAlternates: { en: `/careers/${englishSlug}`, ar: `/ar/careers/${arabicSlug}`, "x-default": `/careers/${englishSlug}` } };
+  }
+  if (parts.length === 2 && ["guides", "international", "insights", "pages"].includes(parts[0])) {
+    const contentType = parts[0] === "international" ? "INTERNATIONAL_GUIDE" : parts[0] === "pages" ? "PAGE" :
       parts[0] === "insights" ? { in: ["ARTICLE", "GUIDE"] } : { in: ["GUIDE", "AREA_GUIDE"] };
     const paired = await db.contentEntry.findFirst({
-      where: { slug, ...publicContentWhere(), contentType },
+      where: {
+        slug, locale, ...publicContentWhere(), contentType,
+        ...(parts[0] === "international" ? { sourceName: { not: null }, sourceUrl: { startsWith: "https://" }, sourceVerifiedAt: { not: null, lte: new Date() }, freshnessReviewDueAt: { gt: new Date() } } : {}),
+      },
       select: {
-        title: true, excerpt: true, locale: true, slug: true, status: true, publishedAt: true,
-        translationGroup: { select: { entries: { select: { locale: true, slug: true, status: true, publishedAt: true } } } },
+        title: true, excerpt: true, locale: true, slug: true, status: true, publishedAt: true, sourceName: true, sourceUrl: true, sourceVerifiedAt: true, freshnessReviewDueAt: true,
+        translationGroup: { select: { entries: { select: { locale: true, slug: true, status: true, publishedAt: true, sourceName: true, sourceUrl: true, sourceVerifiedAt: true, freshnessReviewDueAt: true } } } },
       },
     });
     return paired ? {
       title: paired.title,
       description: paired.excerpt,
       localeAlternates: publicContentLocaleAlternates(parts[0], [
-        { locale: paired.locale, slug: paired.slug, status: paired.status, publishedAt: paired.publishedAt },
+        paired,
         ...(paired.translationGroup?.entries ?? []),
       ]),
     } : null;
@@ -154,21 +173,31 @@ async function resolveSpaRoutePageBase(path: string): Promise<RouteContract | nu
   return contract;
 }
 
-export const resolveSpaRoutePage = cache(async (path: string): Promise<RouteContract | null> => {
-  const contract = await resolveSpaRoutePageBase(path);
+export const resolveSpaRoutePage = cache(async (path: string, locale: "en" | "ar" = "en"): Promise<RouteContract | null> => {
+  const contract = await resolveSpaRoutePageBase(path, locale);
   if (!contract) return null;
   const routeKey = path === "/" ? "home" : path.replace(/^\/+|\/+$/g, "");
-  const seo = await db.seoMetadata.findUnique({ where: { routeKey } });
-  if (!seo) return contract;
-  const image = seo.ogImageMediaId
-    ? await db.mediaAsset.findFirst({ where: { id: seo.ogImageMediaId, isPrivate: false, kind: "IMAGE" }, select: { id: true } })
-    : null;
+  const [seo, settingsRow] = await Promise.all([
+    db.seoMetadata.findUnique({ where: { routeKey } }),
+    db.siteSetting.findUnique({ where: { id: "public" }, select: { settingsJson: true } }),
+  ]);
+  let siteSettings = null;
+  try { siteSettings = settingsRow ? parseSiteSettings(JSON.parse(settingsRow.settingsJson)) : null; } catch { siteSettings = null; }
+  const copyPrefix = path === "/about" ? "about" : path === "/careers" ? "careers" : path === "/international" ? "international" : path === "/" ? "home" : null;
+  const copyTitle = copyPrefix ? siteSettings?.pageCopy[`${copyPrefix}Title`]?.[locale] : null;
+  const copyDescription = copyPrefix ? siteSettings?.pageCopy[`${copyPrefix}Intro`]?.[locale] : null;
+  const imageIds = [seo?.ogImageMediaId, siteSettings?.defaultOgMediaId, siteSettings?.fallbackImageMediaId].filter((value): value is string => Boolean(value));
+  const images = imageIds.length ? await db.mediaAsset.findMany({ where: { id: { in: imageIds }, isPrivate: false, kind: "IMAGE" }, select: { id: true } }) : [];
+  const availableIds = new Set(images.map((image) => image.id));
+  const imageId = imageIds.find((id) => availableIds.has(id));
+  const image = imageId ? { id: imageId } : null;
+  if (!seo && !image && !copyTitle && !copyDescription) return contract;
   return {
     ...contract,
-    title: seo.title?.trim() || contract.title,
-    description: seo.description?.trim() || contract.description,
-    noindex: Boolean(contract.noindex || seo.noindex),
-    canonicalPath: seo.canonicalPath,
+    title: seo?.title?.trim() || copyTitle || contract.title,
+    description: seo?.description?.trim() || copyDescription || contract.description,
+    noindex: Boolean(contract.noindex || seo?.noindex),
+    canonicalPath: seo?.canonicalPath,
     ogImageUrl: image ? `/api/media/${encodeURIComponent(image.id)}/content` : contract.ogImageUrl ?? null,
   };
 });

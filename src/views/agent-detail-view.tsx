@@ -10,10 +10,8 @@ import { PropertyCard } from "@/components/property/property-card";
 import { useLeadForm, LeadFormDialog } from "@/components/leads/lead-form";
 import { events } from "@/lib/analytics-tracker";
 import {
-  SITE_CONTACT,
   SITE_LOGO,
   WHATSAPP_MESSAGES,
-  companyWhatsappHref,
   memberWhatsappHref,
 } from "@/lib/config";
 import { personJsonLd, realEstateAgentJsonLd } from "@/lib/seo-schema";
@@ -24,6 +22,7 @@ import { AgentAvatar } from "@/components/entity/agent-avatar";
 import type { AgentDTO, ListingCardDTO } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Phone, MessageCircle, MapPin, Navigation, CalendarClock, Users } from "lucide-react";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 
 type AgentDetail = AgentDTO & { listings: ListingCardDTO[] };
 
@@ -42,6 +41,8 @@ export default function AgentDetailView({ slug }: { slug: string }) {
   const leadForm = useLeadForm();
   const loc = useRoute();
   const locale = localeOf(loc.locale);
+  const contact = useSiteSettings().contact;
+  const companyWhatsapp = `https://wa.me/${contact.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.generic)}`;
 
   React.useEffect(() => {
     setNotFound(false);
@@ -253,10 +254,10 @@ export default function AgentDetailView({ slug }: { slug: string }) {
             {isDesk && (
               /* Central desk: verified office address with directions */
               <address className="mt-4 space-y-1 text-sm not-italic text-muted-foreground">
-                <p>{SITE_CONTACT.addressLine1}</p>
-                <p>{SITE_CONTACT.addressLine2}</p>
+                <p>{contact.addressLine1}</p>
+                <p>{contact.addressLine2}</p>
                 <a
-                  href={SITE_CONTACT.mapsUrl}
+                  href={contact.mapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => events.directionsClick("agent_desk")}
@@ -274,10 +275,10 @@ export default function AgentDetailView({ slug }: { slug: string }) {
 
               {/* WhatsApp — member's own number (contextual message); the desk
                * uses the company line with a generic prefilled message. */}
-              {(isDesk ? companyWhatsappHref(WHATSAPP_MESSAGES.generic) : memberWhatsapp) && (
+              {(isDesk ? companyWhatsapp : memberWhatsapp) && (
                 <Button asChild variant="outline" className="w-full gap-2" onClick={() => events.whatsappClick(`agent:${slug}`)}>
                   <a
-                    href={isDesk ? companyWhatsappHref(WHATSAPP_MESSAGES.generic) : memberWhatsapp ?? undefined}
+                    href={isDesk ? companyWhatsapp : memberWhatsapp ?? undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -294,9 +295,9 @@ export default function AgentDetailView({ slug }: { slug: string }) {
                   className="w-full gap-2"
                   onClick={() => events.callClick(`agent:${slug}`)}
                 >
-                  <a href={isDesk ? SITE_CONTACT.phoneHref : `tel:${data.phoneE164}`} className="num">
+                  <a href={isDesk ? `tel:${contact.phoneE164}` : `tel:${data.phoneE164}`} className="num">
                     <Phone className="h-4 w-4" aria-hidden />{" "}
-                    {isDesk ? SITE_CONTACT.phone : (data.phoneDisplay ?? data.phoneE164)}
+                    {isDesk ? contact.phoneDisplay : (data.phoneDisplay ?? data.phoneE164)}
                   </a>
                 </Button>
               )}

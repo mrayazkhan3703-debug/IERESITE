@@ -1,38 +1,29 @@
 "use client";
 
 /**
- * International Investor Entry (V2 §11.12) — three-card entry for overseas
- * buyers with a locale-aware guidance line. No legal claims; guides carry
- * their own source-dating and review cadence.
+ * International Investor Entry — current, published CMS guidance only.
  */
 
 import * as React from "react";
 import { Link } from "@/lib/router";
-import { Globe2, FileCheck2, Landmark, Languages } from "lucide-react";
+import { Globe2, Languages } from "lucide-react";
 import { t, type Locale } from "@/lib/i18n";
 
-const CARDS = [
-  {
-    icon: Globe2,
-    titleKey: "home.intl.why",
-    to: "/international",
-    text: "Why Dubai — market structure, freehold zones for foreign nationals, and how the platform evidences every figure.",
-  },
-  {
-    icon: FileCheck2,
-    titleKey: "home.intl.buying",
-    to: "/international/buying-remotely",
-    text: "The buying process end to end — remote verification, escrow, transfer and handover, with source-dated steps.",
-  },
-  {
-    icon: Landmark,
-    titleKey: "home.intl.financing",
-    to: "/international/financing-for-expats",
-    text: "Financing for international buyers — mortgage options, documentation and loan-to-value for non-residents.",
-  },
-] as const;
+interface ReviewedGuide { slug: string; title: string; excerpt: string | null }
 
 export function InternationalEntry({ locale }: { locale: Locale }) {
+  const [guides, setGuides] = React.useState<ReviewedGuide[] | null>(null);
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => {
+    let active = true;
+    setGuides(null);
+    setFailed(false);
+    fetch(`/api/content/international?locale=${locale}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (active) { setGuides(data?.entries?.slice(0, 3) ?? []); setFailed(!data); } })
+      .catch(() => { if (active) { setGuides([]); setFailed(true); } });
+    return () => { active = false; };
+  }, [locale]);
   return (
     <section className="section-contrast section-sm" aria-labelledby="intl-heading">
       <div className="container-page">
@@ -45,21 +36,23 @@ export function InternationalEntry({ locale }: { locale: Locale }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          {CARDS.map((card) => (
+          {guides?.map((guide) => (
             <Link
-              key={card.titleKey}
-              to={card.to}
+              key={guide.slug}
+              to={`/international/${guide.slug}`}
               className="group rounded-xl border border-border/70 bg-card p-5 transition-ui hover:border-brand/40 hover:shadow-md"
             >
-              <card.icon className="h-5 w-5 text-brand" aria-hidden />
+              <Globe2 className="h-5 w-5 text-brand" aria-hidden />
               <h3 className="mt-3 font-display text-base font-semibold text-ink group-hover:text-brand-strong">
-                {t(card.titleKey, locale)}
+                {guide.title}
               </h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{card.text}</p>
-              <span className="mt-3 inline-block text-sm font-medium text-brand-strong">Read the guide →</span>
+              {guide.excerpt && <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{guide.excerpt}</p>}
+              <span className="mt-3 inline-block text-sm font-medium text-brand-strong">{locale === "ar" ? "اقرأ الدليل ←" : "Read the guide →"}</span>
             </Link>
           ))}
         </div>
+        {guides === null ? <p className="text-sm text-muted-foreground" role="status">{locale === "ar" ? "جارٍ تحميل الإرشادات المراجعة…" : "Loading reviewed guidance…"}</p> : guides.length === 0 ? <p className="text-sm text-muted-foreground">{failed ? (locale === "ar" ? "تعذر تحميل الإرشادات." : "Guidance could not be loaded.") : (locale === "ar" ? "ستظهر الإرشادات هنا بعد مراجعتها ونشرها." : "Guides appear here after source review and publication.")}</p> : null}
+        <Link to="/international" className="mt-5 inline-block text-sm font-semibold text-brand-strong underline underline-offset-2">{locale === "ar" ? "مركز المشترين الدوليين" : "Visit the international buyers hub"}</Link>
 
         {locale === "ar" ? (
           <p className="mt-5 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand-faint px-4 py-3 text-sm text-brand-strong">

@@ -4,7 +4,9 @@ export type ContentBlock =
   | { type: "quote"; text: string; attribution?: string }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "link"; label: string; href: string }
-  | { type: "image"; mediaId: string; altText: string; caption?: string };
+  | { type: "image"; mediaId: string; altText: string; caption?: string }
+  | { type: "entity"; entity: "property" | "project" | "community" | "developer" | "advisor"; slug: string; label: string }
+  | { type: "module"; id: "property-search" | "calculator-hub" | "market-intelligence" | "property-map" | "advisor-contact" | "featured-properties" };
 
 const MAX_BLOCKS = 100;
 const MAX_TEXT = 50_000;
@@ -29,6 +31,7 @@ function boundedString(value: unknown, max: number, min = 1): value is string {
 export function parseContentBlocks(value: unknown): ContentBlock[] | null {
   if (!Array.isArray(value) || value.length > MAX_BLOCKS) return null;
   const blocks: ContentBlock[] = [];
+  const moduleIds = new Set<string>();
   let totalText = 0;
 
   for (const item of value) {
@@ -60,14 +63,24 @@ export function parseContentBlocks(value: unknown): ContentBlock[] | null {
         if (!boundedString(block.mediaId, 128) || !boundedString(block.altText, 300) || (block.caption !== undefined && !boundedString(block.caption, 500))) return null;
         parsed = { type: "image", mediaId: block.mediaId, altText: block.altText, ...(block.caption ? { caption: block.caption } : {}) };
         break;
+      case "module":
+        if (!["property-search", "calculator-hub", "market-intelligence", "property-map", "advisor-contact", "featured-properties"].includes(String(block.id))) return null;
+        if (moduleIds.has(String(block.id))) return null;
+        moduleIds.add(String(block.id));
+        parsed = { type: "module", id: block.id as Extract<ContentBlock, { type: "module" }>["id"] };
+        break;
+      case "entity":
+        if (!["property", "project", "community", "developer", "advisor"].includes(String(block.entity)) || !boundedString(block.label, 200) || typeof block.slug !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(block.slug) || block.slug.length > 180) return null;
+        parsed = { type: "entity", entity: block.entity as Extract<ContentBlock, { type: "entity" }>["entity"], slug: block.slug, label: block.label };
+        break;
       default:
         return null;
     }
     totalText += "text" in parsed
       ? parsed.text.length + (parsed.type === "quote" ? parsed.attribution?.length ?? 0 : 0)
       : parsed.type === "list" ? parsed.items.reduce((length, text) => length + text.length, 0)
-        : parsed.type === "link" ? parsed.label.length + parsed.href.length
-          : parsed.type === "image" ? parsed.altText.length + (parsed.caption?.length ?? 0) : 0;
+          : parsed.type === "link" ? parsed.label.length + parsed.href.length
+          : parsed.type === "image" ? parsed.altText.length + (parsed.caption?.length ?? 0) : parsed.type === "entity" ? parsed.label.length + parsed.slug.length : 0;
     if (totalText > MAX_TEXT) return null;
     blocks.push(parsed);
   }

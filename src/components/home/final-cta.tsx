@@ -12,9 +12,13 @@ import { Phone, Sparkles, MessageCircle, Bell } from "lucide-react";
 import { t, type Locale } from "@/lib/i18n";
 import { SITE_CONTACT_CHANNELS, WHATSAPP_MESSAGES, companyWhatsappHref } from "@/lib/config";
 import { events } from "@/lib/analytics-tracker";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 
 export function FinalCta({ locale }: { locale: Locale }) {
   const whatsapp = SITE_CONTACT_CHANNELS.whatsapp;
+  const settings = useSiteSettings();
+  const cta = settings.globalCta;
+  const ctaLabel = cta.key ? t(cta.key, locale) : (locale === "ar" ? cta.labelAr : cta.labelEn) ?? "";
 
   return (
     <section className="section-plain pb-16 pt-4" aria-labelledby="final-heading">
@@ -36,10 +40,10 @@ export function FinalCta({ locale }: { locale: Locale }) {
                 variant="outline"
                 className="h-auto w-full justify-start gap-2.5 rounded-xl border-primary-foreground/25 bg-primary-foreground/10 px-4 py-3.5 text-start hover:bg-primary-foreground/20"
               >
-                <Link to="/consultation">
+                <Link to={cta.to}>
                   <Phone className="h-5 w-5 shrink-0" aria-hidden />
                   <span>
-                    <span className="block text-sm font-semibold">{t("home.final.book", locale)}</span>
+                    <span className="block text-sm font-semibold">{ctaLabel}</span>
                     <span className="block text-xs font-normal opacity-75">30 minutes with a specialist</span>
                   </span>
                 </Link>

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import PageShell from "@/components/page-shell";
 import { criticalPageMetadata } from "./critical-page";
 import { resolveSpaRoutePage } from "./route-contract";
+import { headers } from "next/headers";
 
 /** Each concrete module imports its own view, never the old all-view client table. */
 export function staticPage(path: string, View: ComponentType) {
@@ -19,7 +20,8 @@ export function entityPage(prefix: string, View: ComponentType<{ slug: string }>
     Page: async function Page({ params }: SlugProps) {
       const { slug } = await params;
       // A mocked client DTO must not turn a missing/private server entity into 200.
-      if (!(await resolveSpaRoutePage(`${prefix}/${slug}`))) notFound();
+      const locale = (await headers()).get("x-iere-locale") === "ar" ? "ar" : "en";
+      if (!(await resolveSpaRoutePage(`${prefix}/${slug}`, locale))) notFound();
       return <PageShell><View slug={slug} /></PageShell>;
     },
   };

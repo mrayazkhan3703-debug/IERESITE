@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ContentBody, contentBlocksToToc } from "@/components/common/content-body";
 import type { ContentBlock } from "@/lib/content-blocks";
 import { BookOpen, ShieldCheck, CalendarClock, Phone } from "lucide-react";
+import { useRoute } from "@/lib/router";
 
 interface EntryDetail {
   slug: string;
@@ -39,13 +40,14 @@ export function GuideArticleView({
   leadContext,
 }: {
   slug: string;
-  base: "guides" | "insights" | "international";
+  base: "guides" | "insights" | "international" | "pages";
   baseLabel: string;
   fallbackCategory: string;
   leadContext?: { intent: string; entityTitle: string };
 }) {
   const [entry, setEntry] = React.useState<EntryDetail | null>(null);
   const [notFound, setNotFound] = React.useState(false);
+  const route = useRoute();
   const leadForm = useLeadForm();
   const articleRef = React.useRef<HTMLElement | null>(null);
   const toc = React.useMemo(() => entry?.blocks?.length ? contentBlocksToToc(entry.blocks) : extractToc(entry?.body ?? ""), [entry]);
@@ -55,10 +57,11 @@ export function GuideArticleView({
     setNotFound(false);
     setEntry(null);
     const section = base === "international" ? "international" : base;
-    api.get<{ entry: EntryDetail }>(`/api/content/${base === "insights" ? "articles" : "guides"}?slug=${encodeURIComponent(slug)}&section=${section}`)
+    const endpoint = base === "international" ? "international" : base === "pages" ? "pages" : base === "insights" ? "articles" : "guides";
+    api.get<{ entry: EntryDetail }>(`/api/content/${endpoint}?slug=${encodeURIComponent(slug)}&section=${section}&locale=${route.locale === "ar" ? "ar" : "en"}`)
       .then((r) => setEntry(r.entry))
       .catch(() => setNotFound(true));
-  }, [slug, base]);
+  }, [slug, base, route.locale]);
 
   usePageMeta(
     entry
@@ -130,7 +133,7 @@ export function GuideArticleView({
           </div>
 
           <div className="mt-8 max-w-2xl text-[15px] leading-relaxed">
-            <ContentBody body={entry.body} blocks={entry.blocks} />
+            <ContentBody body={entry.body} blocks={entry.blocks} locale={route.locale === "ar" ? "ar" : "en"} />
           </div>
         </article>
 

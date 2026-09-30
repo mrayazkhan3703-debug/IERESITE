@@ -23,6 +23,8 @@ import { KnowledgeBaseSection } from "@/views/admin/knowledge-base-section";
 import { TestimonialsSection } from "@/views/admin/testimonials-section";
 import { RedirectsSection } from "@/views/admin/redirects-section";
 import { SeoMetadataSection } from "@/views/admin/seo-metadata-section";
+import { CareersSection } from "@/views/admin/careers-section";
+import { SiteSettingsSection } from "@/views/admin/site-settings-section";
 import { formatMoney, formatNumber, formatDate, toMinor } from "@/lib/money";
 import {
   Users, Building2, Download, RefreshCcw, BarChart3, ScrollText, Flag,
@@ -85,6 +87,8 @@ export default function AdminView() {
         {section === "agents" && <AgentsSection canEdit={hasRole(user, ["OWNER", "ADMIN", "MANAGER"])} />}
         {section === "users" && <UsersSection isOwner={hasRole(user, ["OWNER"])} canManage={hasRole(user, ["OWNER", "ADMIN"])} />}
         {section === "content" && <ContentSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} canReview={hasRole(user, ["OWNER", "ADMIN"])} />}
+        {section === "careers" && <CareersSection actorId={user.id} canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} canReview={hasRole(user, ["OWNER", "ADMIN"])} />}
+        {section === "site-settings" && <SiteSettingsSection />}
         {section === "faqs" && <FaqsSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} />}
         {section === "market-reports" && <MarketReportsSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} canReview={hasRole(user, ["OWNER", "ADMIN"])} />}
         {section === "knowledge-base" && <KnowledgeBaseSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} canReview={hasRole(user, ["OWNER", "ADMIN"])} />}
@@ -1393,8 +1397,8 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
   const [translationCandidates, setTranslationCandidates] = React.useState<Record<string, unknown>[] | null>(null);
   const [translationCandidateId, setTranslationCandidateId] = React.useState("");
   const [translationSaving, setTranslationSaving] = React.useState(false);
-  const [form, setForm] = React.useState({ contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN" as "MARKDOWN" | "BLOCKS", blocks: [] as ContentBlock[], coverMediaId: "", submitForReview: false });
-  const pristine = React.useRef(JSON.stringify({ contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN", blocks: [], coverMediaId: "", submitForReview: false }));
+  const [form, setForm] = React.useState({ contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN" as "MARKDOWN" | "BLOCKS", blocks: [] as ContentBlock[], coverMediaId: "", sourceName: "", sourceUrl: "", sourceVerifiedAt: "", freshnessReviewDueAt: "", submitForReview: false });
+  const pristine = React.useRef(JSON.stringify({ contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN", blocks: [], coverMediaId: "", sourceName: "", sourceUrl: "", sourceVerifiedAt: "", freshnessReviewDueAt: "", submitForReview: false }));
   const dirty = (creating || editing !== null) && JSON.stringify(form) !== pristine.current;
   useUnsavedChanges(dirty);
 
@@ -1416,7 +1420,7 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
   }, [canEdit]);
 
   const openCreate = () => {
-    const blank = { contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN" as const, blocks: [] as ContentBlock[], coverMediaId: "", submitForReview: false };
+    const blank = { contentType: "GUIDE", locale: "en", slug: "", title: "", excerpt: "", category: "", body: "", bodyMode: "MARKDOWN" as const, blocks: [] as ContentBlock[], coverMediaId: "", sourceName: "", sourceUrl: "", sourceVerifiedAt: "", freshnessReviewDueAt: "", submitForReview: false };
     setEditing(null);
     setCreating(true);
     setPreview(false);
@@ -1433,6 +1437,9 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
       slug: String(entry.slug ?? ""), title: String(entry.title ?? ""), excerpt: String(entry.excerpt ?? ""),
       category: String(entry.category ?? ""), body: String(entry.body ?? ""), bodyMode: blocks.length ? "BLOCKS" as const : "MARKDOWN" as const, blocks, submitForReview: false,
       coverMediaId: String(entry.coverMediaId ?? ""),
+      sourceName: String(entry.sourceName ?? ""), sourceUrl: String(entry.sourceUrl ?? ""),
+      sourceVerifiedAt: typeof entry.sourceVerifiedAt === "string" ? String(entry.sourceVerifiedAt).slice(0, 10) : "",
+      freshnessReviewDueAt: typeof entry.freshnessReviewDueAt === "string" ? String(entry.freshnessReviewDueAt).slice(0, 10) : "",
     };
     pristine.current = JSON.stringify(nextForm);
     setForm(nextForm);
@@ -1444,7 +1451,9 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
       : type === "quote" ? { type, text: "" }
       : type === "list" ? { type, ordered: false, items: [""] }
       : type === "link" ? { type, label: "", href: "https://" }
-      : { type, mediaId: "", altText: "" };
+      : type === "image" ? { type, mediaId: "", altText: "" }
+      : type === "entity" ? { type, entity: "property", slug: "", label: "" }
+      : { type, id: "property-search" };
     setForm((current) => ({ ...current, bodyMode: "BLOCKS", blocks: [...current.blocks, block] }));
   };
 
@@ -1486,6 +1495,9 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
           excerpt: form.excerpt || null, category: form.category || null, body: form.bodyMode === "MARKDOWN" ? form.body : "",
           blocks: form.bodyMode === "BLOCKS" ? form.blocks : null,
           coverMediaId: form.coverMediaId || null,
+          ...(form.contentType === "INTERNATIONAL_GUIDE" ? { sourceName: form.sourceName || null, sourceUrl: form.sourceUrl || null,
+            sourceVerifiedAt: form.sourceVerifiedAt ? new Date(`${form.sourceVerifiedAt}T00:00:00.000Z`).toISOString() : null,
+            freshnessReviewDueAt: form.freshnessReviewDueAt ? new Date(`${form.freshnessReviewDueAt}T23:59:59.999Z`).toISOString() : null } : {}),
         });
         toast.success("Draft created with revision 1");
       } else if (editing) {
@@ -1494,6 +1506,9 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
           slug: form.slug, title: form.title, excerpt: form.excerpt || null,
           category: form.category || null, body: form.bodyMode === "MARKDOWN" ? form.body : "",
           blocks: form.bodyMode === "BLOCKS" ? form.blocks : null, coverMediaId: form.coverMediaId || null, submitForReview: form.submitForReview,
+          ...(form.contentType === "INTERNATIONAL_GUIDE" ? { sourceName: form.sourceName || null, sourceUrl: form.sourceUrl || null,
+            sourceVerifiedAt: form.sourceVerifiedAt ? new Date(`${form.sourceVerifiedAt}T00:00:00.000Z`).toISOString() : null,
+            freshnessReviewDueAt: form.freshnessReviewDueAt ? new Date(`${form.freshnessReviewDueAt}T23:59:59.999Z`).toISOString() : null } : {}),
         });
         toast.success(result.status === "IN_REVIEW" ? "Saved and queued for editorial review" : "Draft saved with a new revision");
       }
@@ -1657,11 +1672,11 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
           <table className="w-full min-w-[920px] text-sm">
             <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Title</th><th className="p-3">Type / locale</th><th className="p-3">Translation</th><th className="p-3">Publication</th><th className="p-3">Source record</th><th className="p-3">Revisions</th>{canEdit && <th className="p-3">Actions</th>}</tr></thead>
             <tbody>{entries.map((entry) => <tr key={String(entry.id)} className="border-b border-border/50">
-              <td className="p-3"><p className="font-medium">{String(entry.title)}</p><p className="text-xs text-muted-foreground">/{String(entry.slug)}</p></td>
+              <td className="p-3"><p className="font-medium">{String(entry.title)}</p><p className="text-xs text-muted-foreground">{String(entry.contentType) === "PAGE" ? "/pages/" : String(entry.contentType) === "INTERNATIONAL_GUIDE" ? "/international/" : String(entry.contentType) === "ARTICLE" ? "/insights/" : "/guides/"}{String(entry.slug)}</p></td>
               <td className="p-3">{String(entry.contentType)} · {String(entry.locale).toUpperCase()}</td>
               <td className="p-3 text-xs">{entry.translationPeer && typeof entry.translationPeer === "object" ? <><Badge variant="outline">Linked {String((entry.translationPeer as Record<string, unknown>).locale).toUpperCase()}</Badge><span className="mt-1 block text-muted-foreground">{String((entry.translationPeer as Record<string, unknown>).title)}</span></> : <span className="text-muted-foreground">Not linked</span>}</td>
               <td className="p-3"><div className="flex flex-col items-start gap-1"><Badge variant="outline">{String(entry.status)}</Badge>{entry.reviewWorkflowState !== "NONE" && <span className="text-xs text-muted-foreground">{String(entry.reviewWorkflowState)}</span>}</div></td>
-              <td className="p-3 text-xs text-muted-foreground">{String(entry.sourceName ?? "No source recorded")}{Boolean(entry.sourceVerifiedAt) && <span className="block">Verified {formatDate(String(entry.sourceVerifiedAt))}</span>}</td>
+              <td className="p-3 text-xs text-muted-foreground">{String(entry.sourceName ?? "No source recorded")}{Boolean(entry.sourceVerifiedAt) && <span className="block">Verified {formatDate(String(entry.sourceVerifiedAt))}</span>}{Boolean(entry.freshnessReviewDueAt) && <span className="block">Review due {formatDate(String(entry.freshnessReviewDueAt))}</span>}</td>
               <td className="p-3">{String(entry.revisionCount)}</td>
               {(canEdit || canReview) && <td className="p-3"><div className="flex gap-1.5">{canEdit && <><Button size="sm" variant="outline" onClick={() => openEditor(entry)}>Edit</Button><Button size="sm" variant="ghost" onClick={() => openHistory(entry)}>History</Button><Button size="sm" variant="ghost" onClick={() => openTranslations(entry)}>Translations</Button>{entry.status === "RETIRED" ? <Button size="sm" variant="outline" onClick={() => setRetireEntry(entry)}>Restore</Button> : <Button size="sm" variant="ghost" onClick={() => setRetireEntry(entry)}>Retire</Button>}</>}{canReview && entry.status === "IN_REVIEW" && entry.reviewWorkflowState === "PENDING_REVIEW" && <Button size="sm" onClick={() => openReview(entry)}>Review</Button>}{canReview && entry.status === "IN_REVIEW" && entry.reviewWorkflowState === "APPROVED" && <Button size="sm" onClick={() => openReview(entry)}>Publish</Button>}</div></td>}
             </tr>)}</tbody>
@@ -1678,11 +1693,11 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
               <div className="flex items-center justify-between gap-2"><Badge variant="outline">{form.locale.toUpperCase()} preview</Badge><Button type="button" size="sm" variant="outline" onClick={() => setPreview(false)}>Back to editor</Button></div>
               <h2 className="font-display text-2xl font-semibold">{form.title || "Untitled draft"}</h2>
               {form.excerpt && <p className="text-muted-foreground">{form.excerpt}</p>}
-              <div className="prose prose-sm max-w-none dark:prose-invert"><ContentBody body={form.bodyMode === "MARKDOWN" ? form.body : ""} blocks={form.bodyMode === "BLOCKS" ? form.blocks : null} /></div>
+              <div className="prose prose-sm max-w-none dark:prose-invert"><ContentBody body={form.bodyMode === "MARKDOWN" ? form.body : ""} blocks={form.bodyMode === "BLOCKS" ? form.blocks : null} locale={form.locale === "ar" ? "ar" : "en"} /></div>
             </div>
           ) : (
             <form className="space-y-4" onSubmit={save}>
-              <div className="flex flex-wrap justify-between gap-2">{creating ? <div className="grid flex-1 gap-3 sm:grid-cols-2"><label className="space-y-1.5 text-sm font-medium">Content type<Select value={form.contentType} onValueChange={(contentType) => setForm({ ...form, contentType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["GUIDE", "AREA_GUIDE", "ARTICLE"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></label><label className="space-y-1.5 text-sm font-medium">Locale<Select value={form.locale} onValueChange={(locale) => setForm({ ...form, locale })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="en">English</SelectItem><SelectItem value="ar">Arabic</SelectItem></SelectContent></Select></label></div> : <div className="flex gap-2"><Badge variant="outline">{String(editing?.contentType)}</Badge><Badge variant="outline">{String(editing?.locale).toUpperCase()}</Badge></div>}<Button type="button" size="sm" variant="outline" onClick={() => setPreview(true)}>Preview</Button></div>
+              <div className="flex flex-wrap justify-between gap-2">{creating ? <div className="grid flex-1 gap-3 sm:grid-cols-2"><label className="space-y-1.5 text-sm font-medium">Content type<Select value={form.contentType} onValueChange={(contentType) => setForm({ ...form, contentType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["GUIDE", "AREA_GUIDE", "ARTICLE", "PAGE", "INTERNATIONAL_GUIDE"].map((value) => <SelectItem key={value} value={value}>{value.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label><label className="space-y-1.5 text-sm font-medium">Locale<Select value={form.locale} onValueChange={(locale) => setForm({ ...form, locale })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="en">English</SelectItem><SelectItem value="ar">Arabic</SelectItem></SelectContent></Select></label></div> : <div className="flex gap-2"><Badge variant="outline">{String(editing?.contentType)}</Badge><Badge variant="outline">{String(editing?.locale).toUpperCase()}</Badge></div>}<Button type="button" size="sm" variant="outline" onClick={() => setPreview(true)}>Preview</Button></div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block space-y-1.5 text-sm font-medium">Title<Input required maxLength={300} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
                 <label className="block space-y-1.5 text-sm font-medium">Slug<Input required maxLength={180} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
@@ -1702,12 +1717,14 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
                     {block.type === "list" && <><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={block.ordered} onChange={(event) => updateBlock(index, { ordered: event.target.checked })} /> Numbered list</label><Textarea rows={Math.min(8, Math.max(3, block.items.length))} maxLength={15000} value={block.items.join("\n")} onChange={(event) => updateBlock(index, { items: event.target.value.split("\n").slice(0, 30) })} aria-label={`List items ${index + 1}`} /><p className="text-xs text-muted-foreground">One list item per line (maximum 30).</p></>}
                     {block.type === "link" && <div className="grid gap-2 sm:grid-cols-2"><label className="space-y-1 text-xs">Link label<Input maxLength={200} value={block.label} onChange={(event) => updateBlock(index, { label: event.target.value })} /></label><label className="space-y-1 text-xs">Destination (HTTP(S), mailto, or same-site path)<Input maxLength={2000} value={block.href} onChange={(event) => updateBlock(index, { href: event.target.value })} /></label></div>}
                     {block.type === "image" && <div className="grid gap-2 sm:grid-cols-2"><label className="space-y-1 text-xs">Public Media Library image<Select value={block.mediaId || "none"} onValueChange={(mediaId) => updateBlock(index, { mediaId: mediaId === "none" ? "" : mediaId })}><SelectTrigger><SelectValue placeholder="Choose image" /></SelectTrigger><SelectContent><SelectItem value="none">Choose image</SelectItem>{mediaAssets.filter((asset) => asset.kind === "IMAGE" && typeof asset.url === "string" && asset.url.startsWith("/api/media/")).map((asset) => <SelectItem key={String(asset.id)} value={String(asset.id)}>{String(asset.altText || asset.id)}</SelectItem>)}</SelectContent></Select></label><div className="space-y-2"><label className="block space-y-1 text-xs">Alternative text<Input maxLength={300} value={block.altText} onChange={(event) => updateBlock(index, { altText: event.target.value })} /></label><label className="block space-y-1 text-xs">Caption (optional)<Input maxLength={500} value={block.caption ?? ""} onChange={(event) => updateBlock(index, { caption: event.target.value })} /></label></div></div>}
+                    {block.type === "module" && <label className="block space-y-1 text-xs">Prebuilt public module<select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={block.id} onChange={(event) => updateBlock(index, { id: event.target.value as Extract<ContentBlock, { type: "module" }>["id"] })}><option value="property-search">Property search</option><option value="calculator-hub">Calculator hub</option><option value="market-intelligence">Market intelligence</option><option value="property-map">Property map</option><option value="advisor-contact">Advisor contact</option><option value="featured-properties">Featured properties</option></select></label>}
+                    {block.type === "entity" && <div className="grid gap-2 sm:grid-cols-3"><label className="space-y-1 text-xs">Reference type<select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={block.entity} onChange={(event) => updateBlock(index, { entity: event.target.value as Extract<ContentBlock, { type: "entity" }>["entity"] })}>{["property", "project", "community", "developer", "advisor"].map((entity) => <option key={entity} value={entity}>{entity}</option>)}</select></label><label className="space-y-1 text-xs">Published entity URL slug<Input maxLength={180} value={block.slug} onChange={(event) => updateBlock(index, { slug: event.target.value })} placeholder="Copy the last part of its public URL" /></label><label className="space-y-1 text-xs">Link label<Input maxLength={200} value={block.label} onChange={(event) => updateBlock(index, { label: event.target.value })} /></label></div>}
                   </section>)}
-                  <div className="flex flex-wrap gap-2">{(["paragraph", "heading", "quote", "list", "link", "image"] as const).map((type) => <Button key={type} type="button" size="sm" variant="outline" onClick={() => addBlock(type)}>Add {type}</Button>)}</div>
+                  <div className="flex flex-wrap gap-2">{(["paragraph", "heading", "quote", "list", "link", "image", "module", "entity"] as const).map((type) => <Button key={type} type="button" size="sm" variant="outline" onClick={() => addBlock(type)}>Add {type}</Button>)}</div>
                   {form.blocks.length === 0 && <p className="text-sm text-muted-foreground">Add a block to start this page. Empty visual content cannot be saved or published.</p>}
                 </div>}
               </section>
-              {!creating && <div className="rounded-lg border border-border/70 p-3 text-xs text-muted-foreground">Source: {String(editing?.sourceName ?? "not recorded")}{Boolean(editing?.sourceUrl) && (/^https?:\/\//i.test(String(editing?.sourceUrl)) ? <> · <a className="underline" href={String(editing?.sourceUrl)} target="_blank" rel="noopener noreferrer">View source</a></> : <> · recorded URL omitted because it is not HTTP(S)</>)}{Boolean(editing?.sourceVerifiedAt) && <> · verified {formatDate(String(editing?.sourceVerifiedAt))}</>}</div>}
+              {form.contentType === "INTERNATIONAL_GUIDE" && <section className="grid gap-3 rounded-lg border border-info/30 bg-info/5 p-4 sm:grid-cols-2"><div className="sm:col-span-2"><h3 className="text-sm font-semibold">Source and freshness review</h3><p className="mt-1 text-xs text-muted-foreground">A verified HTTPS source, verification date and future review date are required before this guide can enter review or be published.</p></div><label className="space-y-1.5 text-sm font-medium">Source organization<Input maxLength={200} value={form.sourceName} onChange={(event) => setForm({ ...form, sourceName: event.target.value })} /></label><label className="space-y-1.5 text-sm font-medium">Authoritative source URL<Input type="url" maxLength={2000} placeholder="https://…" value={form.sourceUrl} onChange={(event) => setForm({ ...form, sourceUrl: event.target.value })} /></label><label className="space-y-1.5 text-sm font-medium">Verified date<Input type="date" value={form.sourceVerifiedAt} onChange={(event) => setForm({ ...form, sourceVerifiedAt: event.target.value })} /></label><label className="space-y-1.5 text-sm font-medium">Review due date<Input type="date" value={form.freshnessReviewDueAt} onChange={(event) => setForm({ ...form, freshnessReviewDueAt: event.target.value })} /></label></section>}
               {!creating && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.submitForReview} onChange={(event) => setForm({ ...form, submitForReview: event.target.checked })} /> Submit changes for review</label>}
               <DialogFooter><Button type="button" variant="outline" onClick={() => { if (confirmDiscardChanges(dirty)) { setCreating(false); setEditing(null); } }}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft" : "Save revision"}</Button></DialogFooter>
             </form>
@@ -1738,9 +1755,9 @@ function ContentSection({ canEdit, canReview }: { canEdit: boolean; canReview: b
             <div className="rounded-lg border border-border/70 p-4" dir={String(reviewEntry.locale) === "ar" ? "rtl" : "ltr"} lang={String(reviewEntry.locale)}>
               <h2 className="font-display text-xl font-semibold">{String(reviewEntry.title)}</h2>
               {Boolean(reviewEntry.excerpt) && <p className="mt-2 text-sm text-muted-foreground">{String(reviewEntry.excerpt)}</p>}
-              <div className="prose prose-sm mt-4 max-w-none dark:prose-invert"><ContentBody body={String(reviewEntry.body ?? "")} blocks={reviewEntry.blocks} /></div>
+              <div className="prose prose-sm mt-4 max-w-none dark:prose-invert"><ContentBody body={String(reviewEntry.body ?? "")} blocks={reviewEntry.blocks} locale={String(reviewEntry.locale) === "ar" ? "ar" : "en"} /></div>
             </div>
-            <p className="text-xs text-muted-foreground">Recorded source: {String(reviewEntry.sourceName ?? "not recorded")}{Boolean(reviewEntry.sourceVerifiedAt) && ` · verified ${formatDate(String(reviewEntry.sourceVerifiedAt))}`}</p>
+            <p className="text-xs text-muted-foreground">Recorded source: {String(reviewEntry.sourceName ?? "not recorded")}{Boolean(reviewEntry.sourceUrl) && <> · <a href={String(reviewEntry.sourceUrl)} target="_blank" rel="noopener noreferrer" className="underline">Open source</a></>}{Boolean(reviewEntry.sourceVerifiedAt) && ` · verified ${formatDate(String(reviewEntry.sourceVerifiedAt))}`}{Boolean(reviewEntry.freshnessReviewDueAt) && ` · review due ${formatDate(String(reviewEntry.freshnessReviewDueAt))}`}</p>
             {reviewEntry.reviewWorkflowState === "PENDING_REVIEW" && <label className="block space-y-1.5 text-sm font-medium">Review note<Textarea maxLength={1000} rows={3} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="Required when requesting changes" /></label>}
           </div>}
           <DialogFooter>

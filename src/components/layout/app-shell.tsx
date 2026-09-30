@@ -8,6 +8,7 @@ import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { CookieConsent } from "@/components/consent/cookie-consent";
 import { QuickContactFab } from "@/components/common/quick-contact-fab";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { SiteSettingsProvider } from "@/components/providers/site-settings-provider";
 import { useRoute, type RouteLocation } from "@/lib/router";
 import { events, getAttribution, flush } from "@/lib/analytics-tracker";
 import { dir, t, type Locale } from "@/lib/i18n";
@@ -86,6 +87,7 @@ export function AppShell({
 
   return (
     <AuthProvider>
+      <SiteSettingsProvider>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground"
@@ -107,6 +109,7 @@ export function AppShell({
       <QuickContactFab />
       <CookieConsent />
       <CommandPalette />
+      </SiteSettingsProvider>
     </AuthProvider>
   );
 }

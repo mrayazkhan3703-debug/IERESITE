@@ -1470,6 +1470,75 @@ model ContentRevision {
   @@unique([contentEntryId, version])
 }
 
+// Public presentation configuration is stored as versioned, validated JSON.
+model SiteSetting {
+  id           String   @id
+  version      Int      @default(0)
+  settingsJson String   @db.Text
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+  revisions    SiteSettingRevision[]
+}
+
+model SiteSettingRevision {
+  id            String      @id @default(cuid())
+  siteSettingId String
+  version       Int
+  snapshotJson  String      @db.Text
+  editedBy      String?
+  changeNote    String?     @db.VarChar(300)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+  siteSetting   SiteSetting @relation(fields: [siteSettingId], references: [id], onDelete: Cascade)
+
+  @@unique([siteSettingId, version])
+}
+
+// Recruiting records stay private until an independent review publishes them.
+model CareerOpening {
+  id                  String    @id @default(cuid())
+  slug                String
+  locale              String    @default("en")
+  title               String
+  department          String
+  location            String
+  employmentType      String
+  workplaceType       String
+  summary             String
+  description         String    @db.Text
+  responsibilities    String    @default("") @db.Text
+  requirements        String    @default("") @db.Text
+  benefits            String?   @db.Text
+  salaryDisclosure    String?   @db.VarChar(180)
+  applicationMethod   String    @default("CONTACT")
+  applicationTarget   String?   @db.VarChar(2000)
+  opensAt             DateTime? @db.Timestamptz(3)
+  seoTitle            String?   @db.VarChar(180)
+  seoDescription      String?   @db.VarChar(300)
+  status              String    @default("DRAFT")
+  reviewWorkflowState String    @default("NONE")
+  closesAt            DateTime? @db.Timestamptz(3)
+  publishedAt         DateTime? @db.Timestamptz(3)
+  createdBy           String?
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+  revisions           CareerOpeningRevision[]
+
+  @@unique([locale, slug])
+  @@index([status, locale, publishedAt])
+}
+
+model CareerOpeningRevision {
+  id              String        @id @default(cuid())
+  careerOpeningId String
+  version         Int
+  snapshotJson    String        @db.Text
+  editedBy        String?
+  changeNote      String?       @db.VarChar(300)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  careerOpening   CareerOpening @relation(fields: [careerOpeningId], references: [id], onDelete: Cascade)
+
+  @@unique([careerOpeningId, version])
+}
+
 model BlogPost {
   id           String    @id @default(cuid())
   slug         String    @unique

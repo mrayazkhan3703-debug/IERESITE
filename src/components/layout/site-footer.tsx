@@ -3,8 +3,10 @@
 import * as React from "react";
 import { Link, useRoute, type QueryValue } from "@/lib/router";
 import { t, type Locale } from "@/lib/i18n";
-import { SITE_CONTACT, SITE_LOGO, WHATSAPP_MESSAGES, companyWhatsappHref } from "@/lib/config";
+import { SITE_LOGO, WHATSAPP_MESSAGES } from "@/lib/config";
 import { events } from "@/lib/analytics-tracker";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
+import type { SiteSettings } from "@/lib/site-settings";
 import { MapPin, MessageCircle, Navigation, Phone } from "lucide-react";
 import {
   Accordion,
@@ -21,53 +23,12 @@ import {
  * stays expanded. Sticky-footer layout preserved (mt-auto inside the shell's
  * min-h-screen flex column). No email channel (V3-B01), no demo values.
  */
-interface FooterLink {
-  to: string;
-  key: string;
-  query?: Record<string, QueryValue>;
-}
+type FooterColumn = SiteSettings["footerColumns"][number];
+type FooterLink = FooterColumn["links"][number];
 
-const FOOTER_COLUMNS: { titleKey: string; links: FooterLink[] }[] = [
-  {
-    titleKey: "footer.discover.title",
-    links: [
-      { to: "/buy", key: "footer.discover.buy" },
-      { to: "/rent", key: "footer.discover.rent" },
-      { to: "/off-plan", key: "footer.discover.offPlan" },
-      { to: "/projects", key: "footer.discover.newProjects", query: { sort: "new" } },
-      { to: "/communities", key: "footer.discover.communities" },
-      { to: "/properties/map", key: "footer.discover.map" },
-    ],
-  },
-  {
-    titleKey: "footer.intelligence.title",
-    links: [
-      { to: "/market", key: "footer.intelligence.market" },
-      { to: "/market/transactions", key: "footer.intelligence.transactions" },
-      { to: "/market/rents", key: "footer.intelligence.rentalTrends" },
-      { to: "/market", key: "footer.intelligence.reports", query: { tab: "reports" } },
-      { to: "/calculators", key: "footer.intelligence.calculators" },
-    ],
-  },
-  {
-    titleKey: "footer.company.title",
-    links: [
-      { to: "/about", key: "footer.company.about" },
-      { to: "/about/team", key: "footer.company.team" },
-      { to: "/agents", key: "footer.company.advisors" },
-      { to: "/contact", key: "footer.company.contact" },
-      { to: "/careers", key: "footer.company.careers" },
-    ],
-  },
-  {
-    titleKey: "footer.legal.title",
-    links: [
-      { to: "/privacy", key: "footer.legal.privacy" },
-      { to: "/terms", key: "footer.legal.terms" },
-      { to: "/cookie-settings", key: "footer.legal.cookies" },
-    ],
-  },
-];
+function footerLabel(item: { key?: string; labelEn?: string; labelAr?: string }, locale: Locale) {
+  return item.key ? t(item.key, locale) : (locale === "ar" ? item.labelAr : item.labelEn) ?? "";
+}
 
 function FooterLinkList({
   links,
@@ -85,7 +46,7 @@ function FooterLinkList({
             query={l.query}
             className="flex min-h-11 items-center text-sm on-ink-muted transition-ui hover:text-foreground hover:underline md:min-h-0 md:py-1 md:inline"
           >
-            {t(l.key, locale)}
+            {footerLabel(l, locale)}
           </Link>
         </li>
       ))}
@@ -96,6 +57,12 @@ function FooterLinkList({
 export function SiteFooter() {
   const loc = useRoute();
   const locale = (loc.locale as Locale) ?? "en";
+  const settings = useSiteSettings();
+  const contact = settings.contact;
+  const footerColumns = settings.footerColumns;
+  const phoneHref = `tel:${contact.phoneE164}`;
+  const whatsappHref = `https://wa.me/${contact.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.generic)}`;
+  const columnTitle = (column: FooterColumn) => column.key ? t(column.key, locale) : (locale === "ar" ? column.labelAr : column.labelEn) ?? "";
   const year = new Date().getFullYear();
 
   return (
@@ -122,37 +89,37 @@ export function SiteFooter() {
               <p>
                 <a
                   className="flex min-h-11 items-center gap-2.5 on-ink-muted transition-ui hover:text-foreground md:min-h-0"
-                  href={SITE_CONTACT.phoneHref}
+                  href={phoneHref}
                   onClick={() => events.callClick("footer")}
                 >
                   <Phone className="h-4 w-4 shrink-0 text-brand" aria-hidden />
-                  <span className="num">{SITE_CONTACT.phone}</span>
+                  <span className="num">{contact.phoneDisplay}</span>
                 </a>
               </p>
               <p>
                 <a
                   className="flex min-h-11 items-center gap-2.5 on-ink-muted transition-ui hover:text-foreground md:min-h-0"
-                  href={companyWhatsappHref(WHATSAPP_MESSAGES.generic)}
+                  href={whatsappHref}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => events.whatsappClick("footer")}
                 >
                   <MessageCircle className="h-4 w-4 shrink-0 text-brand" aria-hidden />
-                  <span className="num">{SITE_CONTACT.whatsappLabel}</span>
+                  <span className="num">{contact.whatsappDisplay}</span>
                 </a>
               </p>
               <p className="pt-1">
                 <a
                   className="flex items-start gap-2.5 rounded-sm py-1.5 on-ink-muted transition-ui hover:text-foreground"
-                  href={SITE_CONTACT.mapsUrl}
+                  href={contact.mapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => events.directionsClick("footer")}
                 >
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
                   <span className="leading-snug">
-                    {SITE_CONTACT.addressLine1}
-                    <span className="block on-ink-muted">{SITE_CONTACT.addressLine2}</span>
+                    {contact.addressLine1}
+                    <span className="block on-ink-muted">{contact.addressLine2}</span>
                   </span>
                 </a>
               </p>
@@ -160,7 +127,7 @@ export function SiteFooter() {
             <p className="mt-1">
               <a
                 className="inline-flex min-h-11 items-center gap-1.5 text-xs font-medium on-ink-muted transition-ui hover:text-foreground"
-                href={SITE_CONTACT.mapsUrl}
+                href={contact.mapsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => events.directionsClick("footer")}
@@ -169,15 +136,17 @@ export function SiteFooter() {
                 {t("footer.contact.directions", locale)}
               </a>
             </p>
+            {contact.officeHours && <p className="mt-2 text-xs on-ink-muted">{contact.officeHours}</p>}
+            {settings.socialLinks.length > 0 && <nav className="mt-4 flex flex-wrap gap-x-4 gap-y-2" aria-label={locale === "ar" ? "روابط التواصل الاجتماعي" : "Social media"}>{settings.socialLinks.map((social, index) => <a key={social.platform + index} href={social.href} target="_blank" rel="noopener noreferrer" className="text-xs on-ink-muted underline-offset-2 hover:text-foreground hover:underline">{locale === "ar" ? social.labelAr : social.labelEn}</a>)}</nav>}
           </div>
 
           {/* Link columns — accordions below 768px (contact block above stays
            * expanded); the CSS-hidden variant is removed from the a11y tree. */}
           <Accordion type="single" collapsible className="md:hidden">
-            {FOOTER_COLUMNS.map((col) => (
-              <AccordionItem key={col.titleKey} value={col.titleKey} className="border-border/60">
+            {footerColumns.map((col) => (
+              <AccordionItem key={col.id} value={col.id} className="border-border/60">
                 <AccordionTrigger className="min-h-11 py-3 text-sm font-medium text-foreground/90 hover:no-underline [&[data-state=open]>svg]:text-brand">
-                  {t(col.titleKey, locale)}
+                  {columnTitle(col)}
                 </AccordionTrigger>
                 <AccordionContent className="pb-3 text-sm">
                   <FooterLinkList links={col.links} locale={locale} />
@@ -187,9 +156,9 @@ export function SiteFooter() {
           </Accordion>
 
           {/* Link columns — static grid from 768px up */}
-          {FOOTER_COLUMNS.map((col) => (
-            <nav key={col.titleKey} aria-label={t(col.titleKey, locale)} className="hidden md:block">
-              <h3 className="type-label mb-3 on-ink-muted">{t(col.titleKey, locale)}</h3>
+          {footerColumns.map((col) => (
+            <nav key={col.id} aria-label={columnTitle(col)} className="hidden md:block">
+              <h3 className="type-label mb-3 on-ink-muted">{columnTitle(col)}</h3>
               <FooterLinkList links={col.links} locale={locale} />
             </nav>
           ))}

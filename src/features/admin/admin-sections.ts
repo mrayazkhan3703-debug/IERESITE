@@ -1,12 +1,12 @@
 import {
   Activity, BarChart3, BookOpenCheck, Boxes, Building2, Download, FileSearch, Flag, FolderKanban,
-  Gauge, Globe2, Images, Landmark, LayoutDashboard, Link2, MapPin, MessageSquareQuote, Newspaper,
+  Gauge, Globe2, Images, Landmark, LayoutDashboard, Link2, MapPin, MessageSquareQuote, Newspaper, Settings2,
   RefreshCcw, ScrollText, ShieldCheck, Users, BriefcaseBusiness,
 } from "lucide-react";
 import type { ElementType } from "react";
 
 export type AdminSection =
-  | "overview" | "leads" | "properties" | "projects" | "communities" | "developers" | "agents" | "users" | "content" | "faqs" | "market-reports" | "knowledge-base" | "testimonials" | "redirects" | "seo-metadata" | "media" | "units" | "imports" | "crm" | "jobs"
+  | "overview" | "leads" | "properties" | "projects" | "communities" | "developers" | "agents" | "users" | "content" | "careers" | "site-settings" | "faqs" | "market-reports" | "knowledge-base" | "testimonials" | "redirects" | "seo-metadata" | "media" | "units" | "imports" | "crm" | "jobs"
   | "analytics" | "audit" | "flags" | "evidence" | "data-quality";
 
 type Role = "OWNER" | "ADMIN" | "MANAGER" | "CONTENT_EDITOR" | "AGENT" | "ANALYST";
@@ -20,6 +20,8 @@ export const ADMIN_SECTIONS: { key: AdminSection; label: string; icon: ElementTy
   { key: "agents", label: "Team", icon: BriefcaseBusiness, roles: ["OWNER", "ADMIN", "MANAGER", "CONTENT_EDITOR"] },
   { key: "users", label: "Users & access", icon: ShieldCheck, roles: ["OWNER", "ADMIN"] },
   { key: "content", label: "Content", icon: Newspaper, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
+  { key: "careers", label: "Careers", icon: BriefcaseBusiness, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
+  { key: "site-settings", label: "Site settings", icon: Settings2, roles: ["OWNER", "ADMIN"] },
   { key: "faqs", label: "FAQs", icon: Newspaper, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
   { key: "market-reports", label: "Market reports", icon: FileSearch, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
   { key: "knowledge-base", label: "AI Knowledge", icon: BookOpenCheck, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },

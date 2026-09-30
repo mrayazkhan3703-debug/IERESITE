@@ -4,6 +4,7 @@ import type { SessionUser } from "@/server/auth";
 import { HttpError, audit } from "@/server/auth";
 import { emitEvent } from "@/server/jobs/outbox";
 import { parseContentBlocks, readContentBlocks, type ContentBlock } from "@/lib/content-blocks";
+import { PUBLIC_PROPERTY_WHERE, PUBLIC_PROJECT_WHERE, PUBLIC_COMMUNITY_WHERE, PUBLIC_DEVELOPER_WHERE, PUBLIC_AGENT_WHERE } from "@/server/domain/visibility";
 
 type EditableContent = {
   contentType: string;
@@ -18,6 +19,10 @@ type EditableContent = {
   status: string;
   reviewWorkflowState: string;
   publishedAt: Date | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  sourceVerifiedAt?: Date | null;
+  freshnessReviewDueAt?: Date | null;
 };
 
 export interface ContentDraftInput {
@@ -31,10 +36,14 @@ export interface ContentDraftInput {
   category?: string | null;
   coverMediaId?: string | null;
   submitForReview?: boolean;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  sourceVerifiedAt?: string | null;
+  freshnessReviewDueAt?: string | null;
 }
 
 export interface NewContentDraftInput {
-  contentType: "GUIDE" | "AREA_GUIDE" | "ARTICLE" | "LANDING" | "FAQ_GROUP";
+  contentType: "GUIDE" | "AREA_GUIDE" | "ARTICLE" | "LANDING" | "FAQ_GROUP" | "PAGE" | "INTERNATIONAL_GUIDE";
   locale: "en" | "ar";
   slug: string;
   title: string;
@@ -43,12 +52,18 @@ export interface NewContentDraftInput {
   blocks?: unknown;
   category?: string | null;
   coverMediaId?: string | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  sourceVerifiedAt?: string | null;
+  freshnessReviewDueAt?: string | null;
 }
 
 function contentPath(content: Pick<EditableContent, "contentType" | "locale" | "slug">) {
   const localePrefix = content.locale === "ar" ? "/ar" : "";
   const section = content.contentType === "GUIDE" || content.contentType === "AREA_GUIDE"
     ? "guides"
+    : content.contentType === "INTERNATIONAL_GUIDE" ? "international"
+    : content.contentType === "PAGE" ? "pages"
     : content.contentType === "MARKET_REPORT" ? "market/reports" : "insights";
   return `${localePrefix}/${section}/${content.slug}`;
 }
@@ -67,7 +82,29 @@ function snapshot(content: EditableContent) {
     status: content.status,
     reviewWorkflowState: content.reviewWorkflowState,
     publishedAt: content.publishedAt?.toISOString() ?? null,
+    sourceName: content.sourceName ?? null,
+    sourceUrl: content.sourceUrl ?? null,
+    sourceVerifiedAt: content.sourceVerifiedAt?.toISOString() ?? null,
+    freshnessReviewDueAt: content.freshnessReviewDueAt?.toISOString() ?? null,
   });
+}
+
+function sourceDate(value: string | null | undefined, current: Date | null | undefined): Date | null {
+  if (value === undefined) return current ?? null;
+  if (value === null || value === "") return null;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) throw new HttpError(422, "Use a valid source review date.", "CONTENT_SOURCE_DATE_INVALID");
+  return parsed;
+}
+
+function validateInternationalSource(content: Pick<EditableContent, "contentType" | "sourceName" | "sourceUrl" | "sourceVerifiedAt" | "freshnessReviewDueAt">) {
+  if (content.contentType !== "INTERNATIONAL_GUIDE") return;
+  const now = new Date();
+  let validUrl = false;
+  try { validUrl = Boolean(content.sourceUrl && new URL(content.sourceUrl).protocol === "https:"); } catch { validUrl = false; }
+  if (!content.sourceName?.trim() || !validUrl || !content.sourceVerifiedAt || content.sourceVerifiedAt > now || !content.freshnessReviewDueAt || content.freshnessReviewDueAt <= now) {
+    throw new HttpError(422, "International buyer guidance needs a verified HTTPS source, verification date, and future review date before review or publication.", "INTERNATIONAL_SOURCE_REQUIRED");
+  }
 }
 
 function ensureSlugAndTitle(slug: string, title: string) {
@@ -97,6 +134,16 @@ function serializeContentBlocks(value: unknown): { json: string | null; blocks: 
 }
 
 async function ensurePublicBlockImages(tx: Prisma.TransactionClient, blocks: ContentBlock[] | null) {
+  for (const block of blocks ?? []) {
+    if (block.type !== "entity") continue;
+    const where = { slug: block.slug };
+    const publicEntity = block.entity === "property" ? await tx.property.findFirst({ where: { ...where, ...PUBLIC_PROPERTY_WHERE }, select: { id: true } })
+      : block.entity === "project" ? await tx.project.findFirst({ where: { ...where, ...PUBLIC_PROJECT_WHERE }, select: { id: true } })
+      : block.entity === "community" ? await tx.community.findFirst({ where: { ...where, ...PUBLIC_COMMUNITY_WHERE }, select: { id: true } })
+      : block.entity === "developer" ? await tx.developer.findFirst({ where: { ...where, ...PUBLIC_DEVELOPER_WHERE }, select: { id: true } })
+      : await tx.agent.findFirst({ where: { ...where, ...PUBLIC_AGENT_WHERE }, select: { id: true } });
+    if (!publicEntity) throw new HttpError(422, "Curated references must point to an available published entity.", "ENTITY_REFERENCE_INVALID");
+  }
   const ids = [...new Set((blocks ?? []).flatMap((block) => block.type === "image" ? [block.mediaId] : []))];
   if (!ids.length) return;
   const assets = await tx.mediaAsset.findMany({
@@ -289,6 +336,8 @@ export async function reviewContentEntry(
       bodyJson: entry.bodyJson,
       coverMediaId: entry.coverMediaId,
       reviewWorkflowState: entry.reviewWorkflowState, publishedAt: entry.publishedAt,
+      sourceName: entry.sourceName, sourceUrl: entry.sourceUrl, sourceVerifiedAt: entry.sourceVerifiedAt,
+      freshnessReviewDueAt: entry.freshnessReviewDueAt,
     };
     const latest = await tx.contentRevision.findFirst({ where: { contentEntryId: entry.id }, orderBy: { version: "desc" } });
     if (decision === "APPROVE" || decision === "CHANGES_REQUESTED") {
@@ -298,6 +347,8 @@ export async function reviewContentEntry(
       if (latest?.editedBy === actor.id) throw new HttpError(409, "The most recent editor cannot review their own revision.", "SELF_REVIEW_BLOCKED");
       if (decision === "CHANGES_REQUESTED" && !note.trim()) throw new HttpError(422, "A reason is required when requesting changes.", "REVIEW_NOTE_REQUIRED");
     }
+    if (decision === "APPROVE" || decision === "PUBLISH") validateInternationalSource(entry);
+    if (decision === "APPROVE" || decision === "PUBLISH") await ensurePublicBlockImages(tx, readContentBlocks(entry.bodyJson));
 
     let status = entry.status;
     let reviewWorkflowState = entry.reviewWorkflowState;
@@ -320,6 +371,7 @@ export async function reviewContentEntry(
         throw new HttpError(409, "Content must be approved before publication.", "APPROVAL_REQUIRED");
       }
       if (entry.contentType === "LEGAL") throw new HttpError(424, "Legal publishing remains blocked until approved legal text and sources are available.", "BLOCKED_EXTERNAL");
+      validateInternationalSource(entry);
       if (!entry.title.trim() || (!entry.body.trim() && !readContentBlocks(entry.bodyJson))) throw new HttpError(422, "A title and body are required before publication.", "PUBLICATION_VALIDATION");
       status = "PUBLISHED";
       publishedAt = new Date();
@@ -358,6 +410,8 @@ export async function retireContentEntry(actor: SessionUser, contentEntryId: str
       contentType: entry.contentType, locale: entry.locale, slug: entry.slug, title: entry.title,
       excerpt: entry.excerpt, body: entry.body, bodyJson: entry.bodyJson, category: entry.category,
       coverMediaId: entry.coverMediaId, status: entry.status, reviewWorkflowState: entry.reviewWorkflowState, publishedAt: entry.publishedAt,
+      sourceName: entry.sourceName, sourceUrl: entry.sourceUrl, sourceVerifiedAt: entry.sourceVerifiedAt,
+      freshnessReviewDueAt: entry.freshnessReviewDueAt,
     };
     const after: EditableContent = {
       ...before,
@@ -395,6 +449,10 @@ export async function createContentDraft(actor: SessionUser, input: NewContentDr
           bodyJson: structured.json,
           category: input.category?.trim() || null,
           coverMediaId,
+          sourceName: input.sourceName?.trim() || null,
+          sourceUrl: input.sourceUrl?.trim() || null,
+          sourceVerifiedAt: sourceDate(input.sourceVerifiedAt, null),
+          freshnessReviewDueAt: sourceDate(input.freshnessReviewDueAt, null),
           status: "DRAFT",
           reviewWorkflowState: "NONE",
           authorId: actor.id,
@@ -406,6 +464,8 @@ export async function createContentDraft(actor: SessionUser, input: NewContentDr
         bodyJson: entry.bodyJson,
         coverMediaId: entry.coverMediaId,
         reviewWorkflowState: entry.reviewWorkflowState, publishedAt: entry.publishedAt,
+        sourceName: entry.sourceName, sourceUrl: entry.sourceUrl, sourceVerifiedAt: entry.sourceVerifiedAt,
+        freshnessReviewDueAt: entry.freshnessReviewDueAt,
       };
       await recordContentChange(tx, actor, entry.id, state, state, ip, "content.create_draft", "Created draft");
       return { id: entry.id, updatedAt: entry.updatedAt.toISOString() };
@@ -433,6 +493,8 @@ export async function updateContentDraft(actor: SessionUser, input: ContentDraft
         bodyJson: entry.bodyJson,
         coverMediaId: entry.coverMediaId,
         reviewWorkflowState: entry.reviewWorkflowState, publishedAt: entry.publishedAt,
+        sourceName: entry.sourceName, sourceUrl: entry.sourceUrl, sourceVerifiedAt: entry.sourceVerifiedAt,
+        freshnessReviewDueAt: entry.freshnessReviewDueAt,
       };
       const editedPublishedEntry = entry.status === "PUBLISHED";
       const status = editedPublishedEntry ? "IN_REVIEW" : input.submitForReview ? "IN_REVIEW" : "DRAFT";
@@ -457,11 +519,17 @@ export async function updateContentDraft(actor: SessionUser, input: ContentDraft
         status,
         reviewWorkflowState,
         publishedAt,
+        sourceName: input.sourceName === undefined ? entry.sourceName : input.sourceName?.trim() || null,
+        sourceUrl: input.sourceUrl === undefined ? entry.sourceUrl : input.sourceUrl?.trim() || null,
+        sourceVerifiedAt: sourceDate(input.sourceVerifiedAt, entry.sourceVerifiedAt),
+        freshnessReviewDueAt: sourceDate(input.freshnessReviewDueAt, entry.freshnessReviewDueAt),
       };
+      if (input.submitForReview || editedPublishedEntry) validateInternationalSource(after);
       const changed = await tx.contentEntry.updateMany({
         where: { id: entry.id, updatedAt: expectedUpdatedAt },
         data: {
           slug: after.slug, title: after.title, excerpt: after.excerpt, body: after.body, bodyJson: after.bodyJson, category: after.category, coverMediaId,
+          sourceName: after.sourceName, sourceUrl: after.sourceUrl, sourceVerifiedAt: after.sourceVerifiedAt, freshnessReviewDueAt: after.freshnessReviewDueAt,
           status, reviewWorkflowState, publishedAt, updatedAt: new Date(),
         },
       });
@@ -501,6 +569,8 @@ export async function rollbackContentDraft(actor: SessionUser, contentEntryId: s
       bodyJson: entry.bodyJson,
       coverMediaId: entry.coverMediaId,
       reviewWorkflowState: entry.reviewWorkflowState, publishedAt: entry.publishedAt,
+      sourceName: entry.sourceName, sourceUrl: entry.sourceUrl, sourceVerifiedAt: entry.sourceVerifiedAt,
+      freshnessReviewDueAt: entry.freshnessReviewDueAt,
     };
     const after: EditableContent = {
       contentType: entry.contentType, locale: entry.locale, slug: restored.slug.trim().toLowerCase(), title: restored.title.trim(),
@@ -508,11 +578,14 @@ export async function rollbackContentDraft(actor: SessionUser, contentEntryId: s
       bodyJson: structured.json,
       coverMediaId: await ensurePublicImage(tx, restored.coverMediaId ?? null),
       status: "DRAFT", reviewWorkflowState: "NONE", publishedAt: null,
+      sourceName: restored.sourceName ?? entry.sourceName, sourceUrl: restored.sourceUrl ?? entry.sourceUrl,
+      sourceVerifiedAt: restored.sourceVerifiedAt ? new Date(restored.sourceVerifiedAt as unknown as string) : entry.sourceVerifiedAt,
+      freshnessReviewDueAt: restored.freshnessReviewDueAt ? new Date(restored.freshnessReviewDueAt as unknown as string) : entry.freshnessReviewDueAt,
     };
     ensureSlugAndTitle(after.slug, after.title);
     const changed = await tx.contentEntry.updateMany({
       where: { id: entry.id, updatedAt: expectedUpdatedAt },
-      data: { slug: after.slug, title: after.title, excerpt: after.excerpt, body: after.body, bodyJson: after.bodyJson, category: after.category, coverMediaId: after.coverMediaId, status: "DRAFT", reviewWorkflowState: "NONE", publishedAt: null, updatedAt: new Date() },
+      data: { slug: after.slug, title: after.title, excerpt: after.excerpt, body: after.body, bodyJson: after.bodyJson, category: after.category, coverMediaId: after.coverMediaId, sourceName: after.sourceName, sourceUrl: after.sourceUrl, sourceVerifiedAt: after.sourceVerifiedAt, freshnessReviewDueAt: after.freshnessReviewDueAt, status: "DRAFT", reviewWorkflowState: "NONE", publishedAt: null, updatedAt: new Date() },
     });
     if (changed.count !== 1) throw new HttpError(409, "This content changed during restore. Refresh before trying again.", "VERSION_CONFLICT");
     await preserveSlug(tx, before, after);

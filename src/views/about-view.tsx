@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Link } from "@/lib/router";
+import { Link, useRoute } from "@/lib/router";
 import { usePageMeta } from "@/components/layout/app-shell";
 import { Breadcrumbs, SectionHeading, ProvenanceBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, TrendingUp, Users, Globe2 } from "lucide-react";
 import { organizationJsonLd } from "@/lib/seo-schema";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
+import { publicPageCopy } from "@/lib/site-settings";
 
 /** Shared company page shell */
 export function CompanyView({
@@ -22,19 +24,25 @@ export function CompanyView({
   intro: string;
   children?: React.ReactNode;
 }) {
+  const settings = useSiteSettings();
+  const locale = useRoute().locale === "ar" ? "ar" : "en";
+  const prefix = page === "About" ? "about" : page === "Careers" ? "careers" : null;
+  const heading = prefix ? publicPageCopy(settings, `${prefix}Title`, locale, title) : title;
+  const eyebrow = prefix ? publicPageCopy(settings, `${prefix}Kicker`, locale, kicker) : kicker;
+  const description = prefix ? publicPageCopy(settings, `${prefix}Intro`, locale, intro) : intro;
   usePageMeta({
-    title,
-    description: intro.slice(0, 155),
+    title: heading,
+    description: description.slice(0, 155),
     /* V3-19: verified Organization schema (same authoritative facts as home —
      * name/url/logo/telephone/full postal address/sameAs; no email). */
-    jsonLd: organizationJsonLd(),
+    jsonLd: organizationJsonLd(settings.contact),
   });
 
   return (
     <div className="container-page py-8">
       <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: page }]} />
       <div className="mx-auto mt-4 max-w-3xl">
-        <SectionHeading as="h1" kicker={kicker} title={title} description={intro} />
+        <SectionHeading as="h1" kicker={eyebrow} title={heading} description={description} />
         {children}
       </div>
     </div>

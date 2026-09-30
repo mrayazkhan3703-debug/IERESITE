@@ -20,7 +20,8 @@
 import * as React from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link, useRoute } from "@/lib/router";
-import { SITE_CONTACT, WHATSAPP_MESSAGES, companyWhatsappHref } from "@/lib/config";
+import { WHATSAPP_MESSAGES } from "@/lib/config";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 import { events } from "@/lib/analytics-tracker";
 import { localeOf, t } from "@/lib/i18n";
 import { MessageCircle, Phone, CalendarClock, MoreHorizontal } from "lucide-react";
@@ -41,6 +42,8 @@ function isFabHidden(path: string): boolean {
 export function QuickContactFab() {
   const loc = useRoute();
   const locale = localeOf(loc.locale);
+  const settings = useSiteSettings();
+  const contact = settings.contact;
   const [open, setOpen] = React.useState(false);
 
   if (isFabHidden(loc.path)) return null;
@@ -48,7 +51,7 @@ export function QuickContactFab() {
   const actions = [
     {
       key: "whatsapp",
-      href: companyWhatsappHref(WHATSAPP_MESSAGES.generic),
+      href: `https://wa.me/${contact.whatsappE164.replace(/\D/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGES.generic)}`,
       external: true,
       icon: MessageCircle,
       label: t("quickfab.whatsapp", locale),
@@ -56,7 +59,7 @@ export function QuickContactFab() {
     },
     {
       key: "call",
-      href: SITE_CONTACT.phoneHref,
+      href: `tel:${contact.phoneE164}`,
       external: false,
       icon: Phone,
       label: t("quickfab.call", locale),
@@ -64,7 +67,7 @@ export function QuickContactFab() {
     },
     {
       key: "book",
-      to: "/consultation",
+      to: settings.globalCta.to,
       icon: CalendarClock,
       label: t("quickfab.book", locale),
       onClick: () => setOpen(false),

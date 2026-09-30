@@ -28,6 +28,10 @@ Baseline: `fb6ae2208d108d7cb57d8b52826201e85c608a61`. Search named symbols after
 | Communities/developers | models `Community`, `Developer`; matching domain commands |
 | Media | models `MediaAsset`, `PropertyMedia`, `ProjectMedia`, `PropertyFloorPlan`, `PropertyDocument`; media pipeline and API routes |
 | Content/SEO | models `ContentEntry`, `SeoMetadata`; content/SEO/redirect commands and Admin routes |
+| Page composition | `src/lib/content-blocks.ts`, `src/components/common/{content-body,cms-module,content-entity-reference}.tsx`; PAGE records reuse ContentEntry and validate curated references before publication |
+| Site settings | models `SiteSetting`, `SiteSettingRevision`; `src/lib/site-settings.ts`, `src/server/domain/site-settings-command.ts`, `src/views/admin/{site-settings-section,navigation-editor}.tsx`, settings provider and APIs |
+| Careers | models `CareerOpening`, `CareerOpeningRevision`; `src/lib/career-opening.ts`, `src/server/domain/{career-command,career-query}.ts`, Careers Admin and public views/APIs |
+| International guidance | INTERNATIONAL_GUIDE ContentEntry records; content command/API/SEO freshness gates; public international hub and homepage entry |
 | Market | `MarketReport`, `MarketMetric`, `MarketTransaction`, `MarketRent`; market APIs/components |
 | AI/RAG | AI conversation/message/tool/usage and RAG models; `src/server/ai/*`, `src/server/rag/*` |
 | Durable jobs | `OutboxEvent`, `JobRun`, `DeadLetterEvent`, `MediaProcessingJob`; `src/server/jobs/*` |
@@ -45,6 +49,7 @@ API command gaps are tracked in `CMS_GAP_MATRIX.md`. Preserve database-backed RB
 - Phase 01: runtime/delivery files listed above.
 - Phase 02: `src/views/{communities,community-detail,map}-view.tsx`, `src/components/home/community-intelligence.tsx`, `src/lib/{leaflet-icons,map-marker-identity}.ts`, `src/app/api/map/route.ts`.
 - Phase 03: `src/app/admin/[[...section]]/page.tsx`, Admin monolith and extracted Admin sections, UI primitives and permission policy.
+- Phases 08–09: composition/settings/careers sources above; `tests/{site-settings.test,site-settings-command.integration,career-command.integration,page-studio.integration}.ts` and `tests/accessibility/page-careers-studio.spec.ts`.
 - Later phases: use the V4 brief Section 4B map and update this file when symbols move.
 
 ## Authoritative input fingerprints

@@ -11,7 +11,8 @@ import { Link } from "@/lib/router";
 import { BadgeCheck, BookOpen, Users, Timer, Info } from "lucide-react";
 import { t, type Locale } from "@/lib/i18n";
 import { formatNumber } from "@/lib/money";
-import { SITE_CONTACT, SITE_CONTACT_CHANNELS } from "@/lib/config";
+import { SITE_CONTACT_CHANNELS } from "@/lib/config";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 
 export function TrustProof({
   locale,
@@ -22,6 +23,7 @@ export function TrustProof({
   advisorCount: number | null;
   researchCount: number | null;
 }) {
+  const settings = useSiteSettings();
   const items = [
     {
       icon: BadgeCheck,
@@ -87,7 +89,7 @@ export function TrustProof({
 
         <p className="mt-4 text-xs text-muted-foreground">
           {t("home.trust.demoNote", locale)}{" "}
-          <span className="num">Contact: {SITE_CONTACT.address}</span>
+          <span className="num">Contact: {[settings.contact.addressLine1, settings.contact.addressLine2].filter(Boolean).join(", ")}</span>
         </p>
       </div>
     </section>

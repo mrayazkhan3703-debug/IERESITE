@@ -28,12 +28,15 @@ import { AdvisorMatching } from "@/components/home/advisor-matching";
 import { InternationalEntry } from "@/components/home/international-entry";
 import { TrustProof } from "@/components/home/trust-proof";
 import { FinalCta } from "@/components/home/final-cta";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
+import type { HomeModuleId } from "@/lib/site-settings";
 
 export default function HomeView() {
   const loc = useRoute();
   const locale = localeOf(loc.locale);
   const data = useHomeData();
   const leadForm = useLeadForm();
+  const settings = useSiteSettings();
 
   usePageMeta({
     title: undefined,
@@ -44,7 +47,7 @@ export default function HomeView() {
        * facts only (name/url/logo/telephone/postal address/sameAs maps link;
        * no email exists — V3-B01 — and none is invented). Advisor profiles
        * carry their own RealEstateAgent/Person schemas on /agents/*. */
-      organizationJsonLd(),
+      organizationJsonLd(settings.contact),
       {
         "@context": "https://schema.org",
         "@type": "WebSite",
@@ -66,87 +69,24 @@ export default function HomeView() {
       {/* §11.1 — no reveal wrapper: hero is the LCP element (§17) */}
       <Hero locale={locale} communities={data.communities} communityMetrics={data.communityMetrics} projects={data.projects} />
 
-      {/* §11.2 — warm-sand strip doubles as the hero's bottom edge partition */}
-      <Reveal>
-        <MarketPulse locale={locale} pulse={data.pulse} />
-      </Reveal>
-
-      {/* §11.3 */}
-      <Reveal>
-        <OpportunityRadar
-          locale={locale}
-          pool={data.radarPool}
-          communityMetrics={data.communityMetrics}
-          contextFor={data.contextFor}
-        />
-      </Reveal>
-
-      {/* §11.4 */}
-      <Reveal>
-        <AtlasPreview locale={locale} communities={data.communities} communityMetrics={data.communityMetrics} projects={data.projects} />
-      </Reveal>
-
-      {/* §11.5 */}
-      <Reveal>
-        <CuratedProperties locale={locale} featured={data.featured} contextFor={data.contextFor} />
-      </Reveal>
-
-      {/* DEV-C — personalization strip (renders nothing without local/server history) */}
-      <RecentlyViewedSection locale={locale} />
-
-      {/* §11.6 */}
-      <Reveal>
-        <OffPlanRadar locale={locale} projects={data.projects} />
-      </Reveal>
-
-      {/* §11.7 */}
-      <Reveal>
-        <CommunityIntelligence
-          locale={locale}
-          communities={data.communities}
-          communityMetrics={data.communityMetrics}
-          projects={data.projects}
-        />
-      </Reveal>
-
-      {/* §11.8 */}
-      <Reveal>
-        <AiDemo locale={locale} communities={data.communities} communityMetrics={data.communityMetrics} />
-      </Reveal>
-
-      {/* §11.9 — local scenario engine, no API */}
-      <Reveal>
-        <ScenarioLab locale={locale} />
-      </Reveal>
-
-      {/* §11.10 */}
-      <Reveal>
-        <EvidenceMethodology locale={locale} communityMetrics={data.communityMetrics} pulse={data.pulse} />
-      </Reveal>
-
-      {/* §11.11 */}
-      <Reveal>
-        <AdvisorMatching locale={locale} agents={data.agents} leadForm={leadForm} />
-      </Reveal>
-
-      {/* §11.12 */}
-      <Reveal>
-        <InternationalEntry locale={locale} />
-      </Reveal>
-
-      {/* §11.13 */}
-      <Reveal>
-        <TrustProof
-          locale={locale}
-          advisorCount={data.agents ? data.agents.length : null}
-          researchCount={data.research ? data.research.guides + data.research.insights : null}
-        />
-      </Reveal>
-
-      {/* §11.14 */}
-      <Reveal>
-        <FinalCta locale={locale} />
-      </Reveal>
+      {(() => {
+        const modules: Record<HomeModuleId, React.ReactNode> = {
+          "market-pulse": <Reveal><MarketPulse locale={locale} pulse={data.pulse} /></Reveal>,
+          "opportunity-radar": <Reveal><OpportunityRadar locale={locale} pool={data.radarPool} communityMetrics={data.communityMetrics} contextFor={data.contextFor} /></Reveal>,
+          "atlas-preview": <Reveal><AtlasPreview locale={locale} communities={data.communities} communityMetrics={data.communityMetrics} projects={data.projects} /></Reveal>,
+          "curated-properties": <Reveal><CuratedProperties locale={locale} featured={data.featured} contextFor={data.contextFor} /></Reveal>,
+          "off-plan-radar": <Reveal><OffPlanRadar locale={locale} projects={data.projects} /></Reveal>,
+          "community-intelligence": <Reveal><CommunityIntelligence locale={locale} communities={data.communities} communityMetrics={data.communityMetrics} projects={data.projects} /></Reveal>,
+          "ai-advisor": <Reveal><AiDemo locale={locale} communities={data.communities} communityMetrics={data.communityMetrics} /></Reveal>,
+          "scenario-lab": <Reveal><ScenarioLab locale={locale} /></Reveal>,
+          "evidence-methodology": <Reveal><EvidenceMethodology locale={locale} communityMetrics={data.communityMetrics} pulse={data.pulse} /></Reveal>,
+          "advisor-matching": <Reveal><AdvisorMatching locale={locale} agents={data.agents} leadForm={leadForm} /></Reveal>,
+          "international-entry": <Reveal><InternationalEntry locale={locale} /></Reveal>,
+          "trust-proof": <Reveal><TrustProof locale={locale} advisorCount={data.agents ? data.agents.length : null} researchCount={data.research ? data.research.guides + data.research.insights : null} /></Reveal>,
+          "final-cta": <Reveal><FinalCta locale={locale} /></Reveal>,
+        };
+        return settings.homeModuleOrder.map((moduleId) => <React.Fragment key={moduleId}>{modules[moduleId]}{moduleId === "curated-properties" && <RecentlyViewedSection locale={locale} />}</React.Fragment>);
+      })()}
 
       <LeadFormDialog context={leadForm.ctx} onClose={leadForm.close} />
     </div>

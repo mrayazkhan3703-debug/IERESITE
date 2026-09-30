@@ -38,6 +38,7 @@ export const GET = apiHandler(async (req) => {
         status: entry.status, reviewWorkflowState: entry.reviewWorkflowState,
         sourceName: entry.sourceName, sourceUrl: entry.sourceUrl,
         sourceVerifiedAt: entry.sourceVerifiedAt?.toISOString() ?? null,
+        freshnessReviewDueAt: entry.freshnessReviewDueAt?.toISOString() ?? null,
         publishedAt: entry.publishedAt?.toISOString() ?? null,
         revisionCount: entry._count.revisions, updatedAt: entry.updatedAt.toISOString(),
         translationPeer: translationPeer ? { ...translationPeer, updatedAt: translationPeer.updatedAt.toISOString() } : null,
@@ -54,10 +55,14 @@ const baseDraftSchema = z.object({
   blocks: z.unknown().nullable().optional().refine((value) => value === undefined || value === null || parseContentBlocks(value) !== null),
   category: z.string().max(100).nullable().optional(),
   coverMediaId: z.string().min(1).nullable().optional(),
+  sourceName: z.string().trim().max(200).nullable().optional(),
+  sourceUrl: z.string().trim().url().max(2000).refine((value) => value.startsWith("https://"), "Use an HTTPS source URL.").nullable().optional(),
+  sourceVerifiedAt: z.string().datetime().nullable().optional(),
+  freshnessReviewDueAt: z.string().datetime().nullable().optional(),
 });
 
 const createSchema = baseDraftSchema.extend({
-  contentType: z.enum(["GUIDE", "AREA_GUIDE", "ARTICLE"]),
+  contentType: z.enum(["GUIDE", "AREA_GUIDE", "ARTICLE", "PAGE", "INTERNATIONAL_GUIDE"]),
   locale: z.enum(["en", "ar"]),
 }).strict();
 

@@ -37,7 +37,7 @@ export const OG_IMAGE = {
  * usePageMeta on the home route and the shared company views; everything is
  * verified company data (V3-01 real values; V3-B01: no email exists).
  */
-export function organizationJsonLd(): Record<string, unknown> {
+export function organizationJsonLd(contact: { phoneE164: string; addressLine1: string; addressLine2: string; mapsUrl: string } = SITE_CONTACT): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -50,13 +50,14 @@ export function organizationJsonLd(): Record<string, unknown> {
       width: SITE_LOGO.width,
       height: SITE_LOGO.height,
     },
-    telephone: SITE_CONTACT.phoneE164,
+    telephone: contact.phoneE164,
     address: {
       "@type": "PostalAddress",
       ...SITE_POSTAL_ADDRESS,
+      streetAddress: [contact.addressLine1, contact.addressLine2].filter(Boolean).join(", "),
     },
     /* Verified external identity link — the company's Google-Maps place. */
-    sameAs: [SITE_CONTACT.mapsUrl],
+    sameAs: [contact.mapsUrl],
   };
 }
 

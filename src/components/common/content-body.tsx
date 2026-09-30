@@ -4,6 +4,9 @@ import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import { parseContentBlocks, type ContentBlock } from "@/lib/content-blocks";
 import { tocId } from "@/components/common/article-reading";
+import { CmsModule, CmsModuleScope } from "./cms-module";
+import { ContentEntityReference } from "./content-entity-reference";
+
 
 function safeBlocks(value: unknown): ContentBlock[] | null {
   const parsed = parseContentBlocks(value);
@@ -23,7 +26,7 @@ export function contentBlocksToToc(value: unknown) {
   });
 }
 
-function renderBlocks(blocks: ContentBlock[]) {
+function renderBlocks(blocks: ContentBlock[], locale: "en" | "ar") {
   const seenHeadings = new Map<string, number>();
   return blocks.map((block, index) => {
     switch (block.type) {
@@ -50,13 +53,17 @@ function renderBlocks(blocks: ContentBlock[]) {
       }
       case "image":
         return <figure key={index} className="my-6"><Image src={`/api/media/${encodeURIComponent(block.mediaId)}/content`} alt={block.altText} width={1200} height={800} unoptimized className="h-auto w-full rounded-lg" />{block.caption && <figcaption className="mt-2 text-center text-sm text-muted-foreground">{block.caption}</figcaption>}</figure>;
+      case "module": {
+        return <CmsModule key={index} id={block.id} locale={locale} />;
+      }
+      case "entity": return <ContentEntityReference key={index} block={block} locale={locale} />;
     }
   });
 }
 
-export function ContentBody({ body, blocks, className = "" }: { body: string; blocks?: unknown; className?: string }) {
+export function ContentBody({ body, blocks, className = "", locale = "en" }: { body: string; blocks?: unknown; className?: string; locale?: "en" | "ar" }) {
   const parsedBlocks = safeBlocks(blocks);
-  if (parsedBlocks) return <div className={`content-body ${className}`}>{renderBlocks(parsedBlocks)}</div>;
+  if (parsedBlocks) return <div className={`content-body ${className}`}><CmsModuleScope blocks={parsedBlocks}>{renderBlocks(parsedBlocks, locale)}</CmsModuleScope></div>;
   return <div className={`content-body ${className}`}><ReactMarkdown
     components={{
       h1: (props) => <h2 id={tocId(props.children)} className="mt-10 scroll-mt-28 font-display text-2xl font-semibold first:mt-0" {...props} />,
