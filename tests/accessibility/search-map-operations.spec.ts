@@ -6,6 +6,36 @@ function listing(id: string, title: string): ListingCardDTO {
 const cards = [listing("synthetic-map-first", "Synthetic first listing"), listing("synthetic-map-second", "Synthetic second listing")];
 const payload = { results: cards, total: 2, clusters: [{ lat: 25.1, lng: 55.2, count: 2, listingId: null, slug: null, title: null, priceMinor: null, currency: null }], communities: [], projects: [], clusterCoverage: "FULL" };
 
+for (const locale of ["en", "ar"] as const) test(`${locale} singleton pin markers survive navigation, style changes and repeated mounts`, async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const singletons = cards.map((item, index) => ({ ...item, lat: item.lat + index * 0.08 }));
+  await page.route("**/api/map?*", (route) => route.fulfill({ json: { ...payload, results: singletons, clusters: singletons.map((item) => ({ lat: item.lat, lng: item.lng, count: 1, listingId: item.id, slug: item.slug, title: item.title, priceMinor: item.price.minor, currency: "AED" })) } }));
+  await page.route("**/api/market/metrics?*", (route) => route.fulfill({ json: { metrics: [] } }));
+  const prefix = locale === "ar" ? "/ar" : "";
+  await page.goto(`${prefix}/market/transactions`);
+  for (let cycle = 0; cycle < 3; cycle++) {
+    await page.locator(`footer a[href="${prefix}/properties/map"]`).click();
+    await expect(page.locator(".leaflet-container")).toHaveCount(1);
+    await expect(page.locator(".ie-property-pin svg")).toHaveCount(2);
+    const pin = page.getByRole("button", { name: /Synthetic first listing —/ });
+    await pin.click();
+    await expect.poll(() => new URL(page.url()).searchParams.get("selected")).toBe("synthetic-map-first");
+    await page.reload();
+    await expect(page.locator(".leaflet-container")).toHaveCount(1);
+    await expect.poll(() => new URL(page.url()).searchParams.get("selected")).toBe("synthetic-map-first");
+    await page.getByRole("button", { name: locale === "ar" ? "أغلق المعاينة" : "Close preview", exact: true }).click();
+    await expect(page.locator(".ie-property-pin svg")).toHaveCount(2);
+    await page.getByRole("button", { name: locale === "ar" ? "شريط السعر" : "Price pill", exact: true }).click();
+    await expect(page.locator(".ie-property-pin svg")).toHaveCount(0);
+    await page.getByRole("button", { name: locale === "ar" ? "دبوس" : "Pin", exact: true }).click();
+    await expect(page.locator(".ie-property-pin svg")).toHaveCount(2);
+    await page.locator(`footer a[href="${prefix}/market/transactions"]`).click();
+    await expect(page.getByRole("heading", { name: "Sale transactions explorer", exact: true })).toBeVisible();
+  }
+  expect(errors).toEqual([]);
+});
+
 test("map selects coincident listings by identity and preserves the searched area through pan and reload", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
