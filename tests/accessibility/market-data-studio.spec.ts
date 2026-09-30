@@ -27,6 +27,8 @@ test.afterAll(async () => {
 });
 test("owner uploads a file, maps its columns and reviews changes before applying", async ({ page }) => {
   test.setTimeout(90000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
   await page.context().addCookies([{ name: "ie_session", value: token, url: baseURL, httpOnly: true, sameSite: "Lax" }]);
   await page.goto("/admin/imports");
   await expect(page.getByRole("heading", { name: "Source → validate → review → apply" })).toBeVisible();
@@ -55,6 +57,7 @@ test("owner uploads a file, maps its columns and reviews changes before applying
   expect(await db.marketTransaction.count({ where: { importRunId: run.id } })).toBe(1);
   await page.goto("/market/transactions?community=Synthetic%20browser%20area");
   await expect(page.getByText("Synthetic browser area", { exact: true }).first()).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 test("owner sees indexing diagnostics and can complete a direct rebuild", async ({ page }) => {

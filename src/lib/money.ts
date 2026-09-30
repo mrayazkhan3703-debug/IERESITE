@@ -67,11 +67,13 @@ export function formatDate(d: string | Date | null | undefined, locale = "en-AE"
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return "—";
+  // Intl forbids component defaults alongside dateStyle/timeStyle presets.
+  // Admin history requests both presets, so apply defaults only to components.
+  const dateOptions: Intl.DateTimeFormatOptions = opts?.dateStyle || opts?.timeStyle
+    ? { ...opts }
+    : { year: "numeric", month: "short", day: "numeric", ...opts };
   return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    ...opts,
+    ...dateOptions,
     timeZone: opts?.timeZone ?? "Asia/Dubai",
   }).format(date);
 }
