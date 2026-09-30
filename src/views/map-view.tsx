@@ -40,7 +40,7 @@ import { CHART_COLORS } from "@/lib/chart-theme";
 import { escapeMapHtml, MAP_TILE_CONFIG } from "@/lib/map-tiles";
 import { mapViewport, mapBounds } from "@/lib/map-state";
 import { PublicImage } from "@/components/public-image";
-import { LEAFLET_DEFAULT_ICONS } from "@/lib/leaflet-icons";
+import { propertyPinIcon } from "@/lib/leaflet-icons";
 
 /* Resolved chart-theme tokens (HTML/SVG presentation values cannot host var()). */
 const MARKER_BRONZE = "#8f5a2b"; // --ie-viz-1 / --brand
@@ -274,12 +274,13 @@ export default function MapView() {
         zoomControl: false,
         scrollWheelZoom: true,
       });
+      mapRef.current = map;
       L.control.zoom({ position: "bottomright" }).addTo(map);
       const tiles = L.tileLayer(MAP_TILE_CONFIG.url, {
         maxZoom: MAP_TILE_CONFIG.maxZoom,
         attribution: MAP_TILE_CONFIG.attribution,
       });
-      tiles.on("tileerror", () => setTilesFailed(true));
+      tiles.on("tileerror", () => { if (!cancelled) setTilesFailed(true); });
       tiles.addTo(map);
       mapRef.current = map;
       propsLayerRef.current = L.layerGroup().addTo(map);
@@ -326,7 +327,7 @@ export default function MapView() {
       cancelled = true;
       if (urlTimer.current) clearTimeout(urlTimer.current);
       urlTimer.current = null;
-      mapRef.current?.remove();
+      const map = mapRef.current;
       mapRef.current = null;
       LRef.current = null;
       propsLayerRef.current = null;
@@ -335,6 +336,7 @@ export default function MapView() {
       activityLayerRef.current = null;
       rentLayerRef.current = null;
       bboxRef.current = null;
+      if (map) { map.off(); map.remove(); }
     };
   }, []);
 
@@ -502,7 +504,7 @@ export default function MapView() {
       let icon: L.DivIcon | L.Icon;
       let priceLabel: string | null = null;
       if (single && markerMode === "pin" && !isSelected) {
-        icon = L.icon(LEAFLET_DEFAULT_ICONS);
+        icon = propertyPinIcon(L);
       } else if (single) {
         const minor = item?.price.minor ?? cluster.priceMinor;
         priceLabel = minor ? formatAEDPrecise(fromMinor(minor)) : "◦";
