@@ -2,13 +2,13 @@
 
 - Source baseline commit: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
 - Current branch: `codex/production-recovery-wave1`
-- Current source checkpoint: `d07444ae0b188599c831a4010600a5f8309d3133` (tested correction head `ed7890ba1080aa69309e9ead43c8f1c1b19164b1` has the same code tree)
+- Current source checkpoint: `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` (tested correction head `7800c59b09b133af260e93c953cb4128201ac374` has the same tracked tree)
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
 - Admin login MFA requirement: disabled at the owner's request with Render `AUTH_MFA_REQUIRED=false`; deploy `dep-datvi0rncjis73a6iq60` is live. Existing encrypted MFA enrollment data remains stored.
-- Last completed phase: Phase 09 (`d07444ae0b188599c831a4010600a5f8309d3133`)
-- Current phase status: Phases 02–09 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28. Phases 10–11 are IN_PROGRESS pending hosted checks and deployment; Phases 12–19 remain NOT_STARTED.
-- Last verified migration: `20260930000200_career_details` (36/36 completed in hosted CI and shared Supabase)
-- Last verified implementation deployment: `d07444ae0b188599c831a4010600a5f8309d3133` / Render deploy `dep-daueu27f3r2c73ernrg0` (live; Phases 08–09 plus returning-visitor hydration correction)
+- Last completed phase: Phase 11 (`e9c189cc2e229ffa8e12800b1fb7191527f55cc7`)
+- Current phase status: Phases 02–11 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28. Phases 12–19 remain NOT_STARTED.
+- Last verified migration: `20260930000300_market_import_workflow` (37/37 completed in hosted CI and shared Supabase)
+- Last verified implementation deployment: `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` / Render deploy `dep-dauj52gu01pc738jhml0` (live at 16:05:46 UTC; market/search operations and singleton pin correction)
 
 ## Completed phase evidence
 
@@ -66,13 +66,16 @@
 
 ## Next phase
 
-- 2026-09-30 continuation: Phases 10–11 implementation is in progress in the managed worktree. Added the canonical ImportRun market dataset fields, audited source registry, private immutable file snapshots, mapping/validation/diff/reject/apply pipeline, current-source metric rebuild, constrained reviewed report embeds, bounded canonical search fallback, public selection lookup, map URL scope/selection/pagination, indexing diagnostics and direct rebuild. Local typecheck, lint, build and focused tests pass; Docker-backed secret/integration/browser gates and deployment remain pending.
+- 2026-09-30 completion: Phases 10–11 add canonical ImportRun market dataset fields, audited source registry, private immutable file snapshots, mapping/validation/diff/reject/apply, current-source metric rebuild, reviewed report embeds, bounded fresh canonical search fallback, public selection lookup, map URL scope/selection/pagination, indexing diagnostics and synchronous rebuild. Operator instructions: `MARKET_SEARCH_OPERATIONS.md`.
+- Exact correction CI run `36735381233` (56) passes lint/type/build, 37 migrations, 267 unit/contract, 105 integration, 79 browser, 16 performance checks/budgets and credential/worker/SMTP/storage/backup gates. PRs #3 and #4 are merged. Live default pins, owner CMS navigation, selection/reload and marker switching pass without new console errors.
+- Live health remains degraded solely for the owner-deferred missing worker; database/search are healthy with three demo listings. No production market sources/runs were uploaded, synthetic shared rows seeded or queue drained. Verified real inventory and market exports remain owner-managed. Advisor route-shell success does not certify provider-backed chat.
+- Release documentation was restored in `C:/Users/mraya/.codex/worktrees/release-checkpoint-1011`, a fresh clone of the verified main revision, after the earlier managed checkout lacked Git metadata/documentation on resume. Original dirty checkout untouched.
 
-- Next two phases: Phase 10 Market Intelligence operations/ingestion and Phase 11 Search/map production completion.
-- This run stops after verified Phases 10–11. Do not start a third phase; preserve the worker deferral and disabled live-provider gates.
+- Next two phases: Phase 12 AI Advisor/RAG and Phase 13 Leads/CRM operations.
+- This run stops after verified Phases 10–11. Do not start a third phase; preserve the worker deferral and existing live-provider configuration. This checkpoint does not claim all 19 phases or production cutover complete.
 
 ## Rollback
 
 - Safe source tag: `iere-wave1-baseline-20260928` -> `fb6ae2208d108d7cb57d8b52826201e85c608a61`.
-- DB note: all 36 migrations, including both 20260930 settings/career migrations, are applied to shared Supabase. Use forward fixes and never reset the shared database.
+- DB note: all 37 migrations, including the 20260930 market import workflow migration, are applied to shared Supabase. Use forward fixes and never reset the shared database.
 - Workspace note: the original `F:\\IERE Website` checkout remains dirty and untouched. Wave 1 runs in the managed worktree at `C:\\Users\\mraya\\.codex\\worktrees\\production-recovery-wave1\\IERE Website`.

@@ -12,8 +12,8 @@
 | 07 Communities/developers/advisors | COMPLETE | `94190061a1eae85a943c5f542793c61d96c7007f` | Run 39 passes; publish/verification/account gates covered; Render deploy `dep-datv7fgu01pc73fr2c7g` live |
 | 08 Page/Content Studio + settings | COMPLETE | `d07444ae0b188599c831a4010600a5f8309d3133` | CI runs 43/45 pass; 36 migrations applied; live OWNER settings/content access and saved-scenario hydration verified; Render `dep-daueu27f3r2c73ernrg0` live |
 | 09 Careers + International governance | COMPLETE | `d07444ae0b188599c831a4010600a5f8309d3133` | Independent approval/publication, private restore, scheduling/source expiry and bilingual browser checks pass; live Admin/public routes verified |
-| 10 Market Intelligence operations | IN_PROGRESS | working tree | Source registry and bounded dataset validation/apply implementation underway |
-| 11 Search + map production upgrade | IN_PROGRESS | working tree | Bounded canonical fallback, map failure/state/selection and indexing operations underway |
+| 10 Market Intelligence operations | COMPLETE | `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` | CI 54/56, 37 migrations; registry/file mapping/private validation/review/apply/metrics/report embeds; live OWNER imports verified |
+| 11 Search + map production upgrade | COMPLETE | `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` | CI 56 passes 79 browser checks including EN/AR singleton pins; Render `dep-dauj52gu01pc738jhml0` live; direct rebuild, default pins, selection/reload and price/pin switching verified |
 | 12 AI Advisor + RAG | NOT_STARTED | — | — |
 | 13 Leads/CRM operations | NOT_STARTED | — | — |
 | 14 SEO/routing/multilingual | NOT_STARTED | — | — |

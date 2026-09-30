@@ -58,6 +58,8 @@ API command gaps are tracked in `CMS_GAP_MATRIX.md`. Preserve database-backed RB
 - Phase 02: `src/views/{communities,community-detail,map}-view.tsx`, `src/components/home/community-intelligence.tsx`, `src/lib/{leaflet-icons,map-marker-identity}.ts`, `src/app/api/map/route.ts`.
 - Phase 03: `src/app/admin/[[...section]]/page.tsx`, Admin monolith and extracted Admin sections, UI primitives and permission policy.
 - Phases 08–09: composition/settings/careers sources above; `tests/{site-settings.test,site-settings-command.integration,career-command.integration,page-studio.integration}.ts` and `tests/accessibility/page-careers-studio.spec.ts`.
+- Phases 10–11: market/import/search operations sources above; `tests/accessibility/{market-data-studio,search-map-operations}.spec.ts`, market command integration suites and search resilience suites. `src/lib/leaflet-icons.ts` exports `propertyPinIcon`, a static SVG DivIcon used by `src/views/map-view.tsx`; `tests/leaflet-pin-icon.test.ts` and EN/AR singleton navigation journeys cover the production pin failure.
+- Browser compatibility: `src/lib/money.ts` keeps Intl date style presets separate from component options; `src/lib/client-request-id.ts` provides secure random request IDs on fixture hosts without `randomUUID`. Market/import forms and the navigation editor use the shared helper.
 - Later phases: use the V4 brief Section 4B map and update this file when symbols move.
 
 ## Authoritative input fingerprints
