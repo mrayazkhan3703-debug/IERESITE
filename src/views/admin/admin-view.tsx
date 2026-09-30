@@ -6,6 +6,7 @@ import { Link, navigate, useRoute } from "@/lib/router";
 import { usePageMeta } from "@/components/layout/app-shell";
 import { useAuth, hasRole } from "@/components/providers/auth-provider";
 import { api } from "@/lib/api-client";
+import { clientRequestId } from "@/lib/client-request-id";
 import { LoadingState, ErrorState, EmptyState, StatusBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2047,7 +2048,7 @@ function ImportsSection() {
     try {
       const fingerprint = `${dryRun ? "dry" : "apply"}\u0000${csv}`;
       if (!requestKey.current || requestKey.current.fingerprint !== fingerprint) {
-        requestKey.current = { fingerprint, key: crypto.randomUUID() };
+        requestKey.current = { fingerprint, key: clientRequestId() };
       }
       const res = await api.post<{ importRunId: string; status: string; duplicateRequest: boolean }>(
         "/api/admin/imports",

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { api } from "@/lib/api-client";
+import { clientRequestId } from "@/lib/client-request-id";
 import { MARKET_FIELDS, type MarketSourceInput } from "@/lib/market-import";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,7 +72,7 @@ export function MarketDataSection({ canManage }: { canManage: boolean }) {
     if (!file || !sourceId || !retrievedAt) throw new Error("Choose a source, file and source retrieval date.");
     const input = { sourceId, format: file.format, data: file.data, retrievedAt: new Date(retrievedAt).toISOString() };
     const fingerprint = JSON.stringify(input);
-    if (requestKey.current?.input !== fingerprint) requestKey.current = { input: fingerprint, key: crypto.randomUUID() };
+    if (requestKey.current?.input !== fingerprint) requestKey.current = { input: fingerprint, key: clientRequestId() };
     const result = await api.post<{ importRunId: string }>("/api/admin/market-data", { action: "validate", ...input, idempotencyKey: requestKey.current!.key });
     await showRun(result.importRunId); await load(); toast.success("Validation recorded; review the row results");
   });
