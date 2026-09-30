@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/common";
-import { DEFAULT_SITE_SETTINGS, HOME_MODULE_IDS, type HomeModuleId, type SiteSettings } from "@/lib/site-settings";
+import { DEFAULT_SITE_SETTINGS, HOME_MODULE_IDS, PAGE_COPY_LABELS, type PageCopyKey, type HomeModuleId, type SiteSettings } from "@/lib/site-settings";
 import { PublicMediaPicker } from "@/features/admin/shared/public-media-picker";
+import { NavigationEditor } from "./navigation-editor";
+import { useUnsavedChanges } from "@/features/admin/shared/admin-primitives";
 
 type Revision = { id: string; version: number; editedBy: string | null; changeNote: string | null; createdAt: string };
 type SettingsReply = { settings: SiteSettings; version: number; updatedAt: string | null; revisions: Revision[] };
@@ -21,18 +23,18 @@ export function SiteSettingsSection() {
   const [settings, setSettings] = React.useState<SiteSettings | null>(null);
   const [version, setVersion] = React.useState(0);
   const [revisions, setRevisions] = React.useState<Revision[]>([]);
-  const [navigationJson, setNavigationJson] = React.useState("");
-  const [socialJson, setSocialJson] = React.useState("");
   const [changeNote, setChangeNote] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [loadFailed, setLoadFailed] = React.useState(false);
+  const savedSnapshot = React.useRef("");
+  useUnsavedChanges(settings !== null && JSON.stringify(settings) !== savedSnapshot.current);
 
   const load = React.useCallback(async () => {
     try {
       const result = await api.get<SettingsReply>("/api/admin/site-settings");
       setSettings(result.settings ?? DEFAULT_SITE_SETTINGS); setVersion(result.version ?? 0); setRevisions(result.revisions ?? []);
-      setNavigationJson(JSON.stringify({ headerGroups: result.settings.headerGroups, advisorLink: result.settings.advisorLink, companyLinks: result.settings.companyLinks, footerColumns: result.settings.footerColumns }, null, 2));
-      setSocialJson(JSON.stringify(result.settings.socialLinks, null, 2)); setLoadFailed(false);
+      savedSnapshot.current = JSON.stringify(result.settings ?? DEFAULT_SITE_SETTINGS);
+      setLoadFailed(false);
     } catch { setLoadFailed(true); }
   }, []);
   React.useEffect(() => { void load(); }, [load]);
@@ -56,9 +58,7 @@ export function SiteSettingsSection() {
     event.preventDefault(); if (!settings) return;
     setSaving(true);
     try {
-      const navigation = JSON.parse(navigationJson) as Pick<SiteSettings, "headerGroups" | "advisorLink" | "companyLinks" | "footerColumns">;
-      const socialLinks = JSON.parse(socialJson) as SiteSettings["socialLinks"];
-      const result = await api.put<{ version: number }>("/api/admin/site-settings", { expectedVersion: version, settings: { ...settings, ...navigation, socialLinks }, changeNote });
+      const result = await api.put<{ version: number }>("/api/admin/site-settings", { expectedVersion: version, settings, changeNote });
       setVersion(result.version); setChangeNote(""); toast.success("Public site settings saved"); await load();
     } catch (error) { toast.error(error instanceof Error ? error.message : "Settings could not be saved"); if (error instanceof Error && (error.message.toLowerCase().includes("changed") || error.message.toLowerCase().includes("version"))) await load(); }
     finally { setSaving(false); }
@@ -82,14 +82,19 @@ export function SiteSettingsSection() {
     </section>
 
     <section className="space-y-3 rounded-xl border border-border/70 bg-card p-5">
-      <div><h2 className="font-display text-lg font-semibold">Navigation and footer links</h2><p className="mt-1 text-xs text-muted-foreground">Edit the JSON for header groups, the advisor link, company links and footer columns. Each item uses a safe local route plus either a built-in translation key or English and Arabic labels.</p></div>
-      <Textarea aria-label="Navigation and footer JSON" className="min-h-80 font-mono text-xs" spellCheck={false} value={navigationJson} onChange={(event) => setNavigationJson(event.target.value)} />
+      <div><h2 className="font-display text-lg font-semibold">Navigation and footer links</h2><p className="mt-1 text-xs text-muted-foreground">Edit English and Arabic labels, destinations, ordering and visibility. Destinations must be public routes on this site.</p></div>
+      <NavigationEditor settings={settings} onChange={(patch) => setSettings({ ...settings, ...patch })} />
     </section>
 
     <section className="space-y-3 rounded-xl border border-border/70 bg-card p-5">
       <div><h2 className="font-display text-lg font-semibold">Home page modules</h2><p className="mt-1 text-xs text-muted-foreground">Move modules up or down, or hide them. The hero stays first; unsupported modules cannot be added.</p></div>
       <ol className="space-y-2">{settings.homeModuleOrder.map((id, index) => <li key={id} className="flex items-center justify-between gap-3 rounded-lg border p-3"><span className="text-sm font-medium">{index + 1}. {moduleTitles[id]}</span><span className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={index === 0} onClick={() => moveModule(id, -1)}>Up</Button><Button type="button" size="sm" variant="outline" disabled={index === settings.homeModuleOrder.length - 1} onClick={() => moveModule(id, 1)}>Down</Button><Button type="button" size="sm" variant="ghost" onClick={() => toggleModule(id, true)}>Hide</Button></span></li>)}</ol>
       <div className="flex flex-wrap gap-2">{HOME_MODULE_IDS.filter((id) => !settings.homeModuleOrder.includes(id)).map((id) => <Button type="button" key={id} size="sm" variant="outline" onClick={() => toggleModule(id, false)}>Add {moduleTitles[id]}</Button>)}</div>
+    </section>
+
+    <section className="space-y-4 rounded-xl border border-border/70 bg-card p-5">
+      <div><h2 className="font-display text-lg font-semibold">Core page copy</h2><p className="mt-1 text-xs text-muted-foreground">Customize headings and introductions in both languages. Leave a field on its built-in copy to retain the approved default. Source-sensitive guidance belongs in Content Studio.</p></div>
+      {(Object.keys(PAGE_COPY_LABELS) as PageCopyKey[]).map((key) => <div key={key} className="space-y-2 rounded-lg border p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-medium">{PAGE_COPY_LABELS[key]}</h3><Button type="button" size="sm" variant="ghost" onClick={() => setSettings({ ...settings, pageCopy: { ...settings.pageCopy, [key]: null } })}>Use built-in copy</Button></div><div className="grid gap-3 sm:grid-cols-2">{(["en", "ar"] as const).map((locale) => <label key={locale} className="space-y-1 text-xs">{locale === "en" ? "English" : "Arabic"}<Textarea rows={2} maxLength={1000} dir={locale === "ar" ? "rtl" : undefined} placeholder="Built-in copy is active" value={settings.pageCopy[key]?.[locale] ?? ""} onChange={(event) => setSettings({ ...settings, pageCopy: { ...settings.pageCopy, [key]: { en: settings.pageCopy[key]?.en ?? "", ar: settings.pageCopy[key]?.ar ?? "", [locale]: event.target.value } } })} /></label>)}</div></div>)}
     </section>
 
     <section className="grid gap-3 rounded-xl border border-border/70 bg-card p-5 sm:grid-cols-3">
@@ -101,7 +106,7 @@ export function SiteSettingsSection() {
 
     <section className="grid gap-4 rounded-xl border border-border/70 bg-card p-5 md:grid-cols-2"><div className="md:col-span-2"><h2 className="font-display text-lg font-semibold">Default public images</h2><p className="mt-1 text-xs text-muted-foreground">Only public Media Library images are accepted. Route-specific SEO images can still override the global default.</p></div><PublicMediaPicker label="Default social preview image" value={settings.defaultOgMediaId ?? ""} onChange={(defaultOgMediaId) => setSettings({ ...settings, defaultOgMediaId: defaultOgMediaId || null })} /><PublicMediaPicker label="Fallback image" value={settings.fallbackImageMediaId ?? ""} onChange={(fallbackImageMediaId) => setSettings({ ...settings, fallbackImageMediaId: fallbackImageMediaId || null })} /></section>
 
-    <section className="space-y-3 rounded-xl border border-border/70 bg-card p-5"><div><h2 className="font-display text-lg font-semibold">Social links</h2><p className="mt-1 text-xs text-muted-foreground">JSON list of HTTPS URLs on LinkedIn, Instagram, Facebook, YouTube or X. Leave empty to show none.</p></div><Textarea aria-label="Social links JSON" className="min-h-28 font-mono text-xs" spellCheck={false} value={socialJson} onChange={(event) => setSocialJson(event.target.value)} /></section>
+    <section className="space-y-3 rounded-xl border border-border/70 bg-card p-5"><h2 className="font-display text-lg font-semibold">Social links</h2>{settings.socialLinks.map((social, index) => <div key={index} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2"><label className="space-y-1 text-xs">Platform<select className="h-10 w-full rounded-md border bg-background px-3" value={social.platform} onChange={(event) => setSettings({ ...settings, socialLinks: settings.socialLinks.map((value, i) => i === index ? { ...value, platform: event.target.value as typeof social.platform } : value) })}>{["linkedin", "instagram", "facebook", "youtube", "x"].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="space-y-1 text-xs">HTTPS destination<Input type="url" value={social.href} onChange={(event) => setSettings({ ...settings, socialLinks: settings.socialLinks.map((value, i) => i === index ? { ...value, href: event.target.value } : value) })} /></label>{(["labelEn", "labelAr"] as const).map((key) => <label key={key} className="space-y-1 text-xs">{key === "labelEn" ? "English label" : "Arabic label"}<Input maxLength={60} value={social[key]} onChange={(event) => setSettings({ ...settings, socialLinks: settings.socialLinks.map((value, i) => i === index ? { ...value, [key]: event.target.value } : value) })} /></label>)}<Button type="button" variant="ghost" size="sm" onClick={() => setSettings({ ...settings, socialLinks: settings.socialLinks.filter((_, i) => i !== index) })}>Remove social link</Button></div>)}<Button type="button" variant="outline" size="sm" disabled={settings.socialLinks.length >= 8} onClick={() => setSettings({ ...settings, socialLinks: [...settings.socialLinks, { platform: "linkedin", href: "", labelEn: "LinkedIn", labelAr: "لينكد إن" }] })}>Add social link</Button></section>
 
     <section className="flex flex-wrap items-end gap-3 rounded-xl border border-border/70 bg-card p-5"><label className="min-w-64 flex-1 space-y-1 text-sm">Change note<Input maxLength={300} value={changeNote} onChange={(event) => setChangeNote(event.target.value)} placeholder="Why are these settings changing?" /></label><Badge variant="outline">Version {version}</Badge><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save site settings"}</Button></section>
     <section className="rounded-xl border border-border/70 bg-card p-5"><h2 className="font-display text-lg font-semibold">Recent revisions</h2>{revisions.length ? <ol className="mt-3 space-y-2">{revisions.map((revision) => <li key={revision.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"><span><Badge variant="outline">v{revision.version}</Badge><span className="ml-2">{revision.changeNote ?? "No note"}</span></span><span className="text-xs text-muted-foreground">{new Date(revision.createdAt).toLocaleString()}</span></li>)}</ol> : <p className="mt-2 text-sm text-muted-foreground">No settings revisions yet.</p>}</section>

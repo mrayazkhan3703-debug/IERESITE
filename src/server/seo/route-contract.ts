@@ -1,3 +1,4 @@
+import { publicCareerWhere } from "@/server/domain/career-query";
 import type { Metadata } from "next";
 import { cache } from "react";
 import { db } from "@/lib/db";
@@ -136,34 +137,34 @@ async function resolveSpaRoutePageBase(path: string, locale: "en" | "ar"): Promi
   }
   if (parts.length === 2 && parts[0] === "careers") {
     const now = new Date();
-    const where = { slug, locale, status: "PUBLISHED", publishedAt: { not: null, lte: now }, OR: [{ closesAt: null }, { closesAt: { gt: now } }] };
-    const opening = await db.careerOpening.findFirst({ where, select: { slug: true, locale: true, title: true, summary: true } });
+    const where = { slug, ...publicCareerWhere(locale, now) };
+    const opening = await db.careerOpening.findFirst({ where, select: { slug: true, locale: true, title: true, summary: true, seoTitle: true, seoDescription: true } });
     if (!opening) return null;
     const peerLocale = locale === "en" ? "ar" : "en";
     const peer = await db.careerOpening.findFirst({ where: { ...where, locale: peerLocale }, select: { slug: true, locale: true } });
-    if (!peer) return { title: opening.title, description: opening.summary, localeAlternates: null };
+    if (!peer) return { title: opening.seoTitle || opening.title, description: opening.seoDescription || opening.summary, localeAlternates: null };
     const englishSlug = locale === "en" ? opening.slug : peer.slug;
     const arabicSlug = locale === "ar" ? opening.slug : peer.slug;
-    return { title: opening.title, description: opening.summary, localeAlternates: { en: `/careers/${englishSlug}`, ar: `/ar/careers/${arabicSlug}`, "x-default": `/careers/${englishSlug}` } };
+    return { title: opening.seoTitle || opening.title, description: opening.seoDescription || opening.summary, localeAlternates: { en: `/careers/${englishSlug}`, ar: `/ar/careers/${arabicSlug}`, "x-default": `/careers/${englishSlug}` } };
   }
   if (parts.length === 2 && ["guides", "international", "insights", "pages"].includes(parts[0])) {
     const contentType = parts[0] === "international" ? "INTERNATIONAL_GUIDE" : parts[0] === "pages" ? "PAGE" :
       parts[0] === "insights" ? { in: ["ARTICLE", "GUIDE"] } : { in: ["GUIDE", "AREA_GUIDE"] };
     const paired = await db.contentEntry.findFirst({
       where: {
-        slug, ...publicContentWhere(), contentType,
+        slug, locale, ...publicContentWhere(), contentType,
         ...(parts[0] === "international" ? { sourceName: { not: null }, sourceUrl: { startsWith: "https://" }, sourceVerifiedAt: { not: null, lte: new Date() }, freshnessReviewDueAt: { gt: new Date() } } : {}),
       },
       select: {
-        title: true, excerpt: true, locale: true, slug: true, status: true, publishedAt: true,
-        translationGroup: { select: { entries: { select: { locale: true, slug: true, status: true, publishedAt: true } } } },
+        title: true, excerpt: true, locale: true, slug: true, status: true, publishedAt: true, sourceName: true, sourceUrl: true, sourceVerifiedAt: true, freshnessReviewDueAt: true,
+        translationGroup: { select: { entries: { select: { locale: true, slug: true, status: true, publishedAt: true, sourceName: true, sourceUrl: true, sourceVerifiedAt: true, freshnessReviewDueAt: true } } } },
       },
     });
     return paired ? {
       title: paired.title,
       description: paired.excerpt,
       localeAlternates: publicContentLocaleAlternates(parts[0], [
-        { locale: paired.locale, slug: paired.slug, status: paired.status, publishedAt: paired.publishedAt },
+        paired,
         ...(paired.translationGroup?.entries ?? []),
       ]),
     } : null;
@@ -182,16 +183,19 @@ export const resolveSpaRoutePage = cache(async (path: string, locale: "en" | "ar
   ]);
   let siteSettings = null;
   try { siteSettings = settingsRow ? parseSiteSettings(JSON.parse(settingsRow.settingsJson)) : null; } catch { siteSettings = null; }
+  const copyPrefix = path === "/about" ? "about" : path === "/careers" ? "careers" : path === "/international" ? "international" : path === "/" ? "home" : null;
+  const copyTitle = copyPrefix ? siteSettings?.pageCopy[`${copyPrefix}Title`]?.[locale] : null;
+  const copyDescription = copyPrefix ? siteSettings?.pageCopy[`${copyPrefix}Intro`]?.[locale] : null;
   const imageIds = [seo?.ogImageMediaId, siteSettings?.defaultOgMediaId, siteSettings?.fallbackImageMediaId].filter((value): value is string => Boolean(value));
   const images = imageIds.length ? await db.mediaAsset.findMany({ where: { id: { in: imageIds }, isPrivate: false, kind: "IMAGE" }, select: { id: true } }) : [];
   const availableIds = new Set(images.map((image) => image.id));
   const imageId = imageIds.find((id) => availableIds.has(id));
   const image = imageId ? { id: imageId } : null;
-  if (!seo && !image) return contract;
+  if (!seo && !image && !copyTitle && !copyDescription) return contract;
   return {
     ...contract,
-    title: seo?.title?.trim() || contract.title,
-    description: seo?.description?.trim() || contract.description,
+    title: seo?.title?.trim() || copyTitle || contract.title,
+    description: seo?.description?.trim() || copyDescription || contract.description,
     noindex: Boolean(contract.noindex || seo?.noindex),
     canonicalPath: seo?.canonicalPath,
     ogImageUrl: image ? `/api/media/${encodeURIComponent(image.id)}/content` : contract.ogImageUrl ?? null,

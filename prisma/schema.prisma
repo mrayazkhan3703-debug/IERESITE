@@ -1504,6 +1504,15 @@ model CareerOpening {
   workplaceType       String
   summary             String
   description         String    @db.Text
+  responsibilities    String    @default("") @db.Text
+  requirements        String    @default("") @db.Text
+  benefits            String?   @db.Text
+  salaryDisclosure    String?   @db.VarChar(180)
+  applicationMethod   String    @default("CONTACT")
+  applicationTarget   String?   @db.VarChar(2000)
+  opensAt             DateTime? @db.Timestamptz(3)
+  seoTitle            String?   @db.VarChar(180)
+  seoDescription      String?   @db.VarChar(300)
   status              String    @default("DRAFT")
   reviewWorkflowState String    @default("NONE")
   closesAt            DateTime? @db.Timestamptz(3)

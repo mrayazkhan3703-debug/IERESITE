@@ -21,6 +21,8 @@ import { formatNumber, formatMoney } from "@/lib/money";
 import type { CommunityCardDTO, ProjectCardDTO } from "@/lib/types";
 import type { CommunityMetricSet } from "@/components/home/use-home-data";
 import type { MapLayer, MiniMapCommunity } from "@/components/home/hero-mini-map";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
+import { publicPageCopy } from "@/lib/site-settings";
 
 const HeroMiniMap = dynamic(() => import("@/components/home/hero-mini-map"), {
   ssr: false,
@@ -59,6 +61,7 @@ export function Hero({
   projects: ProjectCardDTO[] | null;
 }) {
   const [activeLayer, setActiveLayer] = React.useState<MapLayer>("properties");
+  const settings = useSiteSettings();
   const [selectedCommunity, setSelectedCommunity] = React.useState<string | null>(null);
   const mapPanelRef = React.useRef<HTMLDivElement>(null);
   const [mapVisible, setMapVisible] = React.useState(false);
@@ -127,16 +130,16 @@ export function Hero({
         <div className="grid items-start gap-12 lg:grid-cols-12 lg:gap-10">
           {/* Editorial left column */}
           <div className="min-w-0 lg:col-span-7">
-            <p className="type-label text-white/70">{t("home.hero.eyebrow", locale)}</p>
+            <p className="type-label text-white/70">{publicPageCopy(settings, "homeEyebrow", locale, t("home.hero.eyebrow", locale))}</p>
             <h1
               id="hero-heading"
               className="type-display-hero mt-4 max-w-2xl text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.35)]"
             >
-              {t("home.hero.title", locale)}{" "}
-              <span className="text-brand-hero">{t("home.hero.titleAccent", locale)}</span>
+              {publicPageCopy(settings, "homeTitle", locale, t("home.hero.title", locale))}{" "}
+              <span className="text-brand-hero">{publicPageCopy(settings, "homeAccent", locale, t("home.hero.titleAccent", locale))}</span>
             </h1>
             <p className="type-body-lg mt-5 max-w-xl text-balance text-white/85 drop-shadow-[0_1px_8px_rgba(0,0,0,0.3)]">
-              {t("home.hero.subtitle", locale)}
+              {publicPageCopy(settings, "homeIntro", locale, t("home.hero.subtitle", locale))}
             </p>
 
             <div className="mt-8 max-w-2xl">

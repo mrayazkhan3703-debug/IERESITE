@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { formatNumber, fromMinor, pricePerSqftMinor } from "@/lib/money";
 import { formatAEDPrecise, formatPctPrecise } from "@/lib/format-precise";
 import { useSavedStore } from "@/components/providers/saved-provider";
+import { PublicImage } from "@/components/public-image";
 
 /**
  * Community-level context for the V2 evidence layer (§11.5).
@@ -98,21 +99,11 @@ export function PropertyCard({
           aria-label={`${listing.title} — view details`}
           className="block h-full w-full focus-visible:outline-offset-[-2px]"
         >
-          {listing.cover ? (
-            <img
-              src={listing.cover.url}
-              alt={listing.cover.altText || `${listing.title} in ${listing.community.name}`}
-              loading="lazy"
-              decoding="async"
-              width={listing.cover.width ?? 800}
-              height={listing.cover.height ?? 600}
-              className="h-full w-full object-cover zoom-media"
-            />
-          ) : (
+          <PublicImage src={listing.cover?.url} alt={listing.cover?.altText || `${listing.title} in ${listing.community.name}`} width={listing.cover?.width ?? 800} height={listing.cover?.height ?? 600} className="h-full w-full object-cover zoom-media" fallback={
             <div className="flex h-full w-full items-center justify-center text-muted-foreground/40">
               <Layers className="h-10 w-10" aria-hidden />
             </div>
-          )}
+          } />
         </Link>
         <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1.5">
           {listing.isExclusive && (

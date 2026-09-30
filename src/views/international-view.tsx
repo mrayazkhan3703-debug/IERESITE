@@ -7,6 +7,7 @@ import { Breadcrumbs, SectionHeading, ProvenanceBadge, EmptyState, LoadingState 
 import { Button } from "@/components/ui/button";
 import { BookOpen, CalendarClock } from "lucide-react";
 import { useSiteSettings } from "@/components/providers/site-settings-provider";
+import { publicPageCopy } from "@/lib/site-settings";
 
 interface InternationalEntry {
   slug: string;
@@ -53,12 +54,12 @@ export default function IntlView() {
     <section className="border-b border-border/70 bg-sand/50 py-12 sm:py-16">
       <div className="container-page">
         <Breadcrumbs items={[{ label: isArabic ? "الرئيسية" : "Home", to: "/" }, { label: isArabic ? "للمشترين الدوليين" : "International Buyers" }]} />
-        <p className="kicker mt-4">{isArabic ? "مركز المشترين الدوليين" : "International buyers hub"}</p>
+        <p className="kicker mt-4">{publicPageCopy(settings, "internationalKicker", locale, isArabic ? "مركز المشترين الدوليين" : "International buyers hub")}</p>
         <h1 className="mt-3 max-w-3xl font-display text-3xl font-semibold tracking-tight sm:text-4xl">
-          {isArabic ? "إرشادات للمشترين من خارج الإمارات" : "Guidance for buyers purchasing from abroad"}
+          {publicPageCopy(settings, "internationalTitle", locale, isArabic ? "إرشادات للمشترين من خارج الإمارات" : "Guidance for buyers purchasing from abroad")}
         </h1>
         <p className="mt-4 max-w-2xl text-balance text-muted-foreground">
-          {isArabic ? "تظهر هنا الإرشادات المنشورة بعد مراجعة مصادرها وتواريخ تحديثها." : "This hub shows published guidance only after its sources and review dates have been checked."}
+          {publicPageCopy(settings, "internationalIntro", locale, isArabic ? "تظهر هنا الإرشادات المنشورة بعد مراجعة مصادرها وتواريخ تحديثها." : "This hub shows published guidance only after its sources and review dates have been checked.")}
         </p>
         <Button asChild size="lg" className="mt-7 rounded-full"><Link to={cta.to}>{ctaLabel}</Link></Button>
       </div>

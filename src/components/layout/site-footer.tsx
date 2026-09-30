@@ -137,7 +137,7 @@ export function SiteFooter() {
               </a>
             </p>
             {contact.officeHours && <p className="mt-2 text-xs on-ink-muted">{contact.officeHours}</p>}
-            {settings.socialLinks.length > 0 && <nav className="mt-4 flex flex-wrap gap-x-4 gap-y-2" aria-label={locale === "ar" ? "روابط التواصل الاجتماعي" : "Social media"}>{settings.socialLinks.map((social) => <a key={social.platform} href={social.href} target="_blank" rel="noopener noreferrer" className="text-xs on-ink-muted underline-offset-2 hover:text-foreground hover:underline">{locale === "ar" ? social.labelAr : social.labelEn}</a>)}</nav>}
+            {settings.socialLinks.length > 0 && <nav className="mt-4 flex flex-wrap gap-x-4 gap-y-2" aria-label={locale === "ar" ? "روابط التواصل الاجتماعي" : "Social media"}>{settings.socialLinks.map((social, index) => <a key={social.platform + index} href={social.href} target="_blank" rel="noopener noreferrer" className="text-xs on-ink-muted underline-offset-2 hover:text-foreground hover:underline">{locale === "ar" ? social.labelAr : social.labelEn}</a>)}</nav>}
           </div>
 
           {/* Link columns — accordions below 768px (contact block above stays

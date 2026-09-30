@@ -3,6 +3,10 @@ export type PublicContentLocaleMember = {
   slug: string;
   status: string;
   publishedAt: Date | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  sourceVerifiedAt?: Date | null;
+  freshnessReviewDueAt?: Date | null;
 };
 
 export type ContentLocaleAlternates = { en: string; ar: string; "x-default": string };
@@ -14,7 +18,7 @@ export function publicContentLocaleAlternates(
   now = new Date(),
 ): ContentLocaleAlternates | null {
   if (!/^[a-z-]+$/.test(section)) return null;
-  const publicMembers = members.filter((member) => member.status === "PUBLISHED" && member.publishedAt !== null && member.publishedAt <= now);
+  const publicMembers = members.filter((member) => member.status === "PUBLISHED" && member.publishedAt !== null && member.publishedAt <= now && (section !== "international" || Boolean(member.sourceName?.trim() && member.sourceUrl?.startsWith("https://") && member.sourceVerifiedAt && member.sourceVerifiedAt <= now && member.freshnessReviewDueAt && member.freshnessReviewDueAt > now)));
   const english = publicMembers.find((member) => member.locale === "en");
   const arabic = publicMembers.find((member) => member.locale === "ar");
   if (!english || !arabic) return null;

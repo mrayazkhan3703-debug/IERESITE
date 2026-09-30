@@ -49,7 +49,7 @@ export const GET = apiHandler(async (req, ctx: { params: Promise<{ type: string 
     const requestedSection = url.searchParams.get("section");
     const section = ["guides", "insights", "international", "pages"].includes(requestedSection ?? "")
       ? requestedSection!
-      : type === "articles" ? "insights" : "guides";
+      : type === "international" || type === "pages" ? type : type === "articles" || type === "insights" ? "insights" : "guides";
     const typeFilter = section === "international" ? "INTERNATIONAL_GUIDE" : section === "pages" ? "PAGE" : section === "insights" ? { in: ["ARTICLE", "GUIDE"] } : { in: ["GUIDE", "AREA_GUIDE"] };
     const entry = await db.contentEntry.findFirst({
       where: {
@@ -59,7 +59,7 @@ export const GET = apiHandler(async (req, ctx: { params: Promise<{ type: string 
         contentType: typeFilter,
         ...(section === "international" ? { sourceName: { not: null }, sourceUrl: { startsWith: "https://" }, sourceVerifiedAt: { not: null, lte: new Date() }, freshnessReviewDueAt: { gt: new Date() } } : {}),
       },
-      include: { translationGroup: { select: { entries: { select: { locale: true, slug: true, status: true, publishedAt: true } } } } },
+      include: { translationGroup: { select: { entries: { select: { locale: true, slug: true, status: true, publishedAt: true, sourceName: true, sourceUrl: true, sourceVerifiedAt: true, freshnessReviewDueAt: true } } } } },
     });
     if (!entry) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({
@@ -79,8 +79,8 @@ export const GET = apiHandler(async (req, ctx: { params: Promise<{ type: string 
         sourceVerifiedAt: entry.sourceVerifiedAt?.toISOString() ?? null,
         freshnessReviewDueAt: entry.freshnessReviewDueAt?.toISOString() ?? null,
         contentType: entry.contentType,
-      localeAlternates: publicContentLocaleAlternates(section, [
-          { locale: entry.locale, slug: entry.slug, status: entry.status, publishedAt: entry.publishedAt },
+        localeAlternates: publicContentLocaleAlternates(section, [
+          entry,
           ...(entry.translationGroup?.entries ?? []),
         ]),
       },

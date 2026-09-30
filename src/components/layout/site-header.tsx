@@ -525,7 +525,7 @@ export function SiteHeader() {
                     </NavigationMenuItem>
                   );
                 })}
-                <NavigationMenuItem>
+                {ADVISORS_ITEM.enabled !== false && <NavigationMenuItem>
                   <Link
                     to={ADVISORS_ITEM.to}
                     aria-current={advisorsActive ? "page" : undefined}
@@ -538,7 +538,7 @@ export function SiteHeader() {
                     {navLabel(ADVISORS_ITEM, locale)}
                     {advisorsActive && <ActiveUnderline />}
                   </Link>
-                </NavigationMenuItem>
+                </NavigationMenuItem>}
               </NavigationMenuList>
             </NavigationMenu>
           </nav>
@@ -587,23 +587,23 @@ export function SiteHeader() {
               <DropdownMenuLabel className="type-label px-2 pb-1 pt-1.5 text-muted-foreground">
                 {locale === "ar" ? "الشركة" : "Company"}
               </DropdownMenuLabel>
-              <NavRow
+              {ADVISORS_ITEM.enabled !== false && <NavRow
                 item={ADVISORS_ITEM}
                 locale={locale}
                 active={isItemActive(loc.path, ADVISORS_ITEM.to)}
                 onNavigate={closeMenu}
-              />
+              />}
               {enabled(COMPANY_LINKS).map((item) => <NavRow key={item.to + (item.key ?? item.labelEn ?? item.labelAr)} item={item} locale={locale} active={isItemActive(loc.path, item.to)} onNavigate={closeMenu} />)}
             </HoverDropdown>
 
-            <Link
+            {ADVISORS_ITEM.enabled !== false && <Link
               to={ADVISORS_ITEM.to}
               aria-current={advisorsActive ? "page" : undefined}
               className={cn(triggerBase, advisorsActive && "text-brand-strong")}
             >
                 {navLabel(ADVISORS_ITEM, locale)}
               {advisorsActive && <ActiveUnderline />}
-            </Link>
+            </Link>}
           </div>
 
           {/* Utility rail — compact, never wraps.

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSiteSettings } from "@/components/providers/site-settings-provider";
 
 const COMMUNITY_IMAGES: Record<string, string> = {
   "arabian-ranches": "arabian-ranches.jpg",
@@ -34,13 +35,14 @@ export function CommunityImage({
   className?: string;
   loading?: "eager" | "lazy";
 }) {
-  const fallback = communityImageFallback(slug);
+  const settings = useSiteSettings();
+  const fallback = settings.fallbackImageMediaId ? `/api/media/${encodeURIComponent(settings.fallbackImageMediaId)}/content` : communityImageFallback(slug);
   const [src, setSrc] = React.useState(imageUrl || fallback);
   React.useEffect(() => setSrc(imageUrl || fallback), [imageUrl, fallback]);
   return (
     <img
       src={src}
-      alt={alt}
+      alt={src === fallback && settings.fallbackImageMediaId ? "Image unavailable — default site image" : alt}
       loading={loading}
       decoding="async"
       className={className}

@@ -4,6 +4,7 @@ import type { SessionUser } from "@/server/auth";
 import { HttpError, audit } from "@/server/auth";
 import { emitEvent } from "@/server/jobs/outbox";
 import { parseContentBlocks, readContentBlocks, type ContentBlock } from "@/lib/content-blocks";
+import { PUBLIC_PROPERTY_WHERE, PUBLIC_PROJECT_WHERE, PUBLIC_COMMUNITY_WHERE, PUBLIC_DEVELOPER_WHERE, PUBLIC_AGENT_WHERE } from "@/server/domain/visibility";
 
 type EditableContent = {
   contentType: string;
@@ -133,6 +134,16 @@ function serializeContentBlocks(value: unknown): { json: string | null; blocks: 
 }
 
 async function ensurePublicBlockImages(tx: Prisma.TransactionClient, blocks: ContentBlock[] | null) {
+  for (const block of blocks ?? []) {
+    if (block.type !== "entity") continue;
+    const where = { slug: block.slug };
+    const publicEntity = block.entity === "property" ? await tx.property.findFirst({ where: { ...where, ...PUBLIC_PROPERTY_WHERE }, select: { id: true } })
+      : block.entity === "project" ? await tx.project.findFirst({ where: { ...where, ...PUBLIC_PROJECT_WHERE }, select: { id: true } })
+      : block.entity === "community" ? await tx.community.findFirst({ where: { ...where, ...PUBLIC_COMMUNITY_WHERE }, select: { id: true } })
+      : block.entity === "developer" ? await tx.developer.findFirst({ where: { ...where, ...PUBLIC_DEVELOPER_WHERE }, select: { id: true } })
+      : await tx.agent.findFirst({ where: { ...where, ...PUBLIC_AGENT_WHERE }, select: { id: true } });
+    if (!publicEntity) throw new HttpError(422, "Curated references must point to an available published entity.", "ENTITY_REFERENCE_INVALID");
+  }
   const ids = [...new Set((blocks ?? []).flatMap((block) => block.type === "image" ? [block.mediaId] : []))];
   if (!ids.length) return;
   const assets = await tx.mediaAsset.findMany({
@@ -337,6 +348,7 @@ export async function reviewContentEntry(
       if (decision === "CHANGES_REQUESTED" && !note.trim()) throw new HttpError(422, "A reason is required when requesting changes.", "REVIEW_NOTE_REQUIRED");
     }
     if (decision === "APPROVE" || decision === "PUBLISH") validateInternationalSource(entry);
+    if (decision === "APPROVE" || decision === "PUBLISH") await ensurePublicBlockImages(tx, readContentBlocks(entry.bodyJson));
 
     let status = entry.status;
     let reviewWorkflowState = entry.reviewWorkflowState;

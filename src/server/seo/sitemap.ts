@@ -1,3 +1,4 @@
+import { publicCareerWhere } from "@/server/domain/career-query";
 /**
  * SEO module (Q22): sitemap index generation (dynamic sections), robots policy,
  * redirect engine, route metadata. Sitemap entries persisted + event-regenerated.
@@ -63,7 +64,7 @@ export async function generateSitemap(): Promise<{ total: number }> {
   const developers = await db.developer.findMany({ where: PUBLIC_DEVELOPER_WHERE, select: { slug: true, updatedAt: true } });
   const agents = await db.agent.findMany({ where: PUBLIC_AGENT_WHERE, select: { slug: true, updatedAt: true } });
   const careers = await db.careerOpening.findMany({
-    where: { locale: "en", status: "PUBLISHED", publishedAt: { not: null, lte: new Date() }, OR: [{ closesAt: null }, { closesAt: { gt: new Date() } }] },
+    where: publicCareerWhere("en"),
     select: { slug: true, updatedAt: true },
   });
   const content = await db.contentEntry.findMany({

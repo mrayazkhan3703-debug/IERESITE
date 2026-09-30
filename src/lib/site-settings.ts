@@ -10,11 +10,25 @@ export type HomeModuleId = typeof HOME_MODULE_IDS[number];
 
 const localPath = z.string().trim().min(1).max(300).refine((value) => {
   if (!value.startsWith("/") || value.startsWith("//") || value.includes("%") || /[\\\u0000-\u001f]/.test(value)) return false;
-  return !/^\/(?:admin|api|account|auth|_next)(?:\/|$)/i.test(value);
+  return !/^\/(?:ar\/)?(?:admin|api|account|auth|_next)(?:[/?#]|$)/i.test(value) && !/\/\.{1,2}(?:[/?#]|$)/.test(value);
 }, "Use a same-site public route.");
 
 const labelKey = z.string().regex(/^[a-z][a-zA-Z0-9_.-]{1,79}$/).optional();
 const localizedLabel = z.string().trim().max(100).optional();
+const localizedCopy = z.object({ en: z.string().trim().min(1).max(1000), ar: z.string().trim().min(1).max(1000) }).strict().nullable().default(null);
+const pageCopySchema = z.object({
+  homeEyebrow: localizedCopy, homeTitle: localizedCopy, homeAccent: localizedCopy, homeIntro: localizedCopy,
+  aboutKicker: localizedCopy, aboutTitle: localizedCopy, aboutIntro: localizedCopy,
+  careersKicker: localizedCopy, careersTitle: localizedCopy, careersIntro: localizedCopy,
+  internationalKicker: localizedCopy, internationalTitle: localizedCopy, internationalIntro: localizedCopy,
+}).strict();
+export const PAGE_COPY_LABELS = {
+  homeEyebrow: "Home · eyebrow", homeTitle: "Home · heading", homeAccent: "Home · heading accent", homeIntro: "Home · introduction",
+  aboutKicker: "About · eyebrow", aboutTitle: "About · heading", aboutIntro: "About · introduction",
+  careersKicker: "Careers · eyebrow", careersTitle: "Careers · heading", careersIntro: "Careers · introduction",
+  internationalKicker: "International hub · eyebrow", internationalTitle: "International hub · heading", internationalIntro: "International hub · introduction",
+} as const;
+export type PageCopyKey = keyof typeof PAGE_COPY_LABELS;
 const navItem = z.object({
   to: localPath,
   key: labelKey,
@@ -67,6 +81,7 @@ const siteSettingsSchema = z.object({
   }).strict()).max(8),
   defaultOgMediaId: z.string().min(1).max(128).nullable(),
   fallbackImageMediaId: z.string().min(1).max(128).nullable(),
+  pageCopy: pageCopySchema.default({ homeEyebrow: null, homeTitle: null, homeAccent: null, homeIntro: null, aboutKicker: null, aboutTitle: null, aboutIntro: null, careersKicker: null, careersTitle: null, careersIntro: null, internationalKicker: null, internationalTitle: null, internationalIntro: null }),
 }).strict();
 
 export type SiteSettings = z.infer<typeof siteSettingsSchema>;
@@ -128,7 +143,12 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   socialLinks: [],
   defaultOgMediaId: null,
   fallbackImageMediaId: null,
+  pageCopy: { homeEyebrow: null, homeTitle: null, homeAccent: null, homeIntro: null, aboutKicker: null, aboutTitle: null, aboutIntro: null, careersKicker: null, careersTitle: null, careersIntro: null, internationalKicker: null, internationalTitle: null, internationalIntro: null },
 };
+
+export function publicPageCopy(settings: SiteSettings, key: PageCopyKey, locale: "en" | "ar", fallback: string) {
+  return settings.pageCopy[key]?.[locale] || fallback;
+}
 
 export function parseSiteSettings(value: unknown): SiteSettings | null {
   const parsed = siteSettingsSchema.safeParse(value);

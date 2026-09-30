@@ -31,7 +31,7 @@ export default function CareersView() {
       {openings === null ? <LoadingState rows={3} /> : loadFailed ? <EmptyState title="Openings could not be loaded" description="Refresh the page to retry." /> : openings.length === 0 ? <EmptyState title="No current openings" description="There are no published vacancies at this time. Please check again later." /> : openings.map((opening) => <article key={opening.slug} className="rounded-xl border border-border/70 bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex gap-3"><BriefcaseBusiness className="mt-1 h-5 w-5 text-brand" aria-hidden /><div><h2 className="font-display text-lg font-semibold"><Link to={`/careers/${opening.slug}`} className="hover:text-brand-strong">{opening.title}</Link></h2><p className="mt-0.5 text-sm text-muted-foreground">{opening.department} · {opening.location} · {opening.employmentType} · {opening.workplaceType}</p><p className="mt-3 max-w-3xl text-sm text-foreground/85">{opening.summary}</p></div></div>
-          <Button variant="outline" size="sm" asChild><Link to="/contact" query={{ topic: `Application: ${opening.title}` }}>Apply via contact</Link></Button>
+          <Button variant="outline" size="sm" asChild><Link to={`/careers/${opening.slug}`}>{locale === "ar" ? "عرض الوظيفة" : "View opening"}</Link></Button>
         </div>
       </article>)}
     </div>

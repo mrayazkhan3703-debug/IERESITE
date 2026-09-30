@@ -28,7 +28,7 @@ export async function saveSiteSettings(
   return db.$transaction(async (tx) => {
     if (assetIds.length) {
       const assets = await tx.mediaAsset.findMany({
-        where: { id: { in: assetIds }, kind: "IMAGE", isPrivate: false },
+        where: { id: { in: assetIds }, kind: "IMAGE", isPrivate: false, storageKey: { startsWith: "public/media/" } },
         select: { id: true },
       });
       if (assets.length !== assetIds.length) throw new HttpError(422, "Brand images must come from the public Media Library.", "SITE_SETTINGS_MEDIA_INVALID");

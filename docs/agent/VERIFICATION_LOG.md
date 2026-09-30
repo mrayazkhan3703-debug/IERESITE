@@ -85,3 +85,10 @@ Concise, append-only evidence. No secret values are recorded here.
 - PASS — Next.js optimized production build compiles and generates all 122 static pages; route inventory includes `/pages/[slug]`, `/ar/pages/[slug]`, `/careers/[slug]`, `/ar/careers/[slug]`, the career public/admin APIs, and settings APIs.
 - LIMITATION — The Bun test suites and Docker-backed hosted checks have not yet run. The migration has not yet been applied to Render; hosted CI and the Render deployment/route smoke are pending.
 - PENDING — Phases 08–09 remain IN_PROGRESS until hosted CI, forward migration, production deployment and public/admin route smoke all pass. Phase 01 remains owner-deferred at USD 7/month; no worker was created and no queue-drain claim is made.
+
+## 2026-09-30 — Phases 08 and 09 expanded source gate
+
+- PASS — Final local TypeScript, ESLint, optimized Next.js build (122 static pages), standalone asset copy and diff whitespace checks pass.
+- PASS — Pinned Bun 1.3.4 via ephemeral npm execution runs the focused settings/content-block/locale/sitemap suites: 11 tests, 45 assertions, zero failures.
+- PASS — Earlier PR checkpoint `eac3bd578f8a3b0145eb0c71932a5b68f90042e2` passed hosted run `36688466859`; it does not certify subsequent expanded changes.
+- PENDING — New PostgreSQL and Playwright journeys require disposable hosted CI. Shared Supabase data was not seeded/reset; both forward migrations and Render deployment remain pending.
