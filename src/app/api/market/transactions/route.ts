@@ -197,6 +197,8 @@ export const GET = apiHandler(async (req) => {
 
   const agg = {
     count: validRows.length,
+    illustrativeCount: validRows.filter((r) => r.isIllustrative).length,
+    sourcedCount: validRows.filter((r) => !r.isIllustrative).length,
     totalVolumeMinor: totalVolumeMinor.toString(),
     medianAmountMinor: toMinorString(medianOf(amountsAed)),
     avgAmountMinor: toMinorString(amountsAed.length ? amountsAed.reduce((s, n) => s + n, 0) / amountsAed.length : null),

@@ -10,6 +10,7 @@ test.beforeAll(async () => {
   const role = await db.role.findUniqueOrThrow({ where: { key: "OWNER" } });
   await db.user.create({ data: { id: ownerId, email: `${ownerId}@example.invalid`, emailVerified: new Date(), roles: { create: { roleId: role.id } } } });
   await db.session.create({ data: { userId: ownerId, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + 3600000), mfaVerifiedAt: new Date() } });
+  await db.marketReport.create({ data: { slug: `${prefix}-report`, title: "Synthetic embed report", body: "Synthetic browser fixture only.\n\n[[market-data:transactions]]\n\n[[market-data:rents]]\n\n[[market-data:metrics]]", status: "PUBLISHED", publishedAt: new Date(Date.now() - 60000), isIllustrative: true, gated: false } });
 });
 test.afterAll(async () => {
   const sources = await db.importSource.findMany({ where: { name: { startsWith: prefix } }, include: { runs: true } });
@@ -20,6 +21,7 @@ test.afterAll(async () => {
   await db.importRun.deleteMany({ where: { id: { in: ids } } });
   await db.importSource.deleteMany({ where: { id: { in: sources.map((s) => s.id) } } });
   await db.auditLog.deleteMany({ where: { actorId: ownerId } });
+  await db.marketReport.deleteMany({ where: { slug: `${prefix}-report` } });
   await db.user.deleteMany({ where: { id: ownerId } });
   await db.$disconnect();
 });
@@ -66,4 +68,21 @@ test("owner sees indexing diagnostics and can complete a direct rebuild", async 
   expect((await response).status()).toBe(200);
   await expect(page.getByText("search reindex direct completed", { exact: true }).first()).toBeVisible();
   expect(await db.auditLog.count({ where: { actorId: ownerId, action: "search.reindex.direct.completed" } })).toBe(1);
+});
+
+test("published report embeds disclose illustrative observations and recover a failed data read", async ({ page }) => {
+  let fail = true;
+  await page.route("**/api/market/transactions?*", (route) => route.fulfill(fail ? { status: 503, json: { error: "Synthetic report outage" } } : { json: { dataState: "STAGING_FIXTURE", total: 2, agg: { count: 2, illustrativeCount: 2, sourcedCount: 0, medianAmountMinor: "125000000" } } }));
+  await page.route("**/api/market/rents?*", (route) => route.fulfill({ json: { dataState: "STAGING_FIXTURE", total: 1, agg: { count: 1, illustrativeCount: 0, sourcedCount: 1, medianRentMinor: "10000000" } } }));
+  await page.route("**/api/market/metrics?*", (route) => route.fulfill({ json: { dataState: "STAGING_FIXTURE", metrics: [{ id: "synthetic-embed-metric", metricKey: "TRANSACTION_COUNT", valueNumeric: 2, unit: "COUNT", periodStart: "2026-01-01", isIllustrative: true, sourceName: "Synthetic browser fixture" }] } }));
+  await page.goto(`/market/reports/${prefix}-report`);
+  await expect(page.getByRole("heading", { name: "Synthetic embed report", exact: true })).toBeVisible();
+  const transactions = page.getByRole("region", { name: "Report transactions data" });
+  await expect(transactions.getByRole("button", { name: "Retry report data" })).toBeVisible();
+  fail = false;
+  await transactions.getByRole("button", { name: "Retry report data" }).click();
+  await expect(transactions.getByText(/2 illustrative observations included/)).toBeVisible();
+  await expect(transactions.getByText("AED 1,250,000", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Report rents data" }).getByText("AED 100,000", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Report metrics data" }).getByText("Illustrative · Synthetic browser fixture", { exact: true })).toBeVisible();
 });

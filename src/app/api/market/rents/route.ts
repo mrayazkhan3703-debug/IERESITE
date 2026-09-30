@@ -195,6 +195,8 @@ export const GET = apiHandler(async (req) => {
 
   const agg = {
     count: validRows.length,
+    illustrativeCount: validRows.filter((r) => r.isIllustrative).length,
+    sourcedCount: validRows.filter((r) => !r.isIllustrative).length,
     medianRentMinor: toMinorString(medianOf(rentsAed)),
     avgRentMinor: toMinorString(rentsAed.length ? rentsAed.reduce((s, n) => s + n, 0) / rentsAed.length : null),
     excludedRecords: validation.excludedRecords,
