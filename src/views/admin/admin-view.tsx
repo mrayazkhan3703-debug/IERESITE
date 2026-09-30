@@ -2025,13 +2025,14 @@ function MediaSection({ canEdit }: { canEdit: boolean }) {
 
 function ImportsSection() {
   const [data, setData] = React.useState<{ runs: Record<string, unknown>[]; qualityIssues: Record<string, unknown>[] } | null>(null);
+  const [error, setError] = React.useState("");
   const [csv, setCsv] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const requestKey = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [details, setDetails] = React.useState<{ runId: string; records: Record<string, unknown>[]; loading: boolean; truncated: boolean } | null>(null);
 
   const load = React.useCallback(() => {
-    api.get<{ runs: Record<string, unknown>[]; qualityIssues: Record<string, unknown>[] }>("/api/admin/imports").then(setData).catch(() => setData({ runs: [], qualityIssues: [] }));
+    api.get<{ runs: Record<string, unknown>[]; qualityIssues: Record<string, unknown>[] }>("/api/admin/imports").then((next) => { setData(next); setError(""); }).catch((e) => setError(e instanceof Error ? e.message : "Inventory import history is unavailable."));
   }, []);
   React.useEffect(() => { load(); }, [load]);
   React.useEffect(() => {
@@ -2079,6 +2080,7 @@ function ImportsSection() {
         <h1 className="font-display text-2xl font-semibold">Imports & data quality</h1>
         <p className="mt-1 text-sm text-muted-foreground">CSV validation and ingestion run asynchronously in the dedicated worker. Imported inventory remains draft until an editor explicitly publishes it.</p>
       </header>
+      {error && <div role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm"><p>{error}</p><Button size="sm" variant="outline" className="mt-2" onClick={load}>Retry inventory import history</Button></div>}
 
       <div className="rounded-xl border border-border/70 bg-card p-5">
         <h2 className="kicker mb-2">Run a CSV import</h2>

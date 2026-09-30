@@ -60,6 +60,8 @@ describe("uploaded market data → public explorers", () => {
     expect((await post({ action: "apply", runId: run.id, expectedSha256: run.snapshotSha256, confirmSourceReviewed: true })).status).toBe(200);
     const row = await db.marketTransaction.findFirstOrThrow({ where: { communityId } });
     expect(row.amountMinor).toBe(125000025n); expect(row.importRunId).toBe(run.id); expect(row.sourceRecordKey.endsWith(":0001")).toBe(true);
+    const inventoryHistory = await fetch(`${baseUrl}/api/admin/imports`, { headers: { cookie } }).then((r) => r.json()) as { runs: { id: string }[] };
+    expect(inventoryHistory.runs.some((r) => r.id === run.id || r.id === bad.id)).toBe(false);
     const explorer = await fetch(`${baseUrl}/api/market/transactions?community=${communityId}`).then((r) => r.json()) as { total: number; rows: { id: string }[] };
     expect(explorer.total).toBe(1); expect(explorer.rows[0].id).toBe(row.id);
     expect(await db.auditLog.count({ where: { actorId: ownerId, action: "market.import.apply" } })).toBe(1);
