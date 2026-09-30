@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit, HttpError, type SessionUser } from "@/server/auth";
 import { emitEvent } from "@/server/jobs/outbox";
+import { parseMarketReportEmbeds } from "@/lib/market-report-embeds";
 
 export interface MarketReportInput {
   slug: string;
@@ -64,6 +65,7 @@ function validateInput(input: MarketReportInput) {
     throw new HttpError(422, "Enter a title and URL-safe report slug.", "MARKET_REPORT_VALIDATION");
   }
   if (body.length > 50_000) throw new HttpError(422, "Report body exceeds the allowed size.", "MARKET_REPORT_VALIDATION");
+  try { parseMarketReportEmbeds(body); } catch (e) { throw new HttpError(422, e instanceof Error ? e.message : "Invalid data embed.", "MARKET_REPORT_EMBED_INVALID"); }
   const dataSourceUrl = cleanNullable(input.dataSourceUrl);
   if (dataSourceUrl) {
     let parsed: URL;

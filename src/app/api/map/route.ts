@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { PUBLIC_COMMUNITY_WHERE, PUBLIC_PROJECT_WHERE } from "@/server/domain/visibility";
 import { getConfig } from "@/lib/config";
 import { mapClustersPostgres } from "@/server/search/postgres-provider";
+import { HttpError } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,20 +17,22 @@ export const GET = apiHandler(async (req) => {
   for (const [k, v] of url.searchParams.entries()) query[k] = v;
 
   const bboxParam = query.bbox;
-  const state = queryToSearchState({ ...query, page: "1", pageSize: "48" });
+  const state = queryToSearchState({ ...query, pageSize: "48" });
   const zoomValue = Number(query.zoom ?? query.z ?? 11);
   const zoom = Number.isFinite(zoomValue) ? Math.min(19, Math.max(3, zoomValue)) : 11;
   if (bboxParam) {
     const parts = bboxParam.split(",").map(Number);
     if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
       state.bbox = [parts[0], parts[1], parts[2], parts[3]] as [number, number, number, number];
-    }
+    } else throw new HttpError(400, "Invalid map bounding box.", "MAP_BBOX_INVALID");
   }
 
-  const [result, aggregation] = await Promise.all([
-    search(state),
-    getConfig().SEARCH_PROVIDER === "postgres" ? mapClustersPostgres(state, zoom) : Promise.resolve(null),
-  ]);
+  const result = await search(state);
+  let aggregation: Awaited<ReturnType<typeof mapClustersPostgres>> | null = null;
+  let clusterFailure = false;
+  if (getConfig().SEARCH_PROVIDER === "postgres" && !result.degraded) {
+    try { aggregation = await mapClustersPostgres(state, zoom); } catch { clusterFailure = true; }
+  }
 
   const [communities, projectRows] = await Promise.all([
     db.community.findMany({
@@ -63,6 +66,10 @@ export const GET = apiHandler(async (req) => {
   return NextResponse.json({
     results: result.results,
     total: aggregation?.total ?? result.total,
+    page: result.page,
+    pageSize: result.pageSize,
+    degraded: Boolean(result.degraded || clusterFailure),
+    clusterCoverage: aggregation ? "FULL" : "PAGE_ONLY",
     clusters: aggregation?.clusters ?? result.results.map((item) => ({
       lat: item.lat,
       lng: item.lng,

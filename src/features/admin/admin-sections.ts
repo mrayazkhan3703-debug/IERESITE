@@ -7,7 +7,7 @@ import type { ElementType } from "react";
 
 export type AdminSection =
   | "overview" | "leads" | "properties" | "projects" | "communities" | "developers" | "agents" | "users" | "content" | "careers" | "site-settings" | "faqs" | "market-reports" | "knowledge-base" | "testimonials" | "redirects" | "seo-metadata" | "media" | "units" | "imports" | "crm" | "jobs"
-  | "analytics" | "audit" | "flags" | "evidence" | "data-quality";
+  | "analytics" | "audit" | "flags" | "evidence" | "data-quality" | "search";
 
 type Role = "OWNER" | "ADMIN" | "MANAGER" | "CONTENT_EDITOR" | "AGENT" | "ANALYST";
 export const ADMIN_SECTIONS: { key: AdminSection; label: string; icon: ElementType; roles: readonly Role[] }[] = [
@@ -31,6 +31,7 @@ export const ADMIN_SECTIONS: { key: AdminSection; label: string; icon: ElementTy
   { key: "media", label: "Media Library", icon: Images, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
   { key: "units", label: "Units", icon: Boxes, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
   { key: "imports", label: "Imports & Quality", icon: Download, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
+  { key: "search", label: "Search & map", icon: MapPin, roles: ["OWNER", "ADMIN"] },
   { key: "evidence", label: "Evidence", icon: FileSearch, roles: ["OWNER", "ADMIN", "ANALYST"] },
   { key: "data-quality", label: "Data Quality", icon: Gauge, roles: ["OWNER", "ADMIN", "ANALYST"] },
   { key: "crm", label: "CRM Sync", icon: RefreshCcw, roles: ["OWNER", "ADMIN"] },

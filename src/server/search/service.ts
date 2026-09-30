@@ -12,6 +12,9 @@ import { cache } from "@/server/cache";
 import { PUBLIC_AGENT_WHERE, PUBLIC_COMMUNITY_WHERE, publicListingWhere } from "@/server/domain/visibility";
 import { searchResponseSchema } from "@/lib/contracts";
 import { searchTokens } from "./normalize";
+import { withSearchFallback } from "./resilience";
+import { HttpError } from "@/server/auth";
+import { validMapPoint } from "@/lib/map-state";
 import {
   autocompletePostgres,
   postgresDocumentCount,
@@ -35,7 +38,7 @@ async function loadMediaFor(properties: string[]): Promise<void> {
   const missing = properties.filter((id) => !mediaCache.has(id));
   if (!missing.length) return;
   const rows = await db.propertyMedia.findMany({
-    where: { propertyId: { in: missing } },
+    where: { propertyId: { in: missing }, media: { isPrivate: false, kind: "IMAGE" } },
     orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }],
     include: { media: true },
   });
@@ -53,10 +56,11 @@ async function loadMediaFor(properties: string[]): Promise<void> {
   }
 }
 
-export async function assembleSearchDocuments(propertyId?: string): Promise<IndexedProperty[]> {
+export async function assembleSearchDocuments(propertyId?: string, limit?: number): Promise<IndexedProperty[]> {
   mediaCache.clear();
 
   const listings = await db.listing.findMany({
+    ...(limit ? { take: limit + 1, orderBy: { id: "asc" as const } } : {}),
     where: propertyId
       ? { AND: [publicListingWhere(), { property: { is: { id: propertyId } } }] }
       : publicListingWhere(),
@@ -72,6 +76,8 @@ export async function assembleSearchDocuments(propertyId?: string): Promise<Inde
       agent: true,
     },
   });
+
+  if (limit && listings.length > limit) throw new HttpError(503, "Property search exceeds the bounded fallback limit. Please retry after index recovery.", "SEARCH_FALLBACK_LIMIT");
 
   const propertyIds = listings.map((l) => l.propertyId);
   await loadMediaFor(propertyIds);
@@ -115,6 +121,7 @@ export async function assembleSearchDocuments(propertyId?: string): Promise<Inde
   const documents: IndexedProperty[] = [];
   for (const l of listings) {
     const p = l.property;
+    if (!validMapPoint(p.lat, p.lng)) continue;
     const publicAgent = l.agent?.active && l.agent.publicAdvisor ? l.agent : null;
     const cover = mediaCache.get(p.id) ?? null;
     const amenities = p.amenities.map((a) => a.amenity.key);
@@ -233,13 +240,18 @@ export async function resolveCommunitySlugs(csv: string): Promise<string[]> {
   return wanted.map((w) => bySlug.get(w.toLowerCase()) ?? byName.get(w.toLowerCase()) ?? w);
 }
 
-export async function rebuildIndex(): Promise<{ count: number }> {
+export async function rebuildIndex(limit?: number): Promise<{ count: number }> {
   cache.invalidatePrefix("search:");
   if (usesPostgres()) {
-    const documents = await assembleSearchDocuments();
+    const documents = await assembleSearchDocuments(undefined, limit);
     const count = await replacePostgresDocuments(documents);
     built = true;
     return { count };
+  }
+  if (limit) {
+    const documents = await assembleSearchDocuments(undefined, limit);
+    provider.clear(); for (const document of documents) provider.upsert(document);
+    built = true; return { count: documents.length };
   }
   built = false;
   await ensureIndex();
@@ -267,6 +279,7 @@ export async function reindexProperty(propertyId: string): Promise<void> {
   });
   if (!listing) {
     (provider as LocalSearchProvider).removeByProperty(propertyId);
+    cache.invalidatePrefix("search:");
     return;
   }
   await loadMediaFor([propertyId]);
@@ -381,6 +394,16 @@ function docToCard(doc: IndexedProperty): ListingCardDTO {
   };
 }
 
+export async function publicMapListing(slug: string): Promise<ListingCardDTO | null> {
+  const listing = await db.listing.findFirst({ where: { AND: [publicListingWhere(), { property: { slug } }] }, select: { id: true, propertyId: true } });
+  if (!listing) return null;
+  const documents = await assembleSearchDocuments(listing.propertyId, 20);
+  const doc = documents.find((d) => d.id === listing.id);
+  if (!doc) return null;
+  const cards = [docToCard(doc)]; await hydrateAgentNames(cards);
+  return cards[0];
+}
+
 /** ids → DTOs joined with agent names (agent name lives in DB, not index) */
 async function hydrateAgentNames(cards: ListingCardDTO[]): Promise<void> {
   const agentIds = [...new Set(cards.map((c) => c.agent?.id).filter(Boolean))] as string[];
@@ -396,14 +419,23 @@ async function hydrateAgentNames(cards: ListingCardDTO[]): Promise<void> {
 }
 
 export async function search(state: SearchState): Promise<SearchResponse> {
-  await ensureIndex();
   const key = `search:${usesPostgres() ? "postgres" : "local"}:${JSON.stringify(state)}`;
   const cached = cache.get<SearchResponse>(key);
   if (cached) return cached;
 
-  const postgresSearch = usesPostgres() ? await searchPostgres(state) : null;
-  const result = postgresSearch?.result ?? provider.search(state);
-  const all = postgresSearch?.documents ?? (provider as LocalSearchProvider).getDocs(result.ids);
+  const execution = await withSearchFallback(async () => {
+    await ensureIndex();
+    if (usesPostgres()) return await searchPostgres(state);
+    const result = provider.search(state);
+    return { result, documents: (provider as LocalSearchProvider).getDocs(result.ids) };
+  }, async () => {
+    const fallback = new LocalSearchProvider();
+    for (const document of await assembleSearchDocuments(undefined, 1000)) fallback.upsert(document);
+    const result = fallback.search(state);
+    return { result, documents: fallback.getDocs(result.ids) };
+  });
+  const result = execution.value.result;
+  const all = execution.value.documents;
   const cards = all.map(docToCard);
   await hydrateAgentNames(cards);
 
@@ -429,6 +461,7 @@ export async function search(state: SearchState): Promise<SearchResponse> {
     page: state.page,
     pageSize: state.pageSize,
     tookMs: result.tookMs,
+    degraded: execution.degraded,
     facets: {
       total: result.total,
       communities: communityNames.map((c) => ({ ...c, count: result.facets.communities.get(c.slug) ?? 0 })),
@@ -446,13 +479,20 @@ export async function search(state: SearchState): Promise<SearchResponse> {
     },
   };
   const contracted = searchResponseSchema.parse(response);
-  cache.set(key, contracted, 30_000);
+  if (!execution.degraded) cache.set(key, contracted, 30_000);
   return contracted;
 }
 
 export async function autocomplete(prefix: string, limit = 8): Promise<AutocompleteItem[]> {
-  await ensureIndex();
-  return usesPostgres() ? autocompletePostgres(prefix, limit) : provider.autocomplete(prefix, limit);
+  const execution = await withSearchFallback(async () => {
+    await ensureIndex();
+    return usesPostgres() ? autocompletePostgres(prefix, limit) : provider.autocomplete(prefix, limit);
+  }, async () => {
+    const fallback = new LocalSearchProvider();
+    for (const document of await assembleSearchDocuments(undefined, 1000)) fallback.upsert(document);
+    return fallback.autocomplete(prefix, limit);
+  });
+  return execution.value;
 }
 
 export function communityListFromIndex() {

@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export const GET = apiHandler(async () => {
   await requirePermission("import:read");
   const [runs, quality] = await Promise.all([
-    db.importRun.findMany({ orderBy: { createdAt: "desc" }, take: 10, include: { importSource: { select: { name: true } } } }),
+    db.importRun.findMany({ where: { datasetKind: null }, orderBy: { createdAt: "desc" }, take: 10, include: { importSource: { select: { name: true } } } }),
     db.dataQualityIssue.findMany({ where: { status: "OPEN" }, orderBy: { detectedAt: "desc" }, take: 30, include: { property: { select: { title: true, slug: true } } } }),
   ]);
   return NextResponse.json({

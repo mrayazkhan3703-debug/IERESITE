@@ -126,7 +126,7 @@ export default function SearchView() {
   const [retryTick, setRetryTick] = React.useState(0);
 
   // Query string driving the fetch (mode is understood by the API additively).
-  const queryStr = qs({ ...loc.query, type: loc.query.type });
+  const queryStr = qs(Object.fromEntries(Object.entries(loc.query).filter(([key]) => !["view", "selected", "c", "z", "layers", "marker", "selectedKind"].includes(key))));
 
   React.useEffect(() => {
     let cancelled = false;
@@ -181,7 +181,8 @@ export default function SearchView() {
 
   /* --------------------------- map / hover sync --------------------- */
   const [hoveredSlug, setHoveredSlug] = React.useState<string | null>(null);
-  const [selectedSlug, setSelectedSlug] = React.useState<string | null>(null);
+  const [selectedSlug, setSelectedSlug] = React.useState<string | null>(loc.query.selected ?? null);
+  React.useEffect(() => setSelectedSlug(loc.query.selected ?? null), [loc.query.selected]);
   const [mobileMapOpen, setMobileMapOpen] = React.useState(false);
   const mapOpenedRef = React.useRef(false);
   const fireMapOpened = (context: string) => {
@@ -241,6 +242,7 @@ export default function SearchView() {
 
   const onMarkerSelect = (item: MapMarkerItem) => {
     setSelectedSlug(item.slug);
+    navigate("/properties", { ...loc.query, selected: item.slug }, { replace: true });
     if (effectiveView !== "map") {
       document.getElementById(`result-${item.slug}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
@@ -395,7 +397,7 @@ export default function SearchView() {
       <div className="relative rounded-xl border border-border bg-card shadow-xl">
         <button
           type="button"
-          onClick={() => setSelectedSlug(null)}
+          onClick={() => navigate("/properties", { ...loc.query, selected: undefined }, { replace: true })}
           aria-label={t("map.preview.close", locale)}
           className="absolute right-2 top-2 z-10 rounded-full bg-background/90 p-1.5 text-muted-foreground backdrop-blur transition-ui hover:text-foreground"
         >
@@ -648,6 +650,7 @@ export default function SearchView() {
                     id={`result-${l.slug}`}
                     onMouseEnter={() => setHoveredSlug(l.slug)}
                     onMouseLeave={() => setHoveredSlug(null)}
+                    onFocus={() => setHoveredSlug(l.slug)} onBlur={() => setHoveredSlug(null)}
                     className={cn(
                       "relative min-w-0 rounded-lg ring-brand transition-shadow",
                       selectedSlug === l.slug && "ring-2"

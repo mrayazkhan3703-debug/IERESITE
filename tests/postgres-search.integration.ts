@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "@/lib/db";
+import { cache } from "@/server/cache";
 import { autocomplete, rebuildIndex, reindexProperty, search } from "@/server/search/service";
 import { searchStateSchema } from "@/server/search/types";
 import { mapClustersPostgres } from "@/server/search/postgres-provider";
@@ -217,5 +218,36 @@ describe("PostgreSQL search projection", () => {
 
     const staleCheck = await search(searchStateSchema.parse({ q: queries[0], listingType: "SALE" }));
     expect(staleCheck.results.map((item) => item.slug)).not.toContain(`${prefix}-zaffre-residence`);
+  });
+
+  test("expired canonical listings are excluded even before a projection refresh", async () => {
+    const listingId = `${ids.arabicProperty}-listing`;
+    await db.listing.update({ where: { id: listingId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    try {
+      const state = searchStateSchema.parse({ q: "zaffre", listingType: "SALE" });
+      const result = await mapClustersPostgres(state, 19);
+      expect(result.clusters.some((cluster) => cluster.listingId === listingId)).toBe(false);
+      expect((await autocomplete("الامارات")).some((item) => item.slug === `${prefix}-arabic-villa`)).toBe(false);
+      expect((await fetch(`${baseUrl}/api/map/selection?slug=${prefix}-arabic-villa`)).status).toBe(404);
+    } finally { await db.listing.update({ where: { id: listingId }, data: { expiresAt: null } }); }
+  });
+
+  test("projection query failure falls back to current canonical visibility", async () => {
+    if (!["db", "postgres", "localhost", "127.0.0.1"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Projection outage fixture requires the disposable database.");
+    // Prisma's method proxy does not reliably accept method spies. Temporarily
+    // remove the projection name in the disposable stack, keeping canonical
+    // tables intact and restoring the same table even when an assertion fails.
+    cache.invalidatePrefix("search:");
+    await db.$executeRaw`ALTER TABLE "SearchDocument" RENAME TO "SearchDocument_projection_fault"`;
+    try {
+      const result = await search(searchStateSchema.parse({ q: "zaffre", communities: ["pg-search-contract-community"], sort: "newest", pageSize: 48 }));
+      expect(result.degraded).toBe(true);
+      expect(result.results.map((row) => row.slug)).toContain(`${prefix}-arabic-villa`);
+      expect(result.results.map((row) => row.slug)).not.toContain(`${prefix}-zaffre-residence`);
+      expect(result.results.map((row) => row.slug)).not.toContain(`${prefix}-draft`);
+    } finally {
+      await db.$executeRaw`ALTER TABLE "SearchDocument_projection_fault" RENAME TO "SearchDocument"`;
+      cache.invalidatePrefix("search:");
+    }
   });
 });

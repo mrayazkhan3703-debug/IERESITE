@@ -30,13 +30,26 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (createdEventId) await db.outboxEvent.deleteMany({ where: { id: createdEventId } });
-  await db.auditLog.deleteMany({ where: { action: "search.reindex.request", resourceId: "search-index", actorId: { in: [ids.owner, ids.manager] } } });
+  await db.auditLog.deleteMany({ where: { action: { startsWith: "search.reindex." }, resourceId: "search-index", actorId: { in: [ids.owner, ids.manager] } } });
   await db.user.deleteMany({ where: { id: { in: [ids.owner, ids.manager] } } });
   await db.organization.deleteMany({ where: { id: ids.organization } });
   await db.$disconnect();
 });
 
 describe("Admin search reindex request", () => {
+  test("bounded direct rebuild completes and records history independently of queue delivery", async () => {
+    const before = await db.outboxEvent.count({ where: { eventType: "search.reindex.requested" } });
+    const response = await fetch(`${baseUrl}/api/admin/search/reindex`, { method: "POST", headers: { cookie: ownerCookie, "x-requested-with": "fetch", "content-type": "application/json" }, body: JSON.stringify({ mode: "direct" }) });
+    expect(response.status).toBe(200);
+    const result = await response.json() as { status: string; count: number };
+    expect(result.status).toBe("COMPLETED"); expect(result.count).toBeGreaterThanOrEqual(0);
+    expect(await db.outboxEvent.count({ where: { eventType: "search.reindex.requested" } })).toBe(before);
+    expect(await db.auditLog.count({ where: { actorId: ids.owner, action: "search.reindex.direct.completed" } })).toBe(1);
+    const status = await fetch(`${baseUrl}/api/admin/search`, { headers: { cookie: ownerCookie } });
+    expect(status.status).toBe(200);
+    expect((await status.json() as { history: unknown[] }).history.length).toBeGreaterThan(0);
+    expect((await fetch(`${baseUrl}/api/admin/search`, { headers: { cookie: managerCookie } })).status).toBe(403);
+  });
   test("requires job-write authority and atomically audits a queued worker request", async () => {
     const denied = await fetch(`${baseUrl}/api/admin/search/reindex`, {
       method: "POST",

@@ -6,6 +6,7 @@ import { Link, navigate, useRoute } from "@/lib/router";
 import { usePageMeta } from "@/components/layout/app-shell";
 import { useAuth, hasRole } from "@/components/providers/auth-provider";
 import { api } from "@/lib/api-client";
+import { clientRequestId } from "@/lib/client-request-id";
 import { LoadingState, ErrorState, EmptyState, StatusBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,8 @@ import { ContentBody } from "@/components/common/content-body";
 import { parseContentBlocks, type ContentBlock } from "@/lib/content-blocks";
 import { FaqsSection } from "@/views/admin/faqs-section";
 import { MarketReportsSection } from "@/views/admin/market-reports-section";
+import { MarketDataSection } from "@/views/admin/market-data-section";
+import { SearchOperationsSection } from "@/views/admin/search-operations-section";
 import { KnowledgeBaseSection } from "@/views/admin/knowledge-base-section";
 import { TestimonialsSection } from "@/views/admin/testimonials-section";
 import { RedirectsSection } from "@/views/admin/redirects-section";
@@ -97,8 +100,9 @@ export default function AdminView() {
         {section === "seo-metadata" && <SeoMetadataSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} />}
         {section === "media" && <MediaSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} />}
         {section === "units" && <UnitsSection canEdit={hasRole(user, ["OWNER", "ADMIN"])} />}
-        {section === "imports" && <ImportsSection />}
+        {section === "imports" && <><MarketDataSection canManage={hasRole(user, ["OWNER", "ADMIN"])} /><div className="mt-10 border-t pt-8"><ImportsSection /></div></>}
         {section === "evidence" && <EvidenceSection />}
+        {section === "search" && <SearchOperationsSection />}
         {section === "data-quality" && <DataQualitySection />}
         {section === "crm" && <CrmSection canManage={hasRole(user, ["OWNER", "ADMIN"])} />}
         {section === "jobs" && <JobsSection />}
@@ -705,16 +709,16 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
       {canReindex && <Button variant="outline" size="sm" className="gap-2" disabled={reindexing} onClick={async () => {
         setReindexing(true);
         try {
-          await api.post<{ status: "QUEUED" }>("/api/admin/search/reindex");
-          toast.success("Full search rebuild queued");
+          const result = await api.post<{ status: string; count: number }>("/api/admin/search/reindex", { mode: "direct" });
+          toast.success(`Search rebuilt: ${result.count} listings`);
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Could not queue search rebuild");
+          toast.error(error instanceof Error ? error.message : "Could not rebuild search");
         } finally {
           setReindexing(false);
         }
       }}>
         {reindexing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Database className="h-4 w-4" aria-hidden />}
-        {reindexing ? "Queueing rebuild…" : "Rebuild search index"}
+        {reindexing ? "Rebuilding…" : "Rebuild search index"}
       </Button>}
       <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
@@ -2022,13 +2026,14 @@ function MediaSection({ canEdit }: { canEdit: boolean }) {
 
 function ImportsSection() {
   const [data, setData] = React.useState<{ runs: Record<string, unknown>[]; qualityIssues: Record<string, unknown>[] } | null>(null);
+  const [error, setError] = React.useState("");
   const [csv, setCsv] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const requestKey = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [details, setDetails] = React.useState<{ runId: string; records: Record<string, unknown>[]; loading: boolean; truncated: boolean } | null>(null);
 
   const load = React.useCallback(() => {
-    api.get<{ runs: Record<string, unknown>[]; qualityIssues: Record<string, unknown>[] }>("/api/admin/imports").then(setData).catch(() => setData({ runs: [], qualityIssues: [] }));
+    api.get<{ runs: Record<string, unknown>[]; qualityIssues: Record<string, unknown>[] }>("/api/admin/imports").then((next) => { setData(next); setError(""); }).catch((e) => setError(e instanceof Error ? e.message : "Inventory import history is unavailable."));
   }, []);
   React.useEffect(() => { load(); }, [load]);
   React.useEffect(() => {
@@ -2043,7 +2048,7 @@ function ImportsSection() {
     try {
       const fingerprint = `${dryRun ? "dry" : "apply"}\u0000${csv}`;
       if (!requestKey.current || requestKey.current.fingerprint !== fingerprint) {
-        requestKey.current = { fingerprint, key: crypto.randomUUID() };
+        requestKey.current = { fingerprint, key: clientRequestId() };
       }
       const res = await api.post<{ importRunId: string; status: string; duplicateRequest: boolean }>(
         "/api/admin/imports",
@@ -2076,6 +2081,7 @@ function ImportsSection() {
         <h1 className="font-display text-2xl font-semibold">Imports & data quality</h1>
         <p className="mt-1 text-sm text-muted-foreground">CSV validation and ingestion run asynchronously in the dedicated worker. Imported inventory remains draft until an editor explicitly publishes it.</p>
       </header>
+      {error && <div role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm"><p>{error}</p><Button size="sm" variant="outline" className="mt-2" onClick={load}>Retry inventory import history</Button></div>}
 
       <div className="rounded-xl border border-border/70 bg-card p-5">
         <h2 className="kicker mb-2">Run a CSV import</h2>

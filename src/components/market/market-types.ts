@@ -37,6 +37,7 @@ export interface MarketRow {
   bedrooms?: number | null;
   isIllustrative: boolean;
   source: string;
+  provenance?: { sourceUrl: string | null; retrievedAt: string | null; appliedAt: string | null; freshness: string; reviewState: string } | null;
   /** Presentation state from the data-state machine (V2 §37). */
   state?: MetricState;
 }

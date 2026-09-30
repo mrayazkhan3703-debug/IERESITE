@@ -1,5 +1,12 @@
 # Verification Log
 
+## 2026-09-30 — Phases 10–11 candidate checks (deployment pending)
+
+- Scope: Market Intelligence source/file/mapping/validation/diff/reject/apply/freshness/metrics/report embeds, plus Search/Map state, provider recovery, index operations and mobile synchronization. The paid background worker remains owner-deferred; live AI/CRM provider gates remain unchanged.
+- Local checks pass: Prisma schema validation/client generation, TypeScript, ESLint, optimized Next.js build (122 static pages), repository hygiene and local asset inventory (59 files, zero missing references). Focused Bun suites pass 11 tests / 44 assertions for mapping, money/date/source limits, fixed embeds, fallback failure states, viewport/bbox validation, exclusions and the complete SearchState URL round trip.
+- Added disposable-stack integration coverage for private source snapshots, preview-only mutation isolation, rejects, idempotent apply, provenance, transaction/rent explorer reads, metric rebuild, stale diff rejection, immediate indexing, current canonical expiry and injected projection-query failure. Added browser journeys for real file upload/mapping/review/apply, immediate indexing diagnostics, coincident listing identity, saved searched area, pan/search/reload and EN/AR mobile outage recovery.
+- Hosted integration/browser/recovery gates and live deployment are still pending. No shared database changes, production fixture uploads, worker creation or queue drain have been performed by this continuation.
+
 Concise, append-only evidence. No secret values are recorded here.
 
 ## 2026-09-28 — Phase 00

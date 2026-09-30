@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { buildMonthlySeries, buildAreaTrends } from "@/server/domain/monthly-series";
 import { validateRentRecords } from "@/server/domain/read-models";
 import { getDataState, resolveMetricState } from "@/lib/data-state";
+import { marketProvenance } from "@/server/ingestion/market-provenance";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export const GET = apiHandler(async (req) => {
   // before presentation). JS-side at current scale; production swaps to SQL.
   const allRows = await db.marketRent.findMany({
     where,
+    include: { importRun: { include: { importSource: { select: { url: true, configJson: true } } } } },
     orderBy: { contractDate: "desc" },
     take: 10000,
   });
@@ -193,6 +195,8 @@ export const GET = apiHandler(async (req) => {
 
   const agg = {
     count: validRows.length,
+    illustrativeCount: validRows.filter((r) => r.isIllustrative).length,
+    sourcedCount: validRows.filter((r) => !r.isIllustrative).length,
     medianRentMinor: toMinorString(medianOf(rentsAed)),
     avgRentMinor: toMinorString(rentsAed.length ? rentsAed.reduce((s, n) => s + n, 0) / rentsAed.length : null),
     excludedRecords: validation.excludedRecords,
@@ -228,10 +232,12 @@ export const GET = apiHandler(async (req) => {
       sizeSqft: r.sizeSqft,
       isIllustrative: r.isIllustrative,
       source: r.source,
+      provenance: marketProvenance(r.importRun),
       // Per-row presentation state from the data-state machine (V2 §37).
       state: resolveMetricState({
         sourcePublisher: r.source,
         sourceType: r.source,
+        retrievedAt: r.importRun?.snapshotRetrievedAt,
         isIllustrative: r.isIllustrative,
       }),
     })),
