@@ -88,6 +88,8 @@ function loadSaved(): LabState | null {
     if (
       typeof parsed.budget !== "number" ||
       typeof parsed.monthlyRent !== "number" ||
+      !Number.isFinite(parsed.budget) || parsed.budget <= 0 ||
+      !Number.isFinite(parsed.monthlyRent) || parsed.monthlyRent < 0 ||
       !["cash", "mortgage"].includes(parsed.financing ?? "") ||
       ![3, 5, 10, 15].includes(parsed.horizon ?? 0) ||
       !["apartment", "townhouse", "villa"].includes(parsed.propertyType ?? "")
@@ -117,24 +119,30 @@ function ResultCell({ label, value, note }: { label: string; value: string; note
 }
 
 export function ScenarioLab({ locale }: { locale: Locale }) {
-  const [state, setState] = React.useState<LabState>(() => loadSaved() ?? DEFAULTS);
-  const [restored, setRestored] = React.useState(() => loadSaved() !== null);
+  const [state, setState] = React.useState<LabState>(DEFAULTS);
+  const [restored, setRestored] = React.useState(false);
+  const [storageReady, setStorageReady] = React.useState(false);
   const [result, setResult] = React.useState<RoiResult | null>(null);
 
-  /* Restore = re-run immediately so returning visitors see their numbers. */
+  /* Keep the first client render identical to SSR; restore browser storage after mount. */
   React.useEffect(() => {
-    if (restored) {
-      setResult(computeRoi(buildInput(state)));
+    const saved = loadSaved();
+    if (saved) {
+      setState(saved);
+      setRestored(true);
+      setResult(computeRoi(buildInput(saved)));
     }
+    setStorageReady(true);
   }, []);
 
   React.useEffect(() => {
+    if (!storageReady) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
       /* storage unavailable — lab still works, just not restored */
     }
-  }, [state]);
+  }, [state, storageReady]);
 
   const run = () => {
     if (!Number.isFinite(state.budget) || state.budget <= 0 || state.monthlyRent < 0) return;
