@@ -19,6 +19,8 @@ import { ContentBody } from "@/components/common/content-body";
 import { parseContentBlocks, type ContentBlock } from "@/lib/content-blocks";
 import { FaqsSection } from "@/views/admin/faqs-section";
 import { MarketReportsSection } from "@/views/admin/market-reports-section";
+import { MarketDataSection } from "@/views/admin/market-data-section";
+import { SearchOperationsSection } from "@/views/admin/search-operations-section";
 import { KnowledgeBaseSection } from "@/views/admin/knowledge-base-section";
 import { TestimonialsSection } from "@/views/admin/testimonials-section";
 import { RedirectsSection } from "@/views/admin/redirects-section";
@@ -97,8 +99,9 @@ export default function AdminView() {
         {section === "seo-metadata" && <SeoMetadataSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} />}
         {section === "media" && <MediaSection canEdit={hasRole(user, ["OWNER", "ADMIN", "CONTENT_EDITOR"])} />}
         {section === "units" && <UnitsSection canEdit={hasRole(user, ["OWNER", "ADMIN"])} />}
-        {section === "imports" && <ImportsSection />}
+        {section === "imports" && <><MarketDataSection canManage={hasRole(user, ["OWNER", "ADMIN"])} /><div className="mt-10 border-t pt-8"><ImportsSection /></div></>}
         {section === "evidence" && <EvidenceSection />}
+        {section === "search" && <SearchOperationsSection />}
         {section === "data-quality" && <DataQualitySection />}
         {section === "crm" && <CrmSection canManage={hasRole(user, ["OWNER", "ADMIN"])} />}
         {section === "jobs" && <JobsSection />}
@@ -705,16 +708,16 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
       {canReindex && <Button variant="outline" size="sm" className="gap-2" disabled={reindexing} onClick={async () => {
         setReindexing(true);
         try {
-          await api.post<{ status: "QUEUED" }>("/api/admin/search/reindex");
-          toast.success("Full search rebuild queued");
+          const result = await api.post<{ status: string; count: number }>("/api/admin/search/reindex", { mode: "direct" });
+          toast.success(`Search rebuilt: ${result.count} listings`);
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Could not queue search rebuild");
+          toast.error(error instanceof Error ? error.message : "Could not rebuild search");
         } finally {
           setReindexing(false);
         }
       }}>
         {reindexing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Database className="h-4 w-4" aria-hidden />}
-        {reindexing ? "Queueing rebuild…" : "Rebuild search index"}
+        {reindexing ? "Rebuilding…" : "Rebuild search index"}
       </Button>}
       <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">

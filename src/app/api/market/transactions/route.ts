@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { buildMonthlySeries, buildAreaTrends } from "@/server/domain/monthly-series";
 import { validateTransactionRecords } from "@/server/domain/read-models";
 import { getDataState, resolveMetricState } from "@/lib/data-state";
+import { marketProvenance } from "@/server/ingestion/market-provenance";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export const GET = apiHandler(async (req) => {
   // to SQL.
   const allRows = await db.marketTransaction.findMany({
     where,
+    include: { importRun: { include: { importSource: { select: { url: true, configJson: true } } } } },
     orderBy: { transactionDate: "desc" },
     take: 10000,
   });
@@ -235,10 +237,12 @@ export const GET = apiHandler(async (req) => {
       projectName: r.projectName,
       isIllustrative: r.isIllustrative,
       source: r.source,
+      provenance: marketProvenance(r.importRun),
       // Per-row presentation state from the data-state machine (V2 §37).
       state: resolveMetricState({
         sourcePublisher: r.source,
         sourceType: r.source,
+        retrievedAt: r.importRun?.snapshotRetrievedAt,
         isIllustrative: r.isIllustrative,
       }),
     })),

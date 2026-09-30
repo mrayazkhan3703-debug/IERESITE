@@ -55,7 +55,7 @@ export const searchStateSchema = z.object({
   sort: z.enum(SORT_OPTIONS).default("relevance"),
   page: z.number().int().min(1).max(500).default(1),
   pageSize: z.number().int().min(1).max(48).default(12),
-  bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(), // [w, s, e, n]
+  bbox: z.tuple([z.number().finite().min(-180).max(180), z.number().finite().min(-90).max(90), z.number().finite().min(-180).max(180), z.number().finite().min(-90).max(90)]).refine(([w, s, e, n]) => w < e && s < n, "Use an ordered west,south,east,north bounding box.").optional(),
   radiusKm: z.number().min(0.1).max(200).optional(),
   centerLat: z.number().min(-90).max(90).optional(),
   centerLng: z.number().min(-180).max(180).optional(),
@@ -254,9 +254,7 @@ export function queryToSearchState(query: Record<string, string>): SearchState {
   raw.pageSize = num(query.pageSize) || 12;
   if (query.bbox) {
     const parts = query.bbox.split(",").map(Number);
-    if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
-      raw.bbox = parts as [number, number, number, number];
-    }
+    raw.bbox = parts;
   }
   raw.radiusKm = num(query.radiusKm);
   raw.centerLat = num(query.centerLat);
@@ -267,8 +265,7 @@ export function queryToSearchState(query: Record<string, string>): SearchState {
       raw.polygon = points;
     }
   }
-  const parsed = searchStateSchema.safeParse(raw);
-  return parsed.success ? parsed.data : searchStateSchema.parse({});
+  return searchStateSchema.parse(raw);
 }
 
 export function serializeSearchState(state: SearchState): string {

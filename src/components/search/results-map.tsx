@@ -11,7 +11,7 @@
  */
 
 import * as React from "react";
-import { MapContainer, TileLayer, Marker, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Tooltip, Popup, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { formatNumber } from "@/lib/money";
@@ -21,6 +21,8 @@ import type { Locale } from "@/lib/i18n";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { MAP_TILE_CONFIG } from "@/lib/map-tiles";
+import { validMapPoint } from "@/lib/map-state";
+import { Button } from "@/components/ui/button";
 
 /* Resolved brand hex (SVG/HTML presentation attributes cannot host var()). */
 const MARKER_BRONZE = "#8f5a2b";
@@ -49,7 +51,7 @@ function clusterGrid(items: MapMarkerItem[], zoom: number): Cluster[] {
   const cell = Math.min(0.35, Math.max(0.0025, 0.3 / Math.pow(2, Math.max(0, zoom - 8))));
   const cells = new Map<string, Cluster>();
   for (const it of items) {
-    if (!Number.isFinite(it.lat) || !Number.isFinite(it.lng)) continue;
+    if (!validMapPoint(it.lat, it.lng)) continue;
     const key = `${Math.floor(it.lat / cell)}:${Math.floor(it.lng / cell)}`;
     let c = cells.get(key);
     if (!c) {
@@ -107,7 +109,7 @@ function MapInner({
 }) {
   const map = useMap();
   const [zoom, setZoom] = React.useState(map.getZoom());
-  const fitted = React.useRef(false);
+  const fitted = React.useRef("");
 
   useMapEvents({
     zoomend: () => setZoom(map.getZoom()),
@@ -116,7 +118,8 @@ function MapInner({
 
   // Fit bounds once when the first non-empty result set arrives.
   React.useEffect(() => {
-    if (fitted.current || !items.length) return;
+    const identity = items.map((i) => i.slug).sort().join("|");
+    if (fitted.current === identity || !items.length) return;
     const lats = items.map((i) => i.lat);
     const lngs = items.map((i) => i.lng);
     map.fitBounds(
@@ -126,32 +129,44 @@ function MapInner({
       ],
       { padding: [48, 48], maxZoom: 14 }
     );
-    fitted.current = true;
+    fitted.current = identity;
   }, [items, map]);
+
+  React.useEffect(() => {
+    const selected = items.find((i) => i.slug === selectedSlug);
+    if (selected) map.panTo([selected.lat, selected.lng]);
+  }, [selectedSlug, items, map]);
+  React.useEffect(() => {
+    const observer = new ResizeObserver(() => map.invalidateSize({ animate: false }));
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map]);
 
   const clusters = React.useMemo(() => clusterGrid(items, zoom), [items, zoom]);
 
   return (
     <>
-      {clusters.map((cluster, i) => {
+      {clusters.map((cluster) => {
         const single = cluster.items.length === 1;
         const item = single ? cluster.items[0] : null;
         const highlighted =
-          item != null && (item.slug === hoveredSlug || item.slug === selectedSlug);
+          cluster.items.some((i) => i.slug === hoveredSlug || i.slug === selectedSlug);
         return (
           <Marker
-            key={`${i}-${item?.slug ?? "cluster"}`}
+            key={cluster.items.map((i) => i.slug).sort().join("|")}
             position={[cluster.lat, cluster.lng]}
             icon={markerIcon(cluster, highlighted)}
             keyboard={true}
             alt={item ? item.title : `${formatNumber(cluster.items.length)} results`}
             eventHandlers={{
+              add: (event) => { const el = (event.target as L.Marker).getElement(); el?.setAttribute("role", "button"); el?.setAttribute("aria-label", item ? item.title : `${cluster.items.length} results`); },
               click: () => {
                 if (single && item) onSelect(item);
-                else map.setView([cluster.lat, cluster.lng], Math.min(18, zoom + 2));
+                else if (zoom < 17) map.setView([cluster.lat, cluster.lng], Math.min(18, zoom + 2));
               },
             }}
           >
+            {!single && zoom >= 17 && <Popup><div className="max-h-60 space-y-2 overflow-y-auto">{cluster.items.map((choice) => <button key={choice.slug} type="button" className="block w-full rounded border p-2 text-left text-xs" onClick={() => onSelect(choice)}>{choice.title} · {choice.label}</button>)}</div></Popup>}
             <Tooltip direction="top" offset={[0, -8]} opacity={1}>
               {item ? (
                 <span className="text-xs">
@@ -194,6 +209,8 @@ export default function ResultsMap({
   srViewport?: string;
   onViewport?: () => void;
 }) {
+  const [tilesFailed, setTilesFailed] = React.useState(false);
+  const [tileRetry, setTileRetry] = React.useState(0);
   return (
     <div className={cn("relative h-full w-full", className)}>
       <span className="sr-only" role="status">
@@ -208,9 +225,11 @@ export default function ResultsMap({
         aria-label={t("search.view.map", locale)}
       >
         <TileLayer
+          key={tileRetry}
           url={MAP_TILE_CONFIG.url}
           maxZoom={MAP_TILE_CONFIG.maxZoom}
           attribution={MAP_TILE_CONFIG.attribution}
+          eventHandlers={{ tileerror: () => setTilesFailed(true) }}
         />
         <MapInner
           items={items}
@@ -221,6 +240,7 @@ export default function ResultsMap({
           onViewport={onViewport}
         />
       </MapContainer>
+      {tilesFailed && <div role="status" className="absolute start-3 top-3 z-[500] max-w-xs rounded-lg border bg-card/95 p-3 text-xs shadow"><p>{t("map.error.tiles", locale)}</p><Button size="sm" variant="outline" className="mt-2" onClick={() => { setTilesFailed(false); setTileRetry((n) => n + 1); }}>{t("map.error.retryTiles", locale)}</Button></div>}
     </div>
   );
 }

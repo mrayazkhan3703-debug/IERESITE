@@ -1,5 +1,13 @@
 # Source Map
 
+## Phases 10–11 continuation (2026-09-30)
+
+- Market data uses the existing ImportSource/ImportRun/ImportRecord, DataQualityIssue, MarketTransaction/MarketRent and MarketMetric models. `src/lib/market-import.ts`, `src/server/ingestion/{market-file,market-provenance}.ts` and `src/server/domain/{market-import-command,market-metrics-command}.ts` own safe mappings, bounded parsing, immutable private snapshots, row preview, source freshness, idempotent application and derived metrics. `/api/admin/market-data` and `src/views/admin/market-data-section.tsx` expose those operations within `/admin/imports`.
+- Report embeds remain reviewed Markdown tokens: `src/lib/market-report-embeds.ts` validates a fixed catalog and `src/components/market/report-data-embed.tsx` reads the existing explorer APIs. Report revision/approval/publication commands remain canonical.
+- Search remains on the configured provider. `src/server/search/resilience.ts` permits a bounded fresh canonical fallback and returns a truthful 503 when both paths fail. PostgreSQL projection reads check current canonical publication and expiry. `src/lib/map-state.ts` validates viewport/bbox values; `/api/map/selection` resolves public selection previews independently of the paginated result rail.
+- `/admin/search`, `src/views/admin/search-operations-section.tsx`, `/api/admin/search` and the existing reindex API show provider, source/projection counts, bounded exclusion diagnostics, worker state and audited direct/queued rebuilds. Direct rebuild is capped at 1,000 listings and does not create an outbox event.
+- Forward migration: `20260930000300_market_import_workflow` adds only datasetKind/appliedAt/appliedBy and an ImportRun index. No new database tables, parallel market stack, provider activation or paid service.
+
 Baseline: `fb6ae2208d108d7cb57d8b52826201e85c608a61`. Search named symbols after edits instead of relying on line numbers.
 
 ## Runtime and delivery

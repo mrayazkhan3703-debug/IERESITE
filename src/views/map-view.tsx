@@ -38,6 +38,8 @@ import { MapPin, Search, List as ListIcon, Loader2, Crosshair, Layers as LayersI
 import { cn } from "@/lib/utils";
 import { CHART_COLORS } from "@/lib/chart-theme";
 import { escapeMapHtml, MAP_TILE_CONFIG } from "@/lib/map-tiles";
+import { mapViewport, mapBounds } from "@/lib/map-state";
+import { PublicImage } from "@/components/public-image";
 import { LEAFLET_DEFAULT_ICONS } from "@/lib/leaflet-icons";
 
 /* Resolved chart-theme tokens (HTML/SVG presentation values cannot host var()). */
@@ -102,11 +104,9 @@ const LAYER_LABEL_KEY: Record<LayerKey, string> = {
   rent: "map.layers.rent",
 };
 
-const DUBAI_CENTER: [number, number] = [25.1, 55.2];
-const DEFAULT_ZOOM = 11;
 
 /* Viewport keys live in the URL but must not refetch results on change. */
-const VIEWPORT_KEYS = new Set(["z", "c", "layers", "marker"]);
+const VIEWPORT_KEYS = new Set(["z", "c", "layers", "marker", "selected", "selectedKind"]);
 
 /* Grid clustering — cell size halves per zoom level, bounded. */
 interface Cluster {
@@ -159,15 +159,8 @@ export default function MapView() {
   }, [loc.query.layers]);
   const markerMode: "pin" | "price" = loc.query.marker === "price" ? "price" : "pin";
 
-  const initialCenter = React.useMemo<[number, number]>(() => {
-    const c = loc.query.c?.split(",").map(Number);
-    if (c && c.length === 2 && c.every((n) => Number.isFinite(n))) return [c[0], c[1]];
-    return DUBAI_CENTER;
-  }, []);
-  const initialZoom = React.useMemo(() => {
-    const z = Number(loc.query.z);
-    return Number.isFinite(z) && z >= 3 && z <= 19 ? z : DEFAULT_ZOOM;
-  }, []);
+  const initialCenter = React.useMemo<[number, number]>(() => mapViewport(loc.query).center, []);
+  const initialZoom = React.useMemo(() => mapViewport(loc.query).zoom, []);
 
   const setLayers = (key: LayerKey, enabled: boolean) => {
     const next = new Set(layers);
@@ -199,6 +192,8 @@ export default function MapView() {
       if (v === undefined || v === "") delete next[k];
       else next[k] = v;
     }
+    delete next.page;
+    delete next.selected;
     events.filter(patch);
     navigate("/properties/map", next, { replace: true });
   };
@@ -206,6 +201,8 @@ export default function MapView() {
   const clearAllFilters = () => {
     const viewportOnly: Record<string, string> = {};
     for (const k of VIEWPORT_KEYS) if (loc.query[k]) viewportOnly[k] = loc.query[k];
+    if (loc.query.bbox) viewportOnly.bbox = loc.query.bbox;
+    delete viewportOnly.selected;
     navigate("/properties/map", viewportOnly, { replace: true });
   };
 
@@ -217,6 +214,10 @@ export default function MapView() {
   const [communities, setCommunities] = React.useState<MapCommunity[]>([]);
   const [metrics, setMetrics] = React.useState<CommunityMetricLayer[] | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [mapError, setMapError] = React.useState("");
+  const [degraded, setDegraded] = React.useState(false);
+  const [pageOnlyClusters, setPageOnlyClusters] = React.useState(false);
+  const [hoveredSlug, setHoveredSlug] = React.useState<string | null>(null);
   const [tilesFailed, setTilesFailed] = React.useState(false);
   const [searchingArea, setSearchingArea] = React.useState(false);
   const [hasMoved, setHasMoved] = React.useState(false);
@@ -240,6 +241,8 @@ export default function MapView() {
   const rentLayerRef = React.useRef<L.LayerGroup | null>(null);
   const mapElRef = React.useRef<HTMLDivElement>(null);
   const bboxRef = React.useRef<[number, number, number, number] | null>(null);
+  const searchedBoundsRef = React.useRef(mapBounds(loc.query.bbox));
+  const restoringViewport = React.useRef(false);
   const urlTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   /* Latest query for the (once-registered) map moveend handler — a plain
      closure over `loc.query` would go stale after layer/marker params change
@@ -288,6 +291,7 @@ export default function MapView() {
       map.on("moveend zoomend", () => {
         const b = map.getBounds();
         bboxRef.current = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+        if (restoringViewport.current) { setZoomState(map.getZoom()); return; }
         /* F09 — panning NEVER auto-applies a new search: the viewport is
            recorded (URL + bboxRef) and the persistent "Search this area"
            button offers the explicit refetch. (bboxTick only advances on the
@@ -312,9 +316,11 @@ export default function MapView() {
       });
       const b = map.getBounds();
       bboxRef.current = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+      if (!searchedBoundsRef.current) searchedBoundsRef.current = bboxRef.current;
+      if (!queryRef.current.bbox) navigate("/properties/map", { ...queryRef.current, bbox: searchedBoundsRef.current.join(","), c: initialCenter.join(","), z: String(initialZoom) }, { replace: true });
       setBboxTick((n) => n + 1);
     })().catch(() => {
-      if (!cancelled) setTilesFailed(true);
+      if (!cancelled) { setTilesFailed(true); setBboxTick((n) => n + 1); }
     });
     return () => {
       cancelled = true;
@@ -336,31 +342,70 @@ export default function MapView() {
   const [bboxTick, setBboxTick] = React.useState(0);
   const fetchKey = `${filterQueryStr}|${bboxTick}`;
   React.useEffect(() => {
-    const bbox = bboxRef.current;
-    const params = new URLSearchParams({ ...loc.query, page: "1", pageSize: "48" });
+    if (!bboxTick) return;
+    const abort = new AbortController();
+    const bbox = mapBounds(loc.query.bbox) ?? searchedBoundsRef.current;
+    const params = new URLSearchParams({ ...loc.query, pageSize: "48" });
     VIEWPORT_KEYS.forEach((k) => params.delete(k));
     if (bbox) params.set("bbox", bbox.join(","));
     params.set("zoom", String(zoomState));
     setLoading(true);
+    setMapError("");
     api
-      .get<{ results: ListingCardDTO[]; total: number; clusters?: MapPropertyCluster[]; communities: MapCommunity[]; projects?: MapProject[] }>("/api/map?" + params.toString())
+      .get<{ results: ListingCardDTO[]; total: number; clusters?: MapPropertyCluster[]; communities: MapCommunity[]; projects?: MapProject[]; degraded?: boolean; clusterCoverage?: string }>("/api/map?" + params.toString(), abort.signal)
       .then((res) => {
+        if (abort.signal.aborted) return;
         setResults(res.results);
         setPropertyClusters(res.clusters ?? null);
         setMapTotal(res.total ?? res.results.length);
         setCommunities(res.communities);
         setProjects(res.projects ?? []);
+        setDegraded(Boolean(res.degraded));
+        setPageOnlyClusters(res.clusterCoverage === "PAGE_ONLY" && res.total > res.results.length);
       })
       .catch(() => {
-        setResults([]);
-        setPropertyClusters([]);
-        setMapTotal(0);
+        if (!abort.signal.aborted) setMapError(t("map.error.results", locale));
       })
       .finally(() => {
+        if (abort.signal.aborted) return;
         setLoading(false);
+        setSearchingArea(false);
         setHasMoved(false);
       });
+    return () => abort.abort();
   }, [fetchKey]);
+
+  // Query-only history traversal restores the viewport without re-searching a
+  // panned area. The applied bounding box remains an independent URL field.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !bboxTick) return;
+    const viewport = mapViewport(loc.query), center = map.getCenter();
+    if (Math.abs(center.lat - viewport.center[0]) < 0.0002 && Math.abs(center.lng - viewport.center[1]) < 0.0002 && map.getZoom() === viewport.zoom) return;
+    if (urlTimer.current) clearTimeout(urlTimer.current);
+    restoringViewport.current = true;
+    map.setView(viewport.center, viewport.zoom, { animate: false });
+    restoringViewport.current = false;
+  }, [loc.query.c, loc.query.z]);
+
+  React.useEffect(() => {
+    const slug = loc.query.selected;
+    if (!slug) { setSelected(null); return; }
+    const listing = results?.find((r) => r.slug === slug);
+    const project = projects.find((p) => p.slug === slug);
+    if (listing) setSelected({ kind: "property", listing });
+    else if (project) setSelected({ kind: "project", project });
+    else {
+      const abort = new AbortController();
+      api.get<{ listing?: ListingCardDTO; project?: MapProject }>(`/api/map/selection?slug=${encodeURIComponent(slug)}&kind=${loc.query.selectedKind === "project" ? "project" : "property"}`, abort.signal).then((res) => { if (!abort.signal.aborted) setSelected(res.project ? { kind: "project", project: res.project } : res.listing ? { kind: "property", listing: res.listing } : null); }).catch(() => { if (!abort.signal.aborted) setSelected(null); });
+      return () => abort.abort();
+    }
+  }, [loc.query.selected, loc.query.selectedKind, results, projects]);
+
+  const selectResult = (item: { slug: string; id?: string; kind?: "property" | "project" }) => {
+    navigate("/properties/map", { ...queryRef.current, selected: item.slug, selectedKind: item.kind === "project" ? "project" : undefined }, { replace: true });
+    if (item.id) document.getElementById(`map-result-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
 
   /* Facets for the filter sheet — one lightweight /api/search request per
      sheet open (pageSize=1, facets included) with the current filters. */
@@ -452,7 +497,7 @@ export default function MapView() {
     for (const cluster of clusters) {
       const single = cluster.count === 1;
       const item = single ? results.find((result) => result.id === cluster.listingId || result.slug === cluster.slug) ?? null : null;
-      const isSelected = item != null && selected?.kind === "property" && selected.listing?.slug === item.slug;
+      const isSelected = item != null && ((selected?.kind === "property" && selected.listing?.slug === item.slug) || hoveredSlug === item.slug);
 
       let icon: L.DivIcon | L.Icon;
       let priceLabel: string | null = null;
@@ -489,15 +534,18 @@ export default function MapView() {
       marker.on("click", (event) => {
         L.DomEvent.stopPropagation(event);
         if (single) {
-          if (item) setSelected({ kind: "property", listing: item });
-          else if (cluster.slug) navigate(`/properties/${cluster.slug}`);
+          if (item) selectResult(item);
+          else if (cluster.slug) selectResult({ slug: cluster.slug });
         } else {
-          mapRef.current?.setView([cluster.lat, cluster.lng], Math.min(18, (mapRef.current?.getZoom() ?? 11) + 2));
+          if (map.getZoom() >= 17) { setListOpen(true); return; }
+          map.setView([cluster.lat, cluster.lng], Math.min(18, map.getZoom() + 2));
+          const bounds = map.getBounds();
+          navigate("/properties/map", { ...queryRef.current, page: undefined, selected: undefined, bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(","), z: String(map.getZoom()), c: `${cluster.lat},${cluster.lng}` }, { replace: true });
         }
       });
       marker.addTo(layer);
     }
-  }, [results, propertyClusters, zoomState, markerMode, layers, selected, locale]);
+  }, [results, propertyClusters, zoomState, markerMode, layers, selected, hoveredSlug, locale]);
 
   /* Project markers (distinct sienna pills, name tooltip). */
   React.useEffect(() => {
@@ -535,7 +583,7 @@ export default function MapView() {
       });
       marker.on("click", (event) => {
         L.DomEvent.stopPropagation(event);
-        setSelected({ kind: "project", project: p });
+        selectResult({ ...p, kind: "project" });
       });
       marker.addTo(layer);
     }
@@ -636,34 +684,23 @@ export default function MapView() {
     if (!bbox) return;
     setSearchingArea(true);
     events.mapView("search_this_area");
-    const params = new URLSearchParams({ ...loc.query, page: "1", pageSize: "48", bbox: bbox.join(",") });
-    VIEWPORT_KEYS.forEach((k) => params.delete(k));
-    params.set("zoom", String(zoomState));
-    api
-      .get<{ results: ListingCardDTO[]; total: number; clusters?: MapPropertyCluster[]; projects?: MapProject[] }>("/api/map?" + params.toString())
-      .then((res) => {
-        setResults(res.results);
-        setPropertyClusters(res.clusters ?? null);
-        setMapTotal(res.total ?? res.results.length);
-        setProjects(res.projects ?? []);
-      })
-      .catch(() => {})
-      .finally(() => {
-        setSearchingArea(false);
-        setHasMoved(false);
-      });
+    const center = mapRef.current?.getCenter();
+    searchedBoundsRef.current = bbox;
+    navigate("/properties/map", { ...queryRef.current, page: undefined, selected: undefined, bbox: bbox.join(","), z: String(zoomState), ...(center ? { c: `${center.lat.toFixed(4)},${center.lng.toFixed(4)}` } : {}) }, { replace: true });
+    setBboxTick((n) => n + 1);
   };
 
-  const flyToItem = (kind: "property" | "project", lat: number, lng: number) => {
+  const flyToItem = (kind: "property" | "project", lat: number, lng: number, slug: string) => {
     mapRef.current?.flyTo([lat, lng], Math.max(mapRef.current.getZoom(), 14), { duration: 0.8 });
-    const listing = kind === "property" ? results?.find((r) => r.lat === lat && r.lng === lng) : undefined;
-    const project = kind === "project" ? projects.find((p) => p.lat === lat && p.lng === lng) : undefined;
-    if (listing) setSelected({ kind: "property", listing });
-    else if (project) setSelected({ kind: "project", project });
+    const listing = kind === "property" ? results?.find((r) => r.slug === slug) : undefined;
+    selectResult({ slug, id: listing?.id, kind });
   };
 
   const propertyList = results ?? [];
   const activeFilterCount = FILTER_KEYS.filter((k) => loc.query[k]).length;
+  const resultPage = Math.max(1, Math.min(500, Number(loc.query.page) || 1));
+  const resultPages = Math.max(1, Math.ceil(mapTotal / 48));
+  const pagination = mapTotal > 48 && <nav className="my-3 flex items-center justify-between gap-2 text-xs" aria-label={t("map.list.pages", locale)}><Button size="sm" variant="outline" disabled={loading || resultPage <= 1} onClick={() => navigate("/properties/map", { ...loc.query, page: String(resultPage - 1) })}>{t("map.list.previous", locale)}</Button><span>{resultPage} / {resultPages}</span><Button size="sm" variant="outline" disabled={loading || resultPage >= resultPages} onClick={() => navigate("/properties/map", { ...loc.query, page: String(resultPage + 1) })}>{t("map.list.next", locale)}</Button></nav>;
 
   /* sr-only live description of the map for assistive tech. */
   const srViewport = t("map.sr.viewport", locale)
@@ -783,6 +820,8 @@ export default function MapView() {
         </div>
       </div>
 
+      {(mapError || degraded || pageOnlyClusters) && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-4 py-3 text-sm" role={mapError ? "alert" : "status"}><p>{mapError || (degraded ? t("map.error.degraded", locale) : t("map.error.pageOnly", locale))}</p>{mapError && <Button size="sm" variant="outline" onClick={() => setBboxTick((n) => n + 1)}>{t("map.error.retry", locale)}</Button>}</div>}
+
       <div className="relative flex min-h-0 flex-1">
         {/* Map */}
         <div className="relative min-w-0 flex-1">
@@ -891,7 +930,7 @@ export default function MapView() {
               <div className="relative rounded-xl border border-border bg-card shadow-xl">
                 <button
                   type="button"
-                  onClick={() => setSelected(null)}
+                  onClick={() => navigate("/properties/map", { ...loc.query, selected: undefined, selectedKind: undefined }, { replace: true })}
                   aria-label={t("map.preview.close", locale)}
                   className="absolute right-2 top-2 z-10 rounded-full bg-background/90 p-1.5 text-muted-foreground backdrop-blur transition-ui hover:text-foreground"
                 >
@@ -933,29 +972,35 @@ export default function MapView() {
           <h2 className="kicker mb-2 flex items-center gap-1.5">
             <MapPinned className="h-3.5 w-3.5 text-brand" aria-hidden /> {t("map.list.title", locale)}
           </h2>
+          {pagination}
           {loading ? (
             <LoadingState rows={4} />
-          ) : propertyList.length === 0 && projects.length === 0 ? (
+          ) : mapError ? <p className="p-3 text-sm text-muted-foreground">{t("map.error.results", locale)}</p> : propertyList.length === 0 && projects.length === 0 ? (
             <EmptyState title={t("map.list.empty", locale)} description={t("map.list.emptyHint", locale)} />
           ) : (
             <div className="space-y-2.5">
               {propertyList.map((p) => (
                 <button
                   key={p.id}
+                  id={`map-result-${p.id}`}
                   type="button"
-                  onClick={() => flyToItem("property", p.lat, p.lng)}
+                  aria-pressed={selected?.listing?.id === p.id}
+                  onMouseEnter={() => setHoveredSlug(p.slug)} onMouseLeave={() => setHoveredSlug(null)}
+                  onFocus={() => setHoveredSlug(p.slug)} onBlur={() => setHoveredSlug(null)}
+                  onClick={() => flyToItem("property", p.lat, p.lng, p.slug)}
                   className={cn(
                     "flex w-full gap-3 rounded-lg border border-border/70 bg-card p-2.5 text-left transition-ui hover:border-brand/40",
                     selected?.kind === "property" && selected.listing?.slug === p.slug && "border-brand/70 ring-1 ring-brand/40"
                   )}
                 >
                   <div className="h-16 w-24 shrink-0 overflow-hidden rounded-md bg-sand">
-                    {p.cover && <img src={p.cover.url} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                    <PublicImage src={p.cover?.url} alt="" className="h-full w-full object-cover" fallback={<MapPin className="m-auto mt-5 h-5 w-5 text-brand" aria-hidden />} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{p.title}</p>
+                    <p className="line-clamp-2 text-sm font-semibold">{p.title}</p>
                     <p className="truncate text-xs text-muted-foreground">{p.community.name}</p>
                     <Price price={p.price} className="text-sm" />
+                    <p className="mt-1 text-xs text-muted-foreground">{p.bedrooms} {t("search.nl.beds", locale)} · {p.bathrooms} {t("search.nl.baths", locale)}{p.isDemoData ? ` · ${t("map.state.illustrative", locale)}` : ""}</p>
                   </div>
                 </button>
               ))}
@@ -964,7 +1009,7 @@ export default function MapView() {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => flyToItem("project", p.lat, p.lng)}
+                    onClick={() => flyToItem("project", p.lat, p.lng, p.slug)}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-lg border border-border/70 bg-sand/40 p-2.5 text-left transition-ui hover:border-brand/40",
                       selected?.kind === "project" && selected.project?.slug === p.slug && "border-brand/70 ring-1 ring-brand/40"
@@ -1005,9 +1050,10 @@ export default function MapView() {
             <DrawerTitle className="text-left">{t("map.list.title", locale)}</DrawerTitle>
           </DrawerHeader>
           <div className="max-h-[60vh] overflow-y-auto scroll-elegant px-4 pb-6">
+            {pagination}
             {loading ? (
               <LoadingState rows={3} />
-            ) : propertyList.length === 0 ? (
+            ) : mapError ? <p className="p-3 text-sm text-muted-foreground">{t("map.error.results", locale)}</p> : propertyList.length === 0 ? (
               <EmptyState title={t("map.list.empty", locale)} description={t("map.list.emptyHint", locale)} />
             ) : (
               <div className="space-y-3">
@@ -1016,7 +1062,7 @@ export default function MapView() {
                     key={p.id}
                     type="button"
                     onClick={() => {
-                      flyToItem("property", p.lat, p.lng);
+                      flyToItem("property", p.lat, p.lng, p.slug);
                       setListOpen(false);
                     }}
                     className={cn(
@@ -1025,7 +1071,7 @@ export default function MapView() {
                     )}
                   >
                     <div className="h-16 w-24 shrink-0 overflow-hidden rounded-md bg-sand">
-                      {p.cover && <img src={p.cover.url} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                      <PublicImage src={p.cover?.url} alt="" className="h-full w-full object-cover" fallback={<MapPin className="m-auto mt-5 h-5 w-5 text-brand" aria-hidden />} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold">{p.title}</p>

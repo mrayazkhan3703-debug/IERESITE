@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test, spyOn } from "bun:test";
 import { db } from "@/lib/db";
 import { autocomplete, rebuildIndex, reindexProperty, search } from "@/server/search/service";
 import { searchStateSchema } from "@/server/search/types";
@@ -217,5 +217,28 @@ describe("PostgreSQL search projection", () => {
 
     const staleCheck = await search(searchStateSchema.parse({ q: queries[0], listingType: "SALE" }));
     expect(staleCheck.results.map((item) => item.slug)).not.toContain(`${prefix}-zaffre-residence`);
+  });
+
+  test("expired canonical listings are excluded even before a projection refresh", async () => {
+    const listingId = `${ids.arabicProperty}-listing`;
+    await db.listing.update({ where: { id: listingId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    try {
+      const state = searchStateSchema.parse({ q: "zaffre", listingType: "SALE" });
+      const result = await mapClustersPostgres(state, 19);
+      expect(result.clusters.some((cluster) => cluster.listingId === listingId)).toBe(false);
+      expect((await autocomplete("الامارات")).some((item) => item.slug === `${prefix}-arabic-villa`)).toBe(false);
+      expect((await fetch(`${baseUrl}/api/map/selection?slug=${prefix}-arabic-villa`)).status).toBe(404);
+    } finally { await db.listing.update({ where: { id: listingId }, data: { expiresAt: null } }); }
+  });
+
+  test("projection query failure falls back to current canonical visibility", async () => {
+    const projectionFault = spyOn(db, "$queryRaw").mockRejectedValue(new Error("Synthetic projection query failure"));
+    try {
+      const result = await search(searchStateSchema.parse({ q: "zaffre", communities: ["pg-search-contract-community"], sort: "newest", pageSize: 48 }));
+      expect(result.degraded).toBe(true);
+      expect(result.results.map((row) => row.slug)).toContain(`${prefix}-arabic-villa`);
+      expect(result.results.map((row) => row.slug)).not.toContain(`${prefix}-zaffre-residence`);
+      expect(result.results.map((row) => row.slug)).not.toContain(`${prefix}-draft-residence`);
+    } finally { projectionFault.mockRestore(); }
   });
 });

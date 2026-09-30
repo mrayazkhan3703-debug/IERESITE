@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ReactMarkdown from "react-markdown";
+import { parseMarketReportEmbeds } from "@/lib/market-report-embeds";
+import { ReportDataEmbed } from "@/components/market/report-data-embed";
 import { ShieldCheck, Download } from "lucide-react";
 
 interface ReportDetail {
@@ -138,7 +140,7 @@ export default function MarketReportView({ slug }: { slug: string }) {
           )}
 
           <div className="report-body mt-8 prose prose-neutral max-w-none text-[15px] leading-relaxed">
-            <ReactMarkdown>{report.body}</ReactMarkdown>
+            {(() => { try { return parseMarketReportEmbeds(report.body).map((segment, i) => "embed" in segment ? <ReportDataEmbed key={i} embed={segment.embed} /> : <ReactMarkdown key={i}>{segment.markdown}</ReactMarkdown>); } catch { return <ReactMarkdown>{report.body}</ReactMarkdown>; } })()}
           </div>
         </article>
 

@@ -186,8 +186,16 @@ function quarterIndex(raw: string): number | null {
   return Number.isFinite(date.getTime()) ? date.getUTCFullYear() * 4 + Math.floor(date.getUTCMonth() / 3) : null;
 }
 
+const PUBLIC_DOCUMENT_CONDITION = Prisma.sql`EXISTS (
+  SELECT 1 FROM "Listing" current_listing JOIN "Property" current_property ON current_property.id = current_listing."propertyId"
+  WHERE current_listing.id = "SearchDocument"."listingId"
+    AND current_property."publicationStatus" = 'PUBLISHED' AND current_property."deletedAt" IS NULL
+    AND current_listing."publishedAt" <= CURRENT_TIMESTAMP
+    AND (current_listing."expiresAt" IS NULL OR current_listing."expiresAt" > CURRENT_TIMESTAMP)
+    AND current_listing."availabilityStatus" <> 'WITHDRAWN'
+)`;
 function whereFor(state: SearchState): { where: Prisma.Sql; score: Prisma.Sql } {
-  const conditions: Prisma.Sql[] = [Prisma.sql`"listingType" = ${state.listingType}`];
+  const conditions: Prisma.Sql[] = [PUBLIC_DOCUMENT_CONDITION, Prisma.sql`"listingType" = ${state.listingType}`];
   const normalizedQuery = normalizeSearchText(state.q ?? "");
   const score = normalizedQuery
     ? Prisma.sql`(
@@ -416,7 +424,7 @@ export async function autocompletePostgres(prefix: string, limit = 8): Promise<A
   if (!normalized) return [];
   const rows = await db.$queryRaw<SearchDocumentRow[]>(Prisma.sql`
     SELECT ${ROW_COLUMNS} FROM "SearchDocument"
-    WHERE "normalizedText" ILIKE ${`%${normalized}%`} OR "normalizedText" %> ${normalized}
+    WHERE ${PUBLIC_DOCUMENT_CONDITION} AND ("normalizedText" ILIKE ${`%${normalized}%`} OR "normalizedText" %> ${normalized})
     ORDER BY word_similarity(${normalized}, "normalizedText") DESC, "publishedAt" DESC NULLS LAST
     LIMIT 100
   `);

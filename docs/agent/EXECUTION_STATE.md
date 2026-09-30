@@ -6,7 +6,7 @@
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
 - Admin login MFA requirement: disabled at the owner's request with Render `AUTH_MFA_REQUIRED=false`; deploy `dep-datvi0rncjis73a6iq60` is live. Existing encrypted MFA enrollment data remains stored.
 - Last completed phase: Phase 09 (`d07444ae0b188599c831a4010600a5f8309d3133`)
-- Current phase status: Phases 02–09 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28. Phases 10–19 remain NOT_STARTED.
+- Current phase status: Phases 02–09 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28. Phases 10–11 are IN_PROGRESS pending hosted checks and deployment; Phases 12–19 remain NOT_STARTED.
 - Last verified migration: `20260930000200_career_details` (36/36 completed in hosted CI and shared Supabase)
 - Last verified implementation deployment: `d07444ae0b188599c831a4010600a5f8309d3133` / Render deploy `dep-daueu27f3r2c73ernrg0` (live; Phases 08–09 plus returning-visitor hydration correction)
 
@@ -66,8 +66,10 @@
 
 ## Next phase
 
+- 2026-09-30 continuation: Phases 10–11 implementation is in progress in the managed worktree. Added the canonical ImportRun market dataset fields, audited source registry, private immutable file snapshots, mapping/validation/diff/reject/apply pipeline, current-source metric rebuild, constrained reviewed report embeds, bounded canonical search fallback, public selection lookup, map URL scope/selection/pagination, indexing diagnostics and direct rebuild. Local typecheck, lint, build and focused tests pass; Docker-backed secret/integration/browser gates and deployment remain pending.
+
 - Next two phases: Phase 10 Market Intelligence operations/ingestion and Phase 11 Search/map production completion.
-- This run stops after verified Phases 08–09. Do not start a third phase; preserve the worker deferral and disabled live-provider gates.
+- This run stops after verified Phases 10–11. Do not start a third phase; preserve the worker deferral and disabled live-provider gates.
 
 ## Rollback
 

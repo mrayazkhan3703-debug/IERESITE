@@ -2159,6 +2159,9 @@ model ImportSource {
 
 model ImportRun {
   id                 String    @id @default(cuid())
+  datasetKind        String? // MARKET_TRANSACTION|MARKET_RENT; null for inventory imports
+  appliedAt          DateTime? @db.Timestamptz(3)
+  appliedBy          String?
   importSourceId     String
   status             String    @default("QUEUED") // QUEUED|RUNNING|SUCCEEDED|PARTIAL|FAILED|DRY_RUN
   inputFormat        String? // CSV|JSON; null for historical runs
@@ -2192,6 +2195,7 @@ model ImportRun {
   rents        MarketRent[]
 
   @@index([importSourceId, createdAt])
+  @@index([datasetKind, createdAt])
   @@index([status, createdAt])
 }
 

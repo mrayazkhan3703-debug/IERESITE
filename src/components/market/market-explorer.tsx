@@ -33,6 +33,7 @@ import { CommunityMetricChart } from "./community-metric-chart";
 import { MarketFilters, DEFAULT_FILTERS, filtersToQuery, filtersFromQuery, filtersToUrlParams, type MarketFilterState } from "./market-filters";
 import { exportMarketCsv } from "./csv-export";
 import { SourceDialogButton } from "./source-dialog";
+import { MarketRowSource } from "./row-source";
 import { formatMoney, formatNumber, formatDate } from "@/lib/money";
 import { t, localeOf } from "@/lib/i18n";
 import { useRoute, navigate } from "@/lib/router";
@@ -722,6 +723,7 @@ export function MarketExplorer({ variant }: { variant: "transactions" | "rents" 
                         ) : (
                           <span className="text-xs text-muted-foreground">{r.source}</span>
                         )}
+                        <MarketRowSource row={r} />
                       </dd>
                     </div>
                   </dl>
@@ -785,6 +787,7 @@ export function MarketExplorer({ variant }: { variant: "transactions" | "rents" 
                       ) : (
                         <span className="text-xs text-muted-foreground">{r.source}</span>
                       )}
+                      <MarketRowSource row={r} />
                     </td>
                   </tr>
                 ))}
