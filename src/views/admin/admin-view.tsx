@@ -799,7 +799,9 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
             {creating && communities.length === 0 && <p className="text-sm text-muted-foreground">Create a community before creating a property.</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button>
-              <Button type="submit" disabled={saving}>{saving ? "Saving…" : creating ? "Create draft property" : "Save changes"}</Button>
+              <Button type="submit" value="DRAFT" variant="outline" disabled={saving}>{saving ? "Saving…" : "Save draft"}</Button>
+              {!creating && <Button type="submit" disabled={saving}>Save changes</Button>}
+              <Button type="submit" value="PUBLISHED" disabled={saving}>Save &amp; publish</Button>
             </DialogFooter>
           </MediaForm>
         </DialogContent>
@@ -1412,7 +1414,7 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
               <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Published on Team page</span><span className="text-xs text-muted-foreground">No account or email verification required.</span></span><Switch checked={form.publicTeam} disabled={!form.active} onCheckedChange={publicTeam => setForm({ ...form, publicTeam })} /></label>
               <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Public advisor directory</span><span className="text-xs text-muted-foreground">A bio and active status are required.</span></span><Switch checked={form.publicAdvisor} disabled={!form.active} onCheckedChange={(publicAdvisor) => setForm({ ...form, publicAdvisor })} /></label>
             </div>}
-            <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving || (creating && !selectedUserId)}>{saving ? "Saving…" : creating ? "Create inactive profile" : "Save changes"}</Button></DialogFooter>
+            <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" value="DRAFT" variant="outline" disabled={saving}>{saving ? "Saving…" : "Save draft"}</Button>{!creating && <Button type="submit" disabled={saving}>Save changes</Button>}<Button type="submit" value="PUBLISH" disabled={saving}>Publish to Team</Button></DialogFooter>
           </MediaForm>
         </DialogContent>
       </Dialog>}
