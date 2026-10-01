@@ -11,6 +11,7 @@ import { aiBudgetDecision, aiProviderGateCode, AiProviderBlockedError, estimateA
 import { generateWithGemini, GeminiProviderError } from "./gemini-provider";
 import { aiRetryDelay } from "./retry-policy";
 import { requireTurnBudget } from "./turn-budget";
+import { aiReservationTransactionOptions } from "./reservation-budget";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -54,7 +55,7 @@ async function assertAiFeatureAvailable(provider: string) {
   }
 }
 
-async function reserveLiveAiUsage(provider: string, model: string, req: ChatRequest) {
+async function reserveLiveAiUsage(provider: string, model: string, req: ChatRequest, deadlineAt: number) {
   const config = getConfig();
   const promptCharacters = estimateAiPromptCharacters(req.messages);
   if (promptCharacters > config.AI_MAX_PROMPT_CHARS) {
@@ -100,7 +101,7 @@ async function reserveLiveAiUsage(provider: string, model: string, req: ChatRequ
         },
         select: { id: true, reservedTokens: true },
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, ...aiReservationTransactionOptions(deadlineAt) });
   } catch (error) {
     if (error instanceof AiProviderBlockedError) throw error;
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
@@ -154,7 +155,7 @@ class GeminiChatProvider implements ChatProvider {
     if (!apiKey) throw new GeminiProviderError("PROVIDER_CONFIG_MISSING", "GEMINI_API_KEY is required when AI_PROVIDER=gemini");
 
     const started = Date.now();
-    const reservation = await reserveLiveAiUsage(this.name, config.GEMINI_MODEL, req);
+    const reservation = await reserveLiveAiUsage(this.name, config.GEMINI_MODEL, req, deadline);
     try {
       requireTurnBudget(deadline);
       const result = await generateWithGemini({ ...req, maxTokens: config.AI_MAX_OUTPUT_TOKENS }, {
