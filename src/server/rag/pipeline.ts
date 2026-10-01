@@ -158,7 +158,7 @@ export async function rebuildDocumentIndex(documentId: string, expectedVersion?:
     const doc = await tx.ragDocument.findUnique({ where: { id: documentId }, include: { source: true } });
     signal?.throwIfAborted();
     if (!doc || (expectedVersion !== undefined && doc.version !== expectedVersion)) return false;
-    if (doc.status !== "ACTIVE" || !doc.approvedById || !isRagSourceRetrievable(doc.source)) {
+    if (doc.status !== "ACTIVE" || !doc.approvedById || !doc.approvedAt || !isRagSourceRetrievable(doc.source)) {
       await tx.ragChunk.deleteMany({ where: { documentId } });
       return false;
     }
@@ -184,21 +184,34 @@ export async function rebuildDocumentIndex(documentId: string, expectedVersion?:
   }, { isolationLevel: "Serializable" });
 }
 
-/** Reconcile every active document after its source is approved or revoked. */
-export async function reconcileRagSourceIndex(sourceId: string, signal?: AbortSignal): Promise<number> {
+/** Reconcile one bounded page; retain continuation work in the existing queue. */
+export async function reconcileRagSourceIndex(sourceId: string, signal?: AbortSignal, afterId?: string): Promise<number> {
   signal?.throwIfAborted();
-  const source = await db.ragSource.findUnique({ where: { id: sourceId }, include: { documents: { select: { id: true, version: true, status: true } } } });
+  const source = await db.ragSource.findUnique({ where: { id: sourceId } });
   if (!source) return 0;
-  const activeDocuments = source.documents.filter((document) => document.status === "ACTIVE");
   if (!isRagSourceRetrievable(source)) {
     signal?.throwIfAborted();
-    const result = await db.ragChunk.deleteMany({ where: { documentId: { in: source.documents.map((document) => document.id) } } });
+    const result = await db.ragChunk.deleteMany({ where: { document: { sourceId } } });
     return result.count;
   }
+  const documents = await db.ragDocument.findMany({
+    where: { sourceId, ...(afterId ? { id: { gt: afterId } } : {}) },
+    orderBy: { id: "asc" }, take: 26, select: { id: true, version: true },
+  });
   let indexed = 0;
-  for (const document of activeDocuments) {
+  for (const document of documents.slice(0, 25)) {
     signal?.throwIfAborted();
     if (await rebuildDocumentIndex(document.id, document.version, signal)) indexed += 1;
+  }
+  if (documents.length > 25) {
+    signal?.throwIfAborted();
+    const lastId = documents[24]!.id;
+    const idempotencyKey = `rag-source:${sourceId}:${source.updatedAt.toISOString()}:${lastId}`;
+    await db.jobRun.upsert({
+      where: { idempotencyKey }, update: {},
+      create: { jobKey: "rag.reconcile.source", idempotencyKey,
+        payloadJson: { sourceId, afterId: lastId }, maxAttempts: 3 },
+    });
   }
   return indexed;
 }
@@ -228,6 +241,8 @@ export async function retrieve(query: string, k = 4, localeInput = "en"): Promis
       embeddingVersion: LOCAL_EMBEDDING_VERSION,
       document: {
         status: "ACTIVE",
+        approvedById: { not: null },
+        approvedAt: { not: null },
         locale,
         source: {
           isActive: true,
@@ -239,6 +254,7 @@ export async function retrieve(query: string, k = 4, localeInput = "en"): Promis
       },
     },
     include: { document: { include: { source: true } } },
+    orderBy: [{ documentId: "asc" }, { sequence: "asc" }],
     take: 2_000,
   });
   const currentChunks = chunks.filter((chunk) => chunk.documentVersion === chunk.document.version);

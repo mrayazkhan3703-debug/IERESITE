@@ -14,8 +14,8 @@
 | 09 Careers + International governance | COMPLETE | `d07444ae0b188599c831a4010600a5f8309d3133` | Independent approval/publication, private restore, scheduling/source expiry and bilingual browser checks pass; live Admin/public routes verified |
 | 10 Market Intelligence operations | COMPLETE | `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` | CI 54/56, 37 migrations; registry/file mapping/private validation/review/apply/metrics/report embeds; live OWNER imports verified |
 | 11 Search + map production upgrade | COMPLETE | `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` | CI 56 passes 79 browser checks including EN/AR singleton pins; Render `dep-dauj52gu01pc738jhml0` live; direct rebuild, default pins, selection/reload and price/pin switching verified |
-| 12 AI Advisor + RAG | NOT_STARTED | — | — |
-| 13 Leads/CRM operations | NOT_STARTED | — | — |
+| 12 AI Advisor + RAG | IN_PROGRESS | candidate pending | Safe provider diagnostics, token accounting, bounded approved indexing; exact CI/live generation pending |
+| 13 Leads/CRM operations | IN_PROGRESS | candidate pending | Explicit external deferral, retained jobs, local capture/assignment; exact CI/live checks pending |
 | 14 SEO/routing/multilingual | NOT_STARTED | — | — |
 | 15 Analytics/data quality/observability | NOT_STARTED | — | — |
 | 16 Security/RBAC/privacy | NOT_STARTED | — | — |
@@ -23,4 +23,4 @@
 | 18 Performance/accessibility/full QA | NOT_STARTED | — | — |
 | 19 Production cleanup/cutover | NOT_STARTED | — | — |
 
-Exactly two phases are handled per normal run. A later run resumes the first `IN_PROGRESS` phase or takes the next two `NOT_STARTED` phases only.
+Owner-approved 2026-10-01 scope: finish inline media first, then Phases 12–19 in verified staged releases. External CRM synchronization and the paid worker remain deferred.

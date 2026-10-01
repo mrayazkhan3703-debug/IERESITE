@@ -1,3 +1,4 @@
+import { isSafeAiErrorCode } from "@/lib/operational-codes";
 import { getConfig } from "@/lib/config";
 import { resolveTrustedClientIp } from "@/server/security/ip-address";
 
@@ -55,6 +56,7 @@ const PHONE_PATTERN = /\+?\d[\d\s().-]{7,}\d/g;
 /** Redact sensitive event fields recursively and bound arbitrary log payloads. */
 export function redactLogData(data: Record<string, unknown>): Record<string, unknown> {
   function clean(value: unknown, key = "", depth = 0): unknown {
+    if (key === "errorCode" && isSafeAiErrorCode(value)) return value;
     if (SENSITIVE_LOG_KEY.test(key) && !(/tokens$/i.test(key) && typeof value === "number")) return "[REDACTED]";
     if (depth >= 4) return "[OMITTED]";
     if (typeof value === "string") {

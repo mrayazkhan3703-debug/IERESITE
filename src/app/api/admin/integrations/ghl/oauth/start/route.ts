@@ -1,3 +1,4 @@
+import { requireExternalCrmEnabled } from "@/server/crm/deferral";
 import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { apiHandler } from "@/server/api-handler";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export const POST = apiHandler(async () => {
   const actor = await requireGhlAdmin();
+  requireExternalCrmEnabled();
   const settings = ghlOAuthSettings(getConfig());
   const result = await beginGhlOAuth(new PrismaGhlOAuthStateStore(), actor, {
     installUrl: settings.installUrl,

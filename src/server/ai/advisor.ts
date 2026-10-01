@@ -21,6 +21,7 @@ import { HttpError } from "@/server/auth";
 import { aiConversationOwnerWhere } from "./session";
 import { isDisabledAdvisorAction } from "./action-policy";
 import { getChatProvider, type ChatMessage } from "./gateway";
+import { advisorFailureReply } from "./failure-reply";
 import { AiProviderBlockedError } from "./controls";
 import { advisorLocaleInstruction, extractArabicSearchCriteria } from "./locale";
 import { TOOLS, toolByName } from "./tools";
@@ -531,20 +532,7 @@ export async function advisorTurn(opts: {
     // Provider/exception messages may contain prompts, PII, URLs, or secret fragments.
     logEvent("ai.advisor_error", { error: "turn_failed", conversationId: opts.conversationId });
     fallback = true;
-    if (err instanceof AiProviderBlockedError) {
-      finalContent = err.code === "AI_KILL_SWITCH"
-        ? "The AI advisor is paused by an administrator. No model request was sent. You can still use the consultation form if you would like help."
-        : err.code === "AI_LIVE_DISABLED" || err.code === "AI_PROVIDER_NOT_APPROVED"
-          ? "Live AI is disabled in this environment. No model request was sent. You can still use the consultation form if you would like help."
-          : err.code === "AI_DAILY_REQUEST_LIMIT" || err.code === "AI_DAILY_TOKEN_LIMIT"
-            ? "The AI advisor has reached its configured daily usage limit. No model request was sent. Please try again after the limit resets or use the consultation form."
-            : err.code === "AI_PROMPT_TOO_LARGE"
-              ? "This conversation is too large for the configured AI request limit. Start a new chat or use the consultation form."
-              : "The AI advisor is busy or unavailable. No model request was sent. Please try again shortly or use the consultation form.";
-    } else {
-      finalContent =
-        "I'm having trouble reaching the assistant service right now. Your conversation is saved. You can retry in a moment, or submit a consultation request separately; this chat is not transferred automatically.";
-    }
+    finalContent = advisorFailureReply(err instanceof AiProviderBlockedError ? err.code : null, opts.locale ?? "en");
   }
 
   // persist assistant message

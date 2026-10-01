@@ -1,3 +1,5 @@
+import { externalCrmDeferred } from "@/server/crm/deferral";
+import { z } from "zod";
 import { NextResponse } from "next/server";
 import { apiHandler } from "@/server/api-handler";
 import { requirePermission } from "@/server/auth";
@@ -13,7 +15,7 @@ export const GET = apiHandler(async (req) => {
   const user = await requirePermission("integration:read");
   const config = getConfig();
   const url = new URL(req.url);
-  const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
+  const page = z.coerce.number().int().min(1).max(100000).parse(url.searchParams.get("page") ?? 1);
 
   const [records, reconciliation, connections, credential] = await Promise.all([
     db.crmSyncRecord.findMany({
@@ -24,19 +26,21 @@ export const GET = apiHandler(async (req) => {
       include: { lead: { include: { contact: { select: { name: true } } } } },
     }),
     crmReconciliation(user.roles.includes("OWNER") ? undefined : user.organizationId),
-    db.integrationConnection.findMany(),
+    db.integrationConnection.findMany({ select: { providerKey: true, displayName: true, status: true, lastCheckedAt: true } }),
     config.GHL_LOCATION_ID ? db.ghlOAuthCredential.findUnique({ where: { locationId: config.GHL_LOCATION_ID.trim() }, select: { updatedAt: true } }) : null,
   ]);
   let oauthReady = true;
   try { ghlOAuthSettings(config); } catch { oauthReady = false; }
 
   return NextResponse.json({
+    syncStatus: externalCrmDeferred(config) ? "DEFERRED" : "UNVERIFIED",
+    deferredReason: externalCrmDeferred(config) ? "External synchronization is deferred. Local leads and pending records are retained." : null,
     reconciliation,
     connections,
     ghl: {
       connected: credential !== null,
       oauthReady,
-      liveDeliveryEnabled: config.CRM_PROVIDER === "ghl" && config.CRM_LIVE_ENABLED,
+      liveDeliveryEnabled: config.CRM_PROVIDER === "ghl" && !externalCrmDeferred(config),
       locationConfigured: Boolean(config.GHL_LOCATION_ID?.trim()),
       connectedAt: credential?.updatedAt.toISOString() ?? null,
     },
@@ -46,6 +50,7 @@ export const GET = apiHandler(async (req) => {
       contactName: r.lead.contact.name,
       provider: r.provider,
       status: r.status,
+      effectiveStatus: externalCrmDeferred(config) && r.status !== "DELIVERED" ? "DEFERRED" : r.status,
       attempts: r.attempts,
       lastAttemptAt: r.lastAttemptAt?.toISOString() ?? null,
       nextRetryAt: r.nextRetryAt?.toISOString() ?? null,

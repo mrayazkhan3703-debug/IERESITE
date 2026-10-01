@@ -31,4 +31,10 @@ describe("structured event log redaction", () => {
     expect(safe.status).toBe("failure reported to [EMAIL] at [PHONE]");
     expect(JSON.stringify(safe)).toContain("[OMITTED]");
   });
+  it("allows only registered operational error codes through redaction", () => {
+    expect(redactLogData({ errorCode: "PROVIDER_OUTPUT_TRUNCATED", error: "private provider text" })).toEqual({ errorCode: "PROVIDER_OUTPUT_TRUNCATED", error: "[REDACTED]" });
+    expect(redactLogData({ errorCode: "untrusted private detail" }).errorCode).toBe("[REDACTED]");
+    expect(redactLogData({ errorCode: "PROVIDER_AUTH_FAILED secret suffix" }).errorCode).toBe("[REDACTED]");
+  });
+
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildGeminiRequest, generateWithGemini } from "@/server/ai/gemini-provider";
+import { buildGeminiRequest, generateWithGemini, GeminiProviderError } from "@/server/ai/gemini-provider";
 
 describe("Gemini provider adapter", () => {
   it("maps system, conversation, and tool messages into Gemini content roles", () => {
@@ -108,4 +108,43 @@ describe("Gemini provider adapter", () => {
       { apiKey: "test-key", model: "gemini-test-model", timeoutMs: 1000, fetchImpl }
     )).rejects.toThrow("no text candidate");
   });
+  it("uses bounded Gemini 3 thinking and never returns thought parts", async () => {
+    let body: Record<string, unknown> = {};
+    const result = await generateWithGemini({ messages: [{ role: "user", content: "Hello" }], maxTokens: 1024 }, {
+      apiKey: "test-key", model: "gemini-3.8-flash", timeoutMs: 1000,
+      fetchImpl: async (_input, init) => {
+        body = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "private thought", thought: true }, { text: "READY" }] } }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2, thoughtsTokenCount: 40 } }));
+      },
+    });
+    expect(body.generationConfig).toMatchObject({ maxOutputTokens: 1024, thinkingConfig: { thinkingLevel: "low" } });
+    expect(result.content).toBe("READY"); expect(result.completionTokens).toBe(42);
+  });
+
+  it("records usage when truncated output consists only of thinking", async () => {
+    let error: unknown;
+    try {
+      await generateWithGemini({ messages: [{ role: "user", content: "Hello" }] }, {
+        apiKey: "test-key", model: "gemini-3.8-flash", timeoutMs: 1000,
+        fetchImpl: async () => new Response(JSON.stringify({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: "unfinished private thought", thought: true }] } }], usageMetadata: { promptTokenCount: 10, totalTokenCount: 1034, thoughtsTokenCount: 1024 } })),
+      });
+    } catch (caught) { error = caught; }
+    expect(error).toBeInstanceOf(GeminiProviderError);
+    expect(error).toMatchObject({ code: "PROVIDER_OUTPUT_TRUNCATED", usage: { promptTokens: 10, completionTokens: 1024 } });
+    expect(String(error)).not.toContain("private thought");
+  });
+
+  it("classifies malformed, blocked, model and network failures without raw details", async () => {
+    for (const [code, fetchImpl] of [
+      ["PROVIDER_MODEL_UNAVAILABLE", async () => new Response("private missing model", { status: 404 })],
+      ["PROVIDER_RESPONSE_INVALID", async () => new Response("not JSON")],
+      ["PROVIDER_OUTPUT_BLOCKED", async () => new Response(JSON.stringify({ promptFeedback: { blockReason: "SAFETY" } }))],
+      ["PROVIDER_NETWORK_FAILED", async () => { throw new Error("private address and credential"); }],
+    ] as const) {
+      let error: unknown;
+      try { await generateWithGemini({ messages: [{ role: "user", content: "Hello" }] }, { apiKey: "test-key", model: "gemini-test-model", timeoutMs: 1000, fetchImpl }); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({ code }); expect(String(error)).not.toContain("private");
+    }
+  });
+
 });

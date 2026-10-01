@@ -1,3 +1,4 @@
+import { externalCrmDeferred } from "@/server/crm/deferral";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiHandler, jsonBody } from "@/server/api-handler";
@@ -76,7 +77,9 @@ export const GET = apiHandler(async (req) => {
             locale: l.context.locale,
           }
         : null,
-      crmStatus: l.crmSyncRecords[0]?.status ?? null,
+      localCaptureStatus: "SAVED",
+      externalSyncStatus: externalCrmDeferred() ? "DEFERRED" : "UNVERIFIED",
+      crmStatus: externalCrmDeferred() && l.crmSyncRecords[0]?.status !== "DELIVERED" ? "DEFERRED" : l.crmSyncRecords[0]?.status ?? null,
       crmAttempts: l.crmSyncRecords[0]?.attempts ?? 0,
       booking: l.booking ? { id: l.booking.id, reference: l.booking.reference, scheduledAt: l.booking.scheduledAt.toISOString(), status: l.booking.status, updatedAt: l.booking.updatedAt.toISOString() } : null,
       events: l.events.map((e) => ({ type: e.eventType, at: e.createdAt.toISOString() })),

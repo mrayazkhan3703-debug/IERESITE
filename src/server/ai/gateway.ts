@@ -8,7 +8,7 @@ import { getConfig } from "@/lib/config";
 import { logEvent } from "@/server/rate-limit";
 import { Prisma } from "@prisma/client";
 import { aiBudgetDecision, aiProviderGateCode, AiProviderBlockedError, estimateAiPromptCharacters, estimateAiReservationTokens } from "./controls";
-import { generateWithGemini } from "./gemini-provider";
+import { generateWithGemini, GeminiProviderError } from "./gemini-provider";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -71,6 +71,7 @@ async function reserveLiveAiUsage(provider: string, model: string, req: ChatRequ
       const usage = await tx.aiUsage.findMany({
         where: { createdAt: { gte: utcDayStart(now) } },
         select: { reservedTokens: true, promptTokens: true, completionTokens: true },
+        take: config.AI_DAILY_REQUEST_LIMIT + 1,
       });
       const budgetCode = aiBudgetDecision(
         usage,
@@ -106,7 +107,8 @@ async function reserveLiveAiUsage(provider: string, model: string, req: ChatRequ
   }
 }
 
-function safeProviderFailureCode(error: unknown): string {
+export function safeProviderFailureCode(error: unknown): string {
+  if (error instanceof GeminiProviderError) return error.code;
   const message = error instanceof Error ? error.message : "";
   if (message.includes("timed out")) return "PROVIDER_TIMEOUT";
   const status = message.match(/HTTP (\d{3})/)?.[1];
@@ -140,7 +142,7 @@ class GeminiChatProvider implements ChatProvider {
     const config = getConfig();
     await assertAiFeatureAvailable(this.name);
     const apiKey = config.GEMINI_API_KEY?.trim();
-    if (!apiKey) throw new Error("GEMINI_API_KEY is required when AI_PROVIDER=gemini");
+    if (!apiKey) throw new GeminiProviderError("PROVIDER_CONFIG_MISSING", "GEMINI_API_KEY is required when AI_PROVIDER=gemini");
 
     const started = Date.now();
     const reservation = await reserveLiveAiUsage(this.name, config.GEMINI_MODEL, req);
@@ -161,7 +163,7 @@ class GeminiChatProvider implements ChatProvider {
       return { ...result, costMicros: null };
     } catch (error) {
       const errorCode = safeProviderFailureCode(error);
-      await finishAiUsage(reservation, null, errorCode).catch(() => {});
+      await finishAiUsage(reservation, error instanceof GeminiProviderError ? error.usage : null, errorCode).catch(() => {});
       logEvent("ai.chat_failed", { provider: this.name, kind: req.meta?.kind, latencyMs: Date.now() - started, errorCode });
       throw error;
     }

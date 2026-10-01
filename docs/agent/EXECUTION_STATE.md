@@ -90,3 +90,14 @@
 - Safe source tag: `iere-wave1-baseline-20260928` -> `fb6ae2208d108d7cb57d8b52826201e85c608a61`.
 - DB note: all 37 migrations, including the 20260930 market import workflow migration, are applied to shared Supabase. Use forward fixes and never reset the shared database.
 - Workspace note: the original `F:\\IERE Website` checkout remains dirty and untouched. Wave 1 runs in the managed worktree at `C:\\Users\\mraya\\.codex\\worktrees\\production-recovery-wave1\\IERE Website`.
+
+
+## 2026-10-01 — Inline media and Advisor/lead release candidates
+
+- Latest owner instruction supersedes the prior two-phase stopping note: complete inline media, then Phases 12–19 in verified releases; external CRM and the paid worker stay deferred.
+- Media PR #5 is not deployed. Hosted browser checks exposed a Community payload mismatch (corrected) and a missing explicit Property availability choice in the new fixture (corrected). Exact complete CI and unpublished live R2 attachment verification remain required.
+- Phases 12–13 are IN_PROGRESS in `C:/Users/mraya/.codex/worktrees/release-advisor-1213`. Actual live Gemini CHAT failed with PROVIDER_FAILED and NL_SEARCH with PROVIDER_TIMEOUT on 2026-09-30; no provider-backed success is claimed.
+- Candidate extends Gemini typed safe error codes and bounded low thinking for Gemini 3, includes thinking usage in budget accounting, adds measured Admin readiness and approved-revision indexing (10 documents/15 seconds per Admin operation; source reconciliation pages of 25 retain continuation jobs), and localized public failure responses.
+- External CRM routes reject synchronization while deferred; local lead operations remain available. Deferred jobs retain their payload and scheduling without spending retries. Historical delivery is preserved and reconciliation counts use database aggregates.
+- Local TypeScript, complete ESLint, optimized webpack build and 269 isolated unit/contract tests pass. Standard Turbopack cannot build this local junction to another checkout's node_modules; hosted CI uses ordinary in-project dependencies. PostgreSQL/browser integration, exact candidate CI and live provider/storage verification remain pending.
+- No live environment change, synthetic published data, queue drain or worker provisioning occurred. Original dirty `F:/IERE Website` remains untouched.

@@ -4,7 +4,7 @@ import { apiHandler, jsonBody } from "@/server/api-handler";
 import { grantedAnalyticsSessionId } from "@/server/privacy/analytics-attribution";
 
 /** Lead submissions (leads + shared by other lead endpoints) */
-export async function handleLeadSubmit(req: Request) {
+async function handleLeadSubmit(req: Request) {
   const raw = await jsonBody<Record<string, unknown>>(req);
   const input = leadSubmitSchema.parse(raw);
   const result = await submitLead(input, { attributionSessionId: await grantedAnalyticsSessionId(req) });

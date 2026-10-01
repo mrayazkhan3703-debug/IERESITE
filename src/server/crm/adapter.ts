@@ -1,3 +1,5 @@
+import { crmDeliveryDeferred, externalCrmDeferred } from "./deferral";
+import { JobDeferredError } from "@/server/jobs/deferred";
 /**
  * CRM integration adapter (Q16, blueprint PART E). Live credentials unavailable
  * → BLOCKED_LIVE_CRM_CREDENTIALS. The adapter boundary, retry/DLQ/reconciliation
@@ -135,6 +137,7 @@ class HubSpotCrmAdapter implements CrmAdapter {
 function getAdapter(): CrmAdapter {
   const config = getConfig();
   const provider = config.CRM_PROVIDER;
+  if (crmDeliveryDeferred(config)) throw new JobDeferredError();
   switch (provider) {
     case "ghl": {
       if (!config.CRM_LIVE_ENABLED) throw new Error("GHL delivery is disabled (set CRM_LIVE_ENABLED=true only after verified setup)");
@@ -262,8 +265,12 @@ export async function deliverLeadToCrm(leadId: string, options: { forceAssignmen
         },
       });
 
-  const adapter = getAdapter();
+  if (crmDeliveryDeferred()) {
+    await db.crmSyncRecord.update({ where: { id: record.id }, data: { status: "DEFERRED", lastError: "CRM_SYNC_DEFERRED", nextRetryAt: null } });
+    throw new JobDeferredError();
+  }
   try {
+    const adapter = getAdapter();
     options.signal?.throwIfAborted();
     const { externalId, response } = await adapter.deliver(payload, idempotencyKey, options.signal);
     await db.crmSyncRecord.update({
@@ -328,18 +335,18 @@ export async function syncLeadAssignmentToCrm(leadId: string, signal?: AbortSign
   ]);
   if (!lead) throw new Error(`Lead ${leadId} not found`);
   if (!existing || existing.provider !== "ghl" || !existing.externalId) return;
-  if (!["DELIVERED", "FAILED", "RETRYING", "DEAD"].includes(existing.status)) return;
+  if (!["DELIVERED", "FAILED", "RETRYING", "DEAD", "DEFERRED"].includes(existing.status)) return;
 
   const lastPayload = parseJson<CrmLeadPayload | null>(existing.payloadJson, null);
   const previousOwnerAgentId = lastPayload?.assignment?.ownerAgentId ?? null;
   if (shouldSkipLeadAssignmentSync(previousOwnerAgentId, lead.ownerAgentId, existing.status)) return;
 
-  const reconciliationRequired = async (reason: string) => {
+  const reconciliationRequired = async (reason: string, deferred = false) => {
     const at = new Date();
     await db.$transaction(async (tx) => {
       await tx.crmSyncRecord.update({
         where: { id: existing.id },
-        data: { status: "FAILED", lastError: reason, lastAttemptAt: at, nextRetryAt: null },
+        data: { status: deferred ? "DEFERRED" : "FAILED", lastError: reason, lastAttemptAt: deferred ? existing.lastAttemptAt : at, nextRetryAt: null },
       });
       await tx.leadEvent.create({
         data: {
@@ -356,9 +363,9 @@ export async function syncLeadAssignmentToCrm(leadId: string, signal?: AbortSign
     await reconciliationRequired("GHL owner removal was not sent; provider unassignment semantics require verification.");
     return;
   }
-  if (!config.CRM_LIVE_ENABLED) {
-    await reconciliationRequired("IERE owner changed, but GHL assignment sync is disabled by server configuration.");
-    return;
+  if (externalCrmDeferred(config)) {
+    await reconciliationRequired("IERE owner changed; external CRM sync is deferred and reconciliation is retained.", true);
+    throw new JobDeferredError();
   }
 
   await deliverLeadToCrm(leadId, { forceAssignmentReconcile: true, signal });
@@ -380,19 +387,19 @@ export async function syncLeadStatusToCrm(leadId: string, signal?: AbortSignal):
   if (!lead) throw new Error(`Lead ${leadId} not found`);
   // A pending initial delivery will create the opportunity using the current status.
   if (!existing || existing.provider !== "ghl" || !existing.externalId) return;
-  if (!["DELIVERED", "FAILED", "RETRYING", "DEAD"].includes(existing.status)) return;
+  if (!["DELIVERED", "FAILED", "RETRYING", "DEAD", "DEFERRED"].includes(existing.status)) return;
 
   const previousResponse = parseJson<Record<string, unknown>>(existing.responseJson, {});
   const previousStatus = typeof previousResponse.opportunityStatus === "string" ? previousResponse.opportunityStatus : null;
   const mappedStatus: GhlOpportunityStatus | null = mapIereLeadStatusToGhl(lead.status);
   if (mappedStatus && shouldSkipLeadStatusSync(previousStatus, mappedStatus, existing.status)) return;
 
-  const reconciliationRequired = async (reason: string) => {
+  const reconciliationRequired = async (reason: string, deferred = false) => {
     const at = new Date();
     await db.$transaction(async (tx) => {
       await tx.crmSyncRecord.update({
         where: { id: existing.id },
-        data: { organizationId: lead.organizationId, status: "FAILED", lastError: reason, lastAttemptAt: at, nextRetryAt: null },
+        data: { organizationId: lead.organizationId, status: deferred ? "DEFERRED" : "FAILED", lastError: reason, lastAttemptAt: deferred ? existing.lastAttemptAt : at, nextRetryAt: null },
       });
       await tx.leadEvent.create({
         data: {
@@ -409,9 +416,9 @@ export async function syncLeadStatusToCrm(leadId: string, signal?: AbortSignal):
     await reconciliationRequired("IERE lead status has no approved GHL opportunity-status mapping; manual reconciliation is required.");
     return;
   }
-  if (!config.CRM_LIVE_ENABLED) {
-    await reconciliationRequired("IERE lead status changed, but GHL status sync is disabled by server configuration.");
-    return;
+  if (externalCrmDeferred(config)) {
+    await reconciliationRequired("IERE lead status changed; external CRM sync is deferred and reconciliation is retained.", true);
+    throw new JobDeferredError();
   }
 
   try {
@@ -475,18 +482,17 @@ export async function syncLeadStatusToCrm(leadId: string, signal?: AbortSignal):
 /** Reconciliation report (admin) */
 export async function crmReconciliation(organizationId?: string | null) {
   const where = organizationId === undefined ? {} : { organizationId: organizationId ?? "__no_organization__" };
-  const records = await db.crmSyncRecord.findMany({ where, orderBy: { createdAt: "desc" }, take: 500 });
-  const leads = await db.lead.count({ where });
-  const delivered = records.filter((r) => r.status === "DELIVERED").length;
-  const pending = records.filter((r) => r.status === "PENDING" || r.status === "RETRYING").length;
-  const dead = records.filter((r) => r.status === "DEAD" || r.status === "FAILED").length;
+  const [groups, leads] = await Promise.all([
+    db.crmSyncRecord.groupBy({ by: ["status"], where, _count: { _all: true } }),
+    db.lead.count({ where }),
+  ]);
+  const count = (statuses: string[]) => groups.filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + row._count._all, 0);
+  const delivered = count(["DELIVERED"]), pending = count(["PENDING", "RETRYING"]);
+  const deferred = count(["DEFERRED"]), dead = count(["DEAD", "FAILED"]);
+  const syncRecords = count(groups.map((row) => row.status));
   return {
-    provider: getConfig().CRM_PROVIDER,
-    totalLeads: leads,
-    syncRecords: records.length,
-    delivered,
-    pending,
-    dead,
-    unreconciled: Math.max(0, leads - delivered - pending - dead),
+    provider: getConfig().CRM_PROVIDER, measuredAt: new Date().toISOString(),
+    totalLeads: leads, syncRecords, delivered, pending, deferred, dead,
+    unreconciled: Math.max(0, leads - syncRecords),
   };
 }

@@ -1,3 +1,4 @@
+import { JobDeferredError, releaseDeferredJob } from "./deferred";
 /**
  * Transactional outbox + job runner (ADR-007).
  * Domain events are written to outbox_events in the same transaction as business
@@ -197,7 +198,7 @@ export const JOB_HANDLERS: JobHandler[] = [
       const { reconcileRagSourceIndex } = await import("@/server/rag/pipeline");
       const sourceId = String(payload.sourceId ?? "");
       if (!sourceId) throw new Error("sourceId required");
-      await reconcileRagSourceIndex(sourceId, signal);
+      await reconcileRagSourceIndex(sourceId, signal, typeof payload.afterId === "string" ? payload.afterId : undefined);
     },
   },
   {
@@ -565,6 +566,11 @@ export async function processJobQueue(signal?: AbortSignal) {
         await releaseJobAfterShutdown(db, job.id, WORKER_ID);
         logEvent("job.cancelled", { ...identity, key: job.jobKey, reason: "shutdown" });
         return;
+      }
+      if (err instanceof JobDeferredError) {
+        await releaseDeferredJob(db, job.id, WORKER_ID, err);
+        logEvent("job.deferred", { ...identity, key: job.jobKey, reason: err.code });
+        continue;
       }
       const attempts = job.attempts;
       const isTimeout = err instanceof JobCancellationError && err.kind === "timeout";

@@ -2132,6 +2132,7 @@ function CrmSection({ canManage }: { canManage: boolean }) {
   const rec = data.reconciliation as Record<string, number | string>;
   const records = (data.records as Record<string, unknown>[]) ?? [];
   const ghl = data.ghl as Record<string, boolean | string | null>;
+  const deferred = data.syncStatus === "DEFERRED";
   const startConnect = async () => {
     setAction("connect");
     try {
@@ -2182,6 +2183,7 @@ function CrmSection({ canManage }: { canManage: boolean }) {
         </p>
       </header>
 
+      {deferred && <p role="status" className="rounded-xl border p-4"><strong>CRM sync: Deferred.</strong> Local lead capture, consent, attribution and assignment remain available. Pending sync records are retained. <a className="underline" href="/admin/leads">Open local leads</a></p>}
       <section className="rounded-xl border border-border/70 bg-card p-5" aria-labelledby="ghl-connection-title">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
@@ -2196,7 +2198,7 @@ function CrmSection({ canManage }: { canManage: boolean }) {
             </p>
           </div>
           {canManage ? <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={startConnect} disabled={!ghl.oauthReady || action !== null}>
+            <Button type="button" onClick={startConnect} disabled={deferred || !ghl.oauthReady || action !== null}>
               {action === "connect" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
               {ghl.connected ? "Reconnect GHL" : "Connect GHL"}
             </Button>
@@ -2228,9 +2230,9 @@ function CrmSection({ canManage }: { canManage: boolean }) {
                 placeholder="GHL user ID"
                 value={mappingInputs[agent.id] ?? agent.mapping?.ghlUserId ?? ""}
                 onChange={(event) => setMappingInputs((current) => ({ ...current, [agent.id]: event.target.value }))}
-                disabled={!canManage || !ghl.connected || mappingAction !== null}
+                disabled={deferred || !canManage || !ghl.connected || mappingAction !== null}
               />
-              {canManage ? <Button type="button" variant="outline" onClick={() => verifyAgent(agent.id)} disabled={!ghl.connected || mappingAction !== null}>
+              {canManage ? <Button type="button" variant="outline" onClick={() => verifyAgent(agent.id)} disabled={deferred || !ghl.connected || mappingAction !== null}>
                 {mappingAction === agent.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : <ShieldCheck className="mr-2 h-4 w-4" aria-hidden />}
                 Verify & save
               </Button> : null}
@@ -2279,7 +2281,7 @@ function CrmSection({ canManage }: { canManage: boolean }) {
                 </td>
                 <td className="p-3">
                   <span className={cn("text-xs font-semibold", String(r.status) === "DELIVERED" ? "text-success" : String(r.status) === "DEAD" ? "text-destructive" : "text-warning")}>
-                    {String(r.status)}
+                    {String(r.effectiveStatus ?? r.status)}
                   </span>
                 </td>
                 <td className="num p-3">{String(r.attempts)}</td>

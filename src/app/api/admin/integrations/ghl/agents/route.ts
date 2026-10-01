@@ -1,3 +1,4 @@
+import { requireExternalCrmEnabled } from "@/server/crm/deferral";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -66,6 +67,7 @@ const verifySchema = z.object({
 
 export const POST = apiHandler(async (request) => {
   const actor = await requireGhlAdmin();
+  requireExternalCrmEnabled();
   const input = verifySchema.parse(await jsonBody<z.infer<typeof verifySchema>>(request));
   const config = getConfig();
   const settings = ghlOAuthSettings(config);

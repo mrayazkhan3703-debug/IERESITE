@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdvisorOperations } from "./shared/advisor-operations";
 import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { toast } from "sonner";
 import { BookOpenCheck, Check, Clock3, FilePlus2, Plus, RefreshCcw, Save, ShieldAlert, X } from "lucide-react";
 
 type RagDocumentRow = {
-  id: string; sourceId: string; title: string; slug: string; locale: string; content: string;
+  id: string; sourceId: string; title: string; slug: string; locale: string;
   status: string; version: number; createdById: string | null; updatedById: string | null;
   approvedById: string | null; approvedAt: string | null; updatedAt: string;
   chunkCount: number; revisionCount: number;
@@ -21,7 +22,7 @@ type RagSourceRow = {
   id: string; title: string; sourceType: string; canonicalUrl: string | null; publisher: string | null;
   version: string | null; trustTier: string; verifiedAt: string | null; freshnessReviewDueAt: string | null;
   isActive: boolean; isApproved: boolean; createdById: string | null; updatedById: string | null;
-  approvedById: string | null; approvedAt: string | null; updatedAt: string; documents: RagDocumentRow[];
+  approvedById: string | null; approvedAt: string | null; updatedAt: string; documents: RagDocumentRow[]; documentsTruncated: boolean; documentCount: number;
 };
 
 type SourceDraft = {
@@ -47,12 +48,15 @@ export function KnowledgeBaseSection({ canEdit, canReview }: { canEdit: boolean;
   const [sourceDraft, setSourceDraft] = React.useState<SourceDraft>(EMPTY_SOURCE);
   const [editingDocumentId, setEditingDocumentId] = React.useState<string | null>(null);
   const [documentDraft, setDocumentDraft] = React.useState<DocumentDraft>(EMPTY_DOCUMENT);
+  const [editingDocumentVersion, setEditingDocumentVersion] = React.useState<string | null>(null);
+  const [sourcesTruncated, setSourcesTruncated] = React.useState(false);
   const [reviewNote, setReviewNote] = React.useState("");
 
   const load = React.useCallback(async () => {
     try {
-      const result = await api.get<{ sources: RagSourceRow[] }>("/api/admin/rag");
+      const result = await api.get<{ sources: RagSourceRow[]; sourcesTruncated: boolean }>("/api/admin/rag");
       setSources(result.sources);
+      setSourcesTruncated(result.sourcesTruncated);
       setError(false);
     } catch {
       setError(true);
@@ -123,11 +127,11 @@ export function KnowledgeBaseSection({ canEdit, canReview }: { canEdit: boolean;
     void withBusy(async () => {
       if (editingDocumentId) {
         const current = sources?.flatMap((source) => source.documents).find((document) => document.id === editingDocumentId);
-        if (!current) throw new Error("Document is no longer available. Refresh and retry.");
+        if (!current || !editingDocumentVersion) throw new Error("Document is no longer available. Refresh and retry.");
         await api.patch(`/api/admin/rag/documents/${encodeURIComponent(current.id)}`, {
-          ...documentPayload(), expectedUpdatedAt: current.updatedAt,
+          ...documentPayload(), expectedUpdatedAt: editingDocumentVersion,
         });
-        toast.success("Document saved as a draft; prior approval and indexed chunks were cleared.");
+        toast.success("Document saved as a draft; prior approval and stored chunks (see current index diagnostics) were cleared.");
       } else {
         await api.post("/api/admin/rag/documents", documentPayload());
         toast.success("Document draft created. It must be reviewed before retrieval.");
@@ -138,13 +142,15 @@ export function KnowledgeBaseSection({ canEdit, canReview }: { canEdit: boolean;
     });
   };
 
-  const startDocumentEdit = (document: RagDocumentRow) => {
-    setEditingDocumentId(document.id);
+  const startDocumentEdit = (document: RagDocumentRow) => void withBusy(async () => {
+    const { document: current } = await api.get<{ document: RagDocumentRow & { content: string } }>(`/api/admin/rag/documents/${encodeURIComponent(document.id)}`);
+    setEditingDocumentId(current.id);
+    setEditingDocumentVersion(current.updatedAt);
     setDocumentDraft({
-      sourceId: document.sourceId, title: document.title, slug: document.slug,
-      locale: document.locale === "ar" ? "ar" : "en", content: document.content, changeNote: "",
+      sourceId: current.sourceId, title: current.title, slug: current.slug,
+      locale: current.locale === "ar" ? "ar" : "en", content: current.content, changeNote: "",
     });
-  };
+  });
 
   const reviewDocument = (document: RagDocumentRow, decision: "APPROVE" | "CHANGES_REQUESTED" | "RETIRE" | "RESTORE") => void withBusy(async () => {
     await api.post(`/api/admin/rag/documents/${encodeURIComponent(document.id)}/review`, {
@@ -175,6 +181,7 @@ export function KnowledgeBaseSection({ canEdit, canReview }: { canEdit: boolean;
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={busy}><RefreshCcw className="mr-2 h-4 w-4" />Refresh</Button>
       </header>
 
+      <AdvisorOperations canManage={canReview} />
       <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
         <p>Nothing is available to the advisor until both the source and document are approved. Do not add customer contact data. No live external source verification is performed here.</p>
@@ -200,6 +207,7 @@ export function KnowledgeBaseSection({ canEdit, canReview }: { canEdit: boolean;
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Sources · {sources.length}</h2>
+        {sourcesTruncated && <p className="text-sm text-muted-foreground">Showing the 100 most recently updated sources. The paginated index diagnostics includes all knowledge documents.</p>}
         {sources.length === 0 ? <EmptyState title="No knowledge sources" description="Register a real source only after you have the source material and provenance to review." /> : sources.map((source) => (
           <article key={source.id} className="rounded-xl border border-border/70 p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -210,10 +218,11 @@ export function KnowledgeBaseSection({ canEdit, canReview }: { canEdit: boolean;
               </div>
               <div className="flex flex-wrap gap-2">{canEdit && <Button size="sm" variant="outline" onClick={() => startSourceEdit(source)} disabled={busy}>Edit</Button>}{canReview && source.isApproved && <Button size="sm" variant="outline" onClick={() => reviewSource(source, "REVOKE")} disabled={busy || !reviewNote.trim()}><X className="mr-1 h-3.5 w-3.5" />Revoke</Button>}{canReview && !source.isApproved && <Button size="sm" onClick={() => reviewSource(source, "APPROVE")} disabled={busy || !reviewNote.trim() || !source.isActive || !isFreshSource(source) || source.trustTier === "UNVERIFIED"}><Check className="mr-1 h-3.5 w-3.5" />Approve</Button>}</div>
             </div>
+            {source.documentsTruncated && <p className="mt-3 text-sm text-muted-foreground">Showing {source.documents.length} of {source.documentCount} documents. Use index diagnostics to inspect later documents.</p>}
             {source.documents.length > 0 && <div className="mt-4 space-y-2 border-t border-border/70 pt-3">{source.documents.map((document) => (
               <div key={document.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-secondary/30 p-3">
-                <div className="min-w-0"><p className="truncate text-sm font-medium">{document.title} <span className="text-xs text-muted-foreground">· {document.locale.toUpperCase()} · v{document.version}</span></p><p className="text-xs text-muted-foreground">{document.status} · {document.chunkCount} indexed chunks · {document.revisionCount} revisions · {source.title}</p></div>
-                <div className="flex flex-wrap gap-2">{canEdit && document.status !== "RETIRED" && <Button size="sm" variant="outline" onClick={() => startDocumentEdit(document)} disabled={busy}>Edit</Button>}{canReview && document.status === "DRAFT" && source.isApproved && isFreshSource(source) && <Button size="sm" onClick={() => reviewDocument(document, "APPROVE")} disabled={busy || !reviewNote.trim()}><BookOpenCheck className="mr-1 h-3.5 w-3.5" />Approve & index</Button>}{canReview && document.status === "DRAFT" && <Button size="sm" variant="outline" onClick={() => reviewDocument(document, "CHANGES_REQUESTED")} disabled={busy || !reviewNote.trim()}>Request changes</Button>}{canReview && document.status !== "RETIRED" && <Button size="sm" variant="ghost" onClick={() => reviewDocument(document, "RETIRE")} disabled={busy || !reviewNote.trim()}>Retire</Button>}{canReview && document.status === "RETIRED" && <Button size="sm" variant="outline" onClick={() => reviewDocument(document, "RESTORE")} disabled={busy || !reviewNote.trim()}>Restore as draft</Button>}</div>
+                <div className="min-w-0"><p className="truncate text-sm font-medium">{document.title} <span className="text-xs text-muted-foreground">· {document.locale.toUpperCase()} · v{document.version}</span></p><p className="text-xs text-muted-foreground">{document.status} · {document.chunkCount} stored chunks (see current index diagnostics) · {document.revisionCount} revisions · {source.title}</p></div>
+                <div className="flex flex-wrap gap-2">{canEdit && document.status !== "RETIRED" && <Button size="sm" variant="outline" onClick={() => startDocumentEdit(document)} disabled={busy}>Edit</Button>}{canReview && document.status === "DRAFT" && source.isApproved && isFreshSource(source) && <Button size="sm" onClick={() => reviewDocument(document, "APPROVE")} disabled={busy || !reviewNote.trim()}><BookOpenCheck className="mr-1 h-3.5 w-3.5" />Approve revision</Button>}{canReview && document.status === "DRAFT" && <Button size="sm" variant="outline" onClick={() => reviewDocument(document, "CHANGES_REQUESTED")} disabled={busy || !reviewNote.trim()}>Request changes</Button>}{canReview && document.status !== "RETIRED" && <Button size="sm" variant="ghost" onClick={() => reviewDocument(document, "RETIRE")} disabled={busy || !reviewNote.trim()}>Retire</Button>}{canReview && document.status === "RETIRED" && <Button size="sm" variant="outline" onClick={() => reviewDocument(document, "RESTORE")} disabled={busy || !reviewNote.trim()}>Restore as draft</Button>}</div>
               </div>
             ))}</div>}
           </article>

@@ -1,3 +1,4 @@
+import { type SafeAiErrorCode } from "@/lib/operational-codes";
 /** Google Gemini REST adapter. This module does not log prompts, responses, or API keys. */
 
 export interface GeminiChatMessage {
@@ -9,6 +10,7 @@ export interface GeminiChatRequest {
   messages: GeminiChatMessage[];
   maxTokens?: number;
   temperature?: number;
+  thinkingLevel?: "low" | "medium" | "high";
 }
 
 export interface GeminiChatResult {
@@ -30,7 +32,7 @@ type GeminiContent = { role: "user" | "model"; parts: { text: string }[] };
 export function buildGeminiRequest(req: GeminiChatRequest): {
   systemInstruction?: { parts: { text: string }[] };
   contents: GeminiContent[];
-  generationConfig: { maxOutputTokens: number; temperature?: number };
+  generationConfig: { maxOutputTokens: number; temperature?: number; thinkingConfig?: { thinkingLevel: "low" | "medium" | "high" } };
 } {
   const systemText = req.messages
     .filter((message) => message.role === "system")
@@ -56,6 +58,7 @@ export function buildGeminiRequest(req: GeminiChatRequest): {
     contents,
     generationConfig: {
       maxOutputTokens: req.maxTokens ?? 1024,
+      ...(req.thinkingLevel ? { thinkingConfig: { thinkingLevel: req.thinkingLevel } } : {}),
       ...(req.temperature === undefined ? {} : { temperature: req.temperature }),
     },
   };
@@ -70,15 +73,34 @@ function usageCount(usage: Record<string, unknown> | null, field: string): numbe
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
+export class GeminiProviderError extends Error {
+  constructor(readonly code: SafeAiErrorCode, message: string,
+    readonly usage: { promptTokens: number | null; completionTokens: number | null } | null = null) {
+    super(message); this.name = "GeminiProviderError";
+  }
+}
+function providerUsage(payload: Record<string, unknown> | null) {
+  const usage = record(payload?.usageMetadata);
+  const output = usageCount(usage, "candidatesTokenCount");
+  const thoughts = usageCount(usage, "thoughtsTokenCount");
+  const prompt = usageCount(usage, "promptTokenCount");
+  const total = usageCount(usage, "totalTokenCount");
+  // Use the provider total when present; missing counts stay unknown so budget
+  // reservations are retained rather than treating unreported usage as zero.
+  const completion = prompt !== null && total !== null && total >= prompt
+    ? total - prompt : output === null ? null : output + (thoughts ?? 0);
+  return { promptTokens: prompt, completionTokens: completion };
+}
+
 export async function generateWithGemini(
   req: GeminiChatRequest,
   options: GeminiOptions
 ): Promise<GeminiChatResult> {
   const apiKey = options.apiKey.trim();
-  if (!apiKey) throw new Error("GEMINI_API_KEY is required when AI_PROVIDER=gemini");
-  if (!/^[A-Za-z0-9._-]+$/.test(options.model)) throw new Error("GEMINI_MODEL contains unsupported characters");
+  if (!apiKey) throw new GeminiProviderError("PROVIDER_CONFIG_MISSING", "GEMINI_API_KEY is required when AI_PROVIDER=gemini");
+  if (!/^[A-Za-z0-9._-]+$/.test(options.model)) throw new GeminiProviderError("PROVIDER_CONFIG_MISSING", "GEMINI_MODEL contains unsupported characters");
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0) {
-    throw new Error("AI_REQUEST_TIMEOUT_MS must be a positive integer");
+    throw new GeminiProviderError("PROVIDER_CONFIG_MISSING", "AI_REQUEST_TIMEOUT_MS must be a positive integer");
   }
 
   const controller = new AbortController();
@@ -93,16 +115,16 @@ export async function generateWithGemini(
           "content-type": "application/json",
           "x-goog-api-key": apiKey,
         },
-        body: JSON.stringify(buildGeminiRequest(req)),
+        body: JSON.stringify(buildGeminiRequest({ ...req, ...(/^gemini-3[.-]/.test(options.model) ? { thinkingLevel: req.thinkingLevel ?? "low" } : {}) })),
         signal: controller.signal,
       }
     );
 
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error(`Gemini API authentication/authorization failed (HTTP ${response.status})`);
-      }
-      throw new Error(`Gemini API request failed (HTTP ${response.status})`);
+      const code: SafeAiErrorCode = response.status === 401 || response.status === 403 ? "PROVIDER_AUTH_FAILED"
+        : response.status === 429 ? "PROVIDER_RATE_LIMITED" : response.status === 404 ? "PROVIDER_MODEL_UNAVAILABLE"
+        : response.status >= 500 ? "PROVIDER_UNAVAILABLE" : "PROVIDER_REQUEST_INVALID";
+      throw new GeminiProviderError(code, `Gemini API request failed (HTTP ${response.status})`);
     }
 
     let payload: Record<string, unknown> | null;
@@ -112,27 +134,31 @@ export async function generateWithGemini(
       payload = null;
     }
 
+    if (!payload) throw new GeminiProviderError("PROVIDER_RESPONSE_INVALID", "Gemini returned an invalid response");
+    const usage = providerUsage(payload);
     const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
     const firstCandidate = record(candidates[0]);
+    if (firstCandidate?.finishReason === "MAX_TOKENS") throw new GeminiProviderError("PROVIDER_OUTPUT_TRUNCATED", "Gemini response reached its token limit", usage);
+    const blocked = record(payload.promptFeedback)?.blockReason || ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT"].includes(String(firstCandidate?.finishReason));
+    if (blocked) throw new GeminiProviderError("PROVIDER_OUTPUT_BLOCKED", "Gemini response was blocked", usage);
     const candidateContent = record(firstCandidate?.content);
     const parts = Array.isArray(candidateContent?.parts) ? candidateContent.parts : [];
     const content = parts
       .map(record)
+      .filter((part) => part?.thought !== true)
       .map((part) => part?.text)
       .filter((part): part is string => typeof part === "string")
       .join("");
-    if (!content.trim()) throw new Error("Gemini returned no text candidate");
-
-    const usage = record(payload?.usageMetadata);
+    if (!content.trim()) throw new GeminiProviderError("PROVIDER_OUTPUT_EMPTY", "Gemini returned no text candidate", usage);
     return {
       content,
-      promptTokens: usageCount(usage, "promptTokenCount"),
-      completionTokens: usageCount(usage, "candidatesTokenCount"),
+      ...usage,
       model: options.model,
     };
   } catch (error) {
-    if (controller.signal.aborted) throw new Error("Gemini API request timed out");
-    throw error;
+    if (controller.signal.aborted) throw new GeminiProviderError("PROVIDER_TIMEOUT", "Gemini API request timed out");
+    if (error instanceof GeminiProviderError) throw error;
+    throw new GeminiProviderError("PROVIDER_NETWORK_FAILED", "Gemini connection failed");
   } finally {
     clearTimeout(timeout);
   }

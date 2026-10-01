@@ -14,19 +14,28 @@ export const GET = apiHandler(async () => {
     orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
     take: 100,
     include: {
+      _count: { select: { documents: true } },
       documents: {
+        take: 100,
         orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
-        include: { _count: { select: { chunks: true, revisions: true } } },
+        select: { id: true, sourceId: true, title: true, slug: true, locale: true,
+          status: true, version: true, createdById: true, updatedById: true,
+          approvedById: true, approvedAt: true, createdAt: true, updatedAt: true,
+          _count: { select: { chunks: true, revisions: true } } },
       },
     },
   });
-  return NextResponse.json({ sources: sources.map((source) => ({
+  const total = await db.ragSource.count();
+  return NextResponse.json({ total, sourcesTruncated: total > sources.length, sources: sources.map((source) => ({
     ...source,
     verifiedAt: source.verifiedAt?.toISOString() ?? null,
     freshnessReviewDueAt: source.freshnessReviewDueAt?.toISOString() ?? null,
     approvedAt: source.approvedAt?.toISOString() ?? null,
     createdAt: source.createdAt.toISOString(),
     updatedAt: source.updatedAt.toISOString(),
+    documentsTruncated: source._count.documents > source.documents.length,
+    documentCount: source._count.documents,
+    _count: undefined,
     documents: source.documents.map((document) => ({
       ...document,
       approvedAt: document.approvedAt?.toISOString() ?? null,
@@ -36,7 +45,7 @@ export const GET = apiHandler(async () => {
       revisionCount: document._count.revisions,
       _count: undefined,
     })),
-  })) });
+  })) }, { headers: { "Cache-Control": "private, no-store" } });
 });
 
 const schema = z.object({

@@ -1,3 +1,4 @@
+import { externalCrmDeferred } from "@/server/crm/deferral";
 import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { GHL_WEBHOOK_MAX_BODY_BYTES, GhlWebhookConflictError, GhlWebhookEnvelopeError, parseGhlWebhookReceipt, PrismaGhlWebhookStore, receiveGhlWebhook, verifyGhlWebhookSignature } from "@/server/crm/ghl-webhook";
@@ -40,6 +41,7 @@ function json(body: Record<string, unknown>, status: number): Response {
 
 export async function POST(request: Request): Promise<Response> {
   const config = getConfig();
+  if (externalCrmDeferred(config)) return json({ error: "External CRM sync is deferred.", code: "CRM_SYNC_DEFERRED" }, 503);
   if (!config.GHL_WEBHOOKS_ENABLED || !config.GHL_LOCATION_ID?.trim()) {
     return json({ error: "GHL webhooks are not enabled for a configured location." }, 503);
   }

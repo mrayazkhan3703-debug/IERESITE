@@ -1,3 +1,4 @@
+import { requireExternalCrmEnabled } from "@/server/crm/deferral";
 import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { db } from "@/lib/db";
@@ -20,6 +21,7 @@ function returnToAdmin(config: ReturnType<typeof getConfig>, result: "connected"
 
 export const GET = apiHandler(async (request) => {
   const actor = await requireGhlAdmin();
+  requireExternalCrmEnabled();
   const config = getConfig();
   const settings = ghlOAuthSettings(config);
   const query = new URL(request.url).searchParams;

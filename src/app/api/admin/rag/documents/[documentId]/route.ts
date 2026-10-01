@@ -4,6 +4,16 @@ import { apiHandler, jsonBody } from "@/server/api-handler";
 import { requirePermission } from "@/server/auth";
 import { clientIp } from "@/server/rate-limit";
 import { updateRagDocument } from "@/server/domain/rag-admin-command";
+import { db } from "@/lib/db";
+import { HttpError } from "@/server/auth";
+
+export const GET = apiHandler(async (_req, ctx: { params: Promise<{ documentId: string }> }) => {
+  await requirePermission("content:read");
+  const { documentId } = await ctx.params;
+  const document = await db.ragDocument.findUnique({ where: { id: documentId } });
+  if (!document) throw new HttpError(404, "Document not found", "NOT_FOUND");
+  return NextResponse.json({ document }, { headers: { "Cache-Control": "private, no-store" } });
+});
 
 export const PATCH = apiHandler(async (req, ctx: { params: Promise<{ documentId: string }> }) => {
   const actor = await requirePermission("content:update");
