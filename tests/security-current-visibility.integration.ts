@@ -70,10 +70,10 @@ test("search, facets and autocomplete withdraw current parents without rebuildin
   expect((await autocomplete("Disposable property", 20)).some(row => row.slug === propertyId)).toBe(false);
   await db.community.update({ where: { id: communityId }, data: { publicationStatus: "PUBLISHED" } });
 });
-test("database trigger lookup is fixed and extension metadata has no public write grant", async () => {
+test("database trigger lookup is fixed and browser roles cannot access the application schema", async () => {
   const functions = await db.$queryRaw<{ proconfig: string[] }[]>`SELECT proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='iere_sync_point_geography'`;
   expect(functions[0].proconfig).toContain("search_path=pg_catalog");
-  const grants = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE n.nspname='public' AND c.relname='spatial_ref_sys' AND (a.grantee=0 OR a.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated'))) AND a.privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE')`;
+  const grants = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a WHERE n.nspname='public' AND (a.grantee=0 OR a.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated'))) AND a.privilege_type='USAGE'`;
   expect(Number(grants[0].count)).toBe(0);
 });
 test("audit responses redact legacy credentials, tolerate broken JSON and bound pagination", async () => {
