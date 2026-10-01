@@ -42,11 +42,11 @@ describe("Advisor readiness and bounded approved-source indexing", () => {
     expect(await db.ragChunk.count({ where: { documentId: { in: docIds } } })).toBe(31);
   });
   test("withdraws unapproved revisions and identifies exact exclusion reasons", async () => {
-    await db.ragDocument.update({ where: { id: docIds[0] }, data: { approvedAt: null } });
+    await db.ragDocument.update({ where: { id: docIds[0] }, data: { status: "DRAFT", approvedById: null, approvedAt: null } });
     expect(await rebuildDocumentIndex(docIds[0], 1)).toBe(false);
     expect(await db.ragChunk.count({ where: { documentId: docIds[0] } })).toBe(0);
     const diagnostic = await ragDiagnostics(prefix);
-    expect(diagnostic.documents.find((doc) => doc.id === docIds[0])).toMatchObject({ status: "EXCLUDED", reason: "DOCUMENT_NOT_APPROVED", canIndex: false });
+    expect(diagnostic.documents.find((doc) => doc.id === docIds[0])).toMatchObject({ status: "EXCLUDED", reason: "DOCUMENT_NOT_ACTIVE", canIndex: false });
     expect(diagnostic.documents.length).toBeLessThanOrEqual(25); expect(diagnostic.nextCursor).toBeTruthy();
   });
   test("retains a deferred job without consuming retries or releasing another worker's lease", async () => {
@@ -70,7 +70,7 @@ describe("Advisor readiness and bounded approved-source indexing", () => {
     expect(withoutCsrf.status).toBe(403);
     const probe = await fetch(baseUrl + "/api/admin/ai/readiness", { method: "POST", headers, body: JSON.stringify({ action: "VERIFY_PROVIDER" }) });
     expect(probe.status).toBe(200);
-    expect(await probe.json()).toMatchObject({ succeeded: false, reason: "LOCAL_ONLY" });
+    expect(await probe.json()).toMatchObject({ succeeded: false, reason: "AI_KILL_SWITCH" });
     const tooMany = await fetch(baseUrl + "/api/admin/rag/index", { method: "POST", headers, body: JSON.stringify({ documents: docIds.slice(0, 11).map((id) => ({ id, version: 1 })) }) });
     expect(tooMany.status).toBe(400);
     const rebuild = await fetch(baseUrl + "/api/admin/rag/index", { method: "POST", headers, body: JSON.stringify({ documents: [{ id: docIds[0], version: 1 }, { id: docIds[1], version: 999 }] }) });
