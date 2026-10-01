@@ -11,3 +11,8 @@ export function aiReservationTransactionOptions(deadlineAt: number, now = Date.n
   const maxWait = Math.min(3000, Math.floor(remaining / 4));
   return { maxWait, timeout: Math.min(15000, remaining - maxWait) };
 }
+
+/** A failed atomic reservation never authorizes a provider request. */
+export function aiReservationFailureCode(databaseCode: string) {
+  return ["P2028", "P2034"].includes(databaseCode) ? "AI_BUDGET_BUSY" as const : null;
+}
