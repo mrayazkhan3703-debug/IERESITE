@@ -14,6 +14,7 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
     await demo.scrollIntoViewIfNeeded();
     await expect(demo).toContainText(locale === "ar" ? "لا يوجد مصدر مقياس متاح" : "No metric source available");
     await expect(demo).not.toContainText("Downtown trades at a higher");
+    await expect(demo.getByRole("region")).toHaveAttribute("tabindex", "0");
     expect((await new AxeBuilder({ page }).include('[aria-labelledby="aidemo-heading"]').analyze()).violations).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     expect(errors).toEqual([]);

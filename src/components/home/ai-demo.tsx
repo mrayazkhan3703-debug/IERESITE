@@ -132,9 +132,9 @@ export function AiDemo({
                       {locale === "ar" ? "هذا مثال ثابت للبيانات المتاحة على المنصة، وليس إجابة مولدة. القيم غير المتاحة لا تدعم مقارنة استثمارية." : "This static example shows available platform data, not a generated answer. Missing values do not support an investment comparison."}
                     </p>
 
-                    <div className="scroll-elegant mt-4 overflow-x-safe rounded-lg border border-border/70 bg-card">
+                    <div role="region" tabIndex={0} aria-label={locale === "ar" ? "جدول مقارنة البيانات المتاحة" : "Available data comparison table"} className="scroll-elegant mt-4 overflow-x-safe rounded-lg border border-border/70 bg-card focus-visible:outline-2 focus-visible:outline-brand">
                       <table className="w-full text-sm">
-                        <caption className="sr-only">Downtown Dubai versus Business Bay, AED 3M rental investment</caption>
+                        <caption className="sr-only">{locale === "ar" ? "البيانات المتاحة لوسط مدينة دبي والخليج التجاري" : "Available data for Downtown Dubai and Business Bay"}</caption>
                         <thead>
                           <tr className="border-b border-border/70 bg-sand/60 text-left whitespace-nowrap">
                             <th scope="col" className="px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
