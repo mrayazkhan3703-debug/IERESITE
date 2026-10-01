@@ -225,7 +225,7 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
       await audit({ actorId: actor.id, organizationId: actor.organizationId, action: "property.create", resourceType: "property", resourceId: property.id, before: null, after, ip }, tx);
       await emitEvent("property", property.id, "property.updated", { propertyId: property.id, by: actor.email }, tx);
       return { id: property.id, updatedAt: property.updatedAt.toISOString(), publicationStatus: property.publicationStatus };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 60000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new HttpError(409, "That property slug is already in use.", "SLUG_CONFLICT");
@@ -600,7 +600,7 @@ export async function updatePropertyCommand(
 
     const updated = await tx.property.findUniqueOrThrow({ where: { id: property.id }, select: { updatedAt: true } });
     return { ok: true as const, updatedAt: updated.updatedAt.toISOString() };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 60000 });
 
   // The outbox remains the durable retry path, but keep published property
   // changes immediately visible when the optional background worker is paused.

@@ -36,7 +36,8 @@ export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
     ...(prismaDatabaseUrl ? { datasources: { db: { url: prismaDatabaseUrl } } } : {}),
-    log: process.env.NODE_ENV === 'production' ? ['error'] : ['error', 'warn'],
+    // Runtime API logging records safe codes; raw query failures can contain PII.
+    log: process.env.NODE_ENV === 'production' ? [] : ['error', 'warn'],
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

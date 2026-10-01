@@ -11,6 +11,7 @@ const prefix = "inline-media-" + crypto.randomUUID();
 const userId = prefix + "-user", communityId = prefix + "-community", developerId = prefix + "-developer";
 const assets = { image: prefix + "-image", replacement: prefix + "-replacement", video: prefix + "-video", pdf: prefix + "-pdf", private: prefix + "-private" };
 const entityIds: string[] = [];
+const bulkAssets = Array.from({ length: 60 }, (_, index) => prefix + "-bulk-" + index);
 const actor: SessionUser = { sessionId: prefix, id: userId, email: prefix + "@example.invalid", name: "Synthetic media verifier", organizationId: null, roles: ["OWNER"], permissions: ["property:create", "property:update", "project:create", "project:update", "media:update", "media:delete"], mfaVerified: true };
 
 beforeAll(async () => {
@@ -23,6 +24,7 @@ beforeAll(async () => {
     mimeType: kind === "video" ? "video/mp4" : ["pdf", "private"].includes(kind) ? "application/pdf" : "image/jpeg",
     sizeBytes: 100, isPrivate: kind === "private", altText: "Asset default",
   })) });
+  await db.mediaAsset.createMany({ data: bulkAssets.map(id => ({ id, storageKey: "public/media/" + id, url: "/api/media/" + id + "/content", kind: "IMAGE", mimeType: "image/jpeg", sizeBytes: 100 })) });
 });
 afterAll(async () => {
   await db.mediaDownloadGrant.deleteMany({ where: { mediaId: { in: Object.values(assets) } } });
@@ -33,12 +35,26 @@ afterAll(async () => {
   await db.community.delete({ where: { id: communityId } });
   await db.developer.delete({ where: { id: developerId } });
   await db.mediaAsset.updateMany({ where: { id: { in: Object.values(assets) } }, data: { posterMediaId: null } });
-  await db.mediaAsset.deleteMany({ where: { id: { in: Object.values(assets) } } });
+  await db.mediaAsset.deleteMany({ where: { id: { in: [...Object.values(assets), ...bulkAssets] } } });
   await db.user.delete({ where: { id: userId } });
   await db.$disconnect();
 });
 
 describe("transactional inline entity attachments", () => {
+  test("maximum-size galleries save in batches, retain order and reject overflow atomically", async () => {
+    const created = await createPropertyCommand(actor, {
+      communityId, title: "Disposable maximum gallery", slug: prefix + "-bulk-property", propertyType: "APARTMENT", bedrooms: 0, bathrooms: 0,
+      lat: 25, lng: 55, locationPrecision: "APPROXIMATE", listingType: "SALE", priceAed: 1, availabilityStatus: "WITHDRAWN",
+      gallery: bulkAssets.map((mediaId, index) => ({ mediaId, isCover: index === 20, caption: "Caption " + index })), floorPlans: [], documents: [],
+    }, null);
+    entityIds.push(created.id);
+    expect(await db.propertyMedia.count({ where: { propertyId: created.id } })).toBe(60);
+    const ordered = await db.propertyMedia.findMany({ where: { propertyId: created.id }, orderBy: { sortOrder: "asc" } });
+    expect(ordered.map(row => row.mediaId)).toEqual(bulkAssets);
+    expect(ordered[20].isCover).toBe(true);
+    await expect(updatePropertyCommand(actor, { propertyId: created.id, expectedUpdatedAt: created.updatedAt, title: "Must rollback", gallery: [...bulkAssets, assets.image].map(mediaId => ({ mediaId })) }, null)).rejects.toMatchObject({ code: "INVALID_ATTACHMENT" });
+    expect((await db.property.findUniqueOrThrow({ where: { id: created.id } })).title).toBe("Disposable maximum gallery");
+  });
   test("create, reload, replace, order and detach property media without changing shared assets", async () => {
     const created = await createPropertyCommand(actor, {
       communityId, title: "Synthetic attachment verification", slug: prefix + "-property", propertyType: "APARTMENT",

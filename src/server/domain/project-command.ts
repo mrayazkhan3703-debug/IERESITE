@@ -172,7 +172,7 @@ export async function createProjectCommand(actor: SessionUser, input: NewProject
       await audit({ actorId: actor.id, organizationId: actor.organizationId, action: "project.create", resourceType: "project", resourceId: project.id, before: null, after, ip }, tx);
       await emitEvent("project", project.id, "project.updated", { projectId: project.id, by: actor.email }, tx);
       return { id: project.id, updatedAt: project.updatedAt.toISOString(), publicationStatus: project.publicationStatus };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 60000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new HttpError(409, "That project slug is already in use.", "SLUG_CONFLICT");
@@ -373,7 +373,7 @@ export async function updateProjectCommand(actor: SessionUser, input: ProjectCom
 
       const updated = await tx.project.findUniqueOrThrow({ where: { id: project.id }, select: { updatedAt: true } });
       return { ok: true as const, updatedAt: updated.updatedAt.toISOString() };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 60000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new HttpError(409, "That project slug is already in use.", "SLUG_CONFLICT");

@@ -192,7 +192,8 @@ export function errorResponse(err: unknown): NextResponse {
   if (err instanceof HttpError) {
     return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
   }
-  console.error("[api] unhandled error:", err);
+  const code = typeof err === "object" && err !== null && "code" in err && typeof err.code === "string" && /^P\d{4}$/.test(err.code) ? err.code : "UNKNOWN";
+  console.error("[api] unhandled error", { code });
   return NextResponse.json({ error: "Internal server error", code: "INTERNAL" }, { status: 500 });
 }
 
