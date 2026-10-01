@@ -453,6 +453,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [mediaDraft, setMediaDraft] = React.useState(emptyMediaDraft);
   const [reindexing, setReindexing] = React.useState(false);
   const [resetSourceFields, setResetSourceFields] = React.useState<SourceField[]>([]);
@@ -479,6 +480,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   }, [canCreate]);
 
   const openCreate = () => {
+    setSaveError(null);
     setEditing(null);
     setMediaDraft(emptyMediaDraft());
     setCreating(true);
@@ -493,13 +495,16 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
       load();
       return true;
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Update failed");
+      const message = e instanceof Error ? e.message : "Update failed";
+      setSaveError(message);
+      toast.error(message);
       if (e instanceof Error && e.message.toLowerCase().includes("changed since")) load();
       return false;
     }
   };
 
   const openEditor = (property: Record<string, unknown>) => {
+    setSaveError(null);
     setCreating(false);
     setEditing(property);
     setMediaDraft(readMediaDraft(property));
@@ -568,10 +573,13 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   };
 
   const linkedCommunity = communities.find((community) => String(community.id) === form.communityId);
+  const linkedProject = propertyOptions.projects.find((project) => String(project.id) === form.projectId);
+  const linkedProjectCommunity = linkedProject?.community as { publicationStatus?: string } | undefined;
   const propertyReadiness = [
     { label: "Title and property type are present", ready: Boolean(form.title.trim() && form.type.trim()) },
     { label: "Latitude and longitude are valid", ready: Number.isFinite(Number(form.lat)) && Number(form.lat) >= -90 && Number(form.lat) <= 90 && Number.isFinite(Number(form.lng)) && Number(form.lng) >= -180 && Number(form.lng) <= 180 && Boolean(form.lat.trim() && form.lng.trim()) },
     { label: "A published community is linked", ready: linkedCommunity?.publicationStatus === "PUBLISHED" },
+    { label: "The linked project is public when selected", ready: !form.projectId || (linkedProject?.publicationStatus === "PUBLISHED" && linkedProjectCommunity?.publicationStatus === "PUBLISHED") },
     { label: "A positive price and public listing status are set", ready: Number(form.priceAed) > 0 && form.availability !== "WITHDRAWN" },
     { label: "Rental frequency is set when applicable", ready: form.listingType !== "RENT" || Boolean(form.rentFrequency) },
     { label: "Listing expiry is still in the future", ready: !form.expiresAt || new Date(form.expiresAt).getTime() > Date.now() },
@@ -583,6 +591,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
     if (!editing && !creating) return;
     if (!form.lat.trim() || !form.lng.trim()) { toast.error("Enter or pick both latitude and longitude before saving."); return; }
     if (!form.listingType || !form.availability) { toast.error("Choose a listing type and availability before saving."); return; }
+    setSaveError(null);
     setSaving(true);
     try {
       if (creating) {
@@ -641,7 +650,9 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
         if (saved) { setEditing(null); setResetSourceFields([]); }
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Property create failed");
+      const message = error instanceof Error ? error.message : "Property create failed";
+      setSaveError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -730,9 +741,10 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{creating ? "Create property" : "Edit property"}</DialogTitle>
-            <DialogDescription>{creating ? "New properties are internal drafts. Enter known listing and location facts only; coordinates are attributed to manual Admin input and are not externally verified." : "Changes are version checked and recorded with an audit entry. Publishing validates the linked public listing and community."}</DialogDescription>
+            <DialogDescription>{creating ? "New properties are internal drafts. Enter known listing and location facts only; coordinates are attributed to manual Admin input and are not externally verified." : "Changes are version checked and recorded with an audit entry. Publishing validates the linked public listing, community and project."}</DialogDescription>
           </DialogHeader>
           <MediaForm className="space-y-4" onSubmit={saveEditor}>
+              {saveError && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{saveError} Your form and uploaded media are retained. Review the error and try saving again.</p>}
             {!creating && editing && <section className="space-y-2 rounded-lg border border-border/70 bg-secondary/20 p-3" aria-label="Property publish readiness">
               <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">Publish readiness</h3><p className="text-xs text-muted-foreground">The API rechecks these requirements when you save. A blocked publish leaves the property unchanged.</p></div><div className="flex flex-wrap gap-2"><a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/admin/properties/${encodeURIComponent(String(editing.slug))}/preview`} target="_blank" rel="noopener noreferrer">Preview saved record</a>{editing.publicationStatus === "PUBLISHED" && <a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/properties/${encodeURIComponent(String(editing.slug))}`} target="_blank" rel="noopener noreferrer">Open public page</a>}<a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/admin/seo-metadata?q=${encodeURIComponent(`properties/${String(editing.slug)}`)}`}>SEO metadata</a></div></div>
               <ul className="grid gap-1 text-xs sm:grid-cols-2">{propertyReadiness.map((item) => <li key={item.label} className={item.ready ? "text-success" : "text-muted-foreground"}>{item.ready ? "✓" : "○"} {item.label}</li>)}</ul>
@@ -799,6 +811,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [mediaDraft, setMediaDraft] = React.useState(emptyMediaDraft);
   const [form, setForm] = React.useState({
     name: "", slug: "", tagline: "", summary: "", description: "",
@@ -831,6 +844,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
   }, [canEdit]);
 
   const openCreate = () => {
+    setSaveError(null);
     setEditing(null);
     setMediaDraft(emptyMediaDraft());
     setCreating(true);
@@ -844,6 +858,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
   };
 
   const openEditor = (project: Record<string, unknown>) => {
+    setSaveError(null);
     setCreating(false);
     setEditing(project);
     setMediaDraft(readMediaDraft(project));
@@ -872,6 +887,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
   const saveEditor = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editing && !creating) return;
+    setSaveError(null);
     setSaving(true);
     try {
       const { startingPrice, highlightsText, keyAmenitiesText, ...projectFields } = form;
@@ -910,7 +926,9 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
       setCreating(false);
       load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Project update failed");
+      const message = error instanceof Error ? error.message : "Project update failed";
+      setSaveError(message);
+      toast.error(message);
       if (error instanceof Error && error.message.toLowerCase().includes("changed since")) load();
     } finally {
       setSaving(false);
@@ -948,6 +966,7 @@ function ProjectsSection({ canEdit }: { canEdit: boolean }) {
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>{creating ? "Create project" : "Edit project"}</DialogTitle><DialogDescription>{creating ? "New projects are saved as internal drafts. Enter known facts and source evidence; location is attributed to manual Admin input." : "Updates are version checked and audited. Public plans require verification; URL changes create a permanent redirect."}</DialogDescription></DialogHeader>
           <MediaForm className="space-y-4" onSubmit={saveEditor}>
+              {saveError && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{saveError} Your form and uploaded media are retained. Review the error and try saving again.</p>}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>

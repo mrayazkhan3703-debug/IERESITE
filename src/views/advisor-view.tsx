@@ -440,8 +440,8 @@ export default function AdvisorView() {
                   {scope
                     ? t("advisorV2.scoped.property", locale) + " — " + t("advisor.subtitle", locale)
                     : locale === "ar"
-                      ? "صف ما تبحث عنه — سأحوّله إلى معايير بحث واضحة وقابلة للتعديل، وأتحقق من المخزون الفعلي وأعرض المعلومات المتاحة مع مصادرها."
-                      : "Describe what you're looking for — I'll turn it into transparent, editable search criteria, check real inventory and explain payment plans, costs and yields with sources."}
+                      ? "صف ما تبحث عنه — سأحوّله إلى معايير بحث واضحة وقابلة للتعديل وأبحث في السجلات الحالية. راجع حالة البيانات والمصادر المتاحة لكل نتيجة."
+                      : "Describe what you're looking for — I'll turn it into editable search criteria and search current catalog records. Review each result’s data status and available sources."}
                 </p>
                 <div className="mx-auto mt-4 grid max-w-2xl gap-2 text-left sm:grid-cols-2">
                   {(locale === "ar" ? SUGGESTIONS_AR : SUGGESTIONS).map((s) => (

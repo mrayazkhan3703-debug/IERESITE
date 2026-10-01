@@ -9,6 +9,7 @@ import { parseCatalogJson } from "@/server/domain/catalog-source";
 import { reindexProperty } from "@/server/search/service";
 import type { EntityMediaInput } from "@/lib/media-contract";
 import { saveEntityMedia } from "./entity-media";
+import { PUBLIC_PROJECT_WHERE } from "./visibility";
 
 export interface PropertyCommandInput extends EntityMediaInput {
   propertyId: string;
@@ -469,6 +470,9 @@ export async function updatePropertyCommand(
 
     const publishAt = input.publicationStatus === "PUBLISHED" ? new Date() : null;
     if (input.publicationStatus === "PUBLISHED") {
+      if (nextProjectId && !await tx.project.findFirst({ where: { id: nextProjectId, ...PUBLIC_PROJECT_WHERE }, select: { id: true } })) {
+        throw new HttpError(422, "Cannot publish: the linked project and its community must be published.", "PUBLICATION_VALIDATION");
+      }
       const readiness = publicReadiness({
         ...property,
         community: { publicationStatus: nextCommunityStatus },

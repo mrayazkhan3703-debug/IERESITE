@@ -2,6 +2,15 @@ import { expect, test } from "bun:test";
 import { readAuditData, redactAuditData, serializeAuditData } from "@/server/audit-data";
 import { csvCell } from "@/lib/csv-cell";
 import { safeOperationalError } from "@/server/jobs/safe-error";
+import { t } from "@/lib/i18n";
+
+test("footer labels data status without making unsupported inventory provenance claims", () => {
+  expect(t("footer.dataNotice", "en")).toContain("source details");
+  expect(t("footer.dataNotice", "en")).not.toContain("IE Right");
+  expect(t("footer.dataNotice", "ar")).toContain("المصدر");
+  expect(t("advisor.disclosure", "en")).toContain("demo records are not verified inventory");
+  expect(t("advisor.disclosure", "ar")).toContain("التجريبية");
+});
 
 test("audit redaction handles nested credentials, case variants and bigint usage", () => {
   const value = { AccessToken: "fixture-secret", nested: { authorization: "fixture-secret", DATABASE_URL: "fixture-secret", passwordHash: "fixture-secret" }, promptTokens: 5, totalTokens: 8n, name: "Safe name" };

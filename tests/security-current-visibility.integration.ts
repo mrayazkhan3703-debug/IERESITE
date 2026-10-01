@@ -8,6 +8,7 @@ import { createSession, type SessionUser } from "@/server/auth";
 import { audit } from "@/server/auth";
 import { reindexProperty, search, autocomplete } from "@/server/search/service";
 import { searchStateSchema } from "@/server/search/types";
+import { updatePropertyCommand } from "@/server/domain/property-command";
 const baseUrl = process.env.TEST_BASE_URL ?? "http://web:3000";
 if (!["web", "web-test", "localhost", "127.0.0.1"].includes(new URL(baseUrl).hostname) || !["postgres", "db", "localhost", "127.0.0.1"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Security tests require disposable services.");
 const prefix = "security-current-" + randomUUID(), ownerId = prefix + "-owner", userId = prefix + "-user", agentId = prefix + "-agent", orgId = prefix + "-org", communityId = prefix + "-community", projectId = prefix + "-project", propertyId = prefix + "-property";
@@ -75,6 +76,20 @@ test("database trigger lookup is fixed and browser roles cannot access the appli
   expect(functions[0].proconfig).toContain("search_path=pg_catalog");
   const grants = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a WHERE n.nspname='public' AND (a.grantee=0 OR a.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated'))) AND a.privilege_type='USAGE'`;
   expect(Number(grants[0].count)).toBe(0);
+});
+test("publishing rejects a private project atomically instead of reporting a public hidden property", async () => {
+  const property = await db.property.update({ where: { id: propertyId }, data: { publicationStatus: "DRAFT" } });
+  await db.project.update({ where: { id: projectId }, data: { publicationStatus: "DRAFT" } });
+  try {
+    await expect(updatePropertyCommand(owner, { propertyId, expectedUpdatedAt: property.updatedAt.toISOString(), publicationStatus: "PUBLISHED", title: "Must roll back" }, null)).rejects.toThrow("linked project");
+    const unchanged = await db.property.findUniqueOrThrow({ where: { id: propertyId } });
+    expect(unchanged.title).toBe(property.title);
+    expect(unchanged.publicationStatus).toBe("DRAFT");
+    expect(unchanged.updatedAt).toEqual(property.updatedAt);
+  } finally {
+    await db.project.update({ where: { id: projectId }, data: { publicationStatus: "PUBLISHED" } });
+    await db.property.update({ where: { id: propertyId }, data: { publicationStatus: "PUBLISHED" } });
+  }
 });
 test("audit responses redact legacy credentials, tolerate broken JSON and bound pagination", async () => {
   await audit({ actorId: ownerId, action: "verification", resourceType: prefix, resourceId: prefix, after: { accessToken: "fixture-sensitive" } });

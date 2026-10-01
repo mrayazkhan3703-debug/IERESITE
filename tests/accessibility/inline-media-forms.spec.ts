@@ -79,6 +79,17 @@ async function select(page: Page, scope: Locator, label: string, option: string 
   await scope.getByRole("combobox", { name: label, exact: true }).click();
   await page.getByRole("option", { name: option, exact: typeof option === "string" }).click();
 }
+async function rejectSaveOnce(page: Page, scope: Locator, button: string, endpoint: string, method: string) {
+  const pattern = "**" + endpoint;
+  await page.route(pattern, async (route) => {
+    if (route.request().method() === method) await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Verification save temporarily unavailable", code: "VERIFICATION_UNAVAILABLE" }) });
+    else await route.continue();
+  });
+  await scope.getByRole("button", { name: button, exact: true }).click();
+  await expect(scope.getByRole("alert")).toContainText("Verification save temporarily unavailable");
+  await expect(scope.getByRole("alert")).toContainText("uploaded media are retained");
+  await page.unroute(pattern);
+}
 
 test("inline uploads retry interruption, reuse duplicates, cancel and retain library assets after discard", async ({ page }) => {
   test.setTimeout(90000);
@@ -166,6 +177,10 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
       const filename = slug + ".png", field = editor.getByRole("group", { name: entityModule.label, exact: true });
       const asset = await upload(page, field, filename);
       if (entityModule.section === "projects") await choose(page, editor.getByRole("region", { name: "Gallery", exact: true }), filename);
+      if (["properties", "projects"].includes(entityModule.section)) {
+        await rejectSaveOnce(page, editor, entityModule.submit, "/api/admin/" + entityModule.section, "POST");
+        await expect(field.locator("img")).toHaveAttribute("src", asset.url);
+      }
       const created = await save(page, editor, entityModule.submit, "/api/admin/" + entityModule.section, "POST") as { id: string };
       expect(created.id).toBeTruthy();
       if (entityModule.section === "developers") developerId = created.id;
@@ -177,6 +192,10 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
       await expect(editField.getByRole("button", { name: "Replace / Upload New", exact: true })).toBeVisible();
       await editField.getByRole("button", { name: "Remove", exact: true }).click();
       await choose(page, editField, filename);
+      if (["properties", "projects"].includes(entityModule.section)) {
+        await rejectSaveOnce(page, page.getByRole("dialog"), "Save changes", "/api/admin/" + entityModule.section, "PATCH");
+        await expect(editField.locator("img")).toHaveAttribute("src", asset.url);
+      }
       await save(page, page.getByRole("dialog"), "Save changes", "/api/admin/" + entityModule.section, "PATCH");
       await page.reload();
       await page.getByRole("row").filter({ hasText: name }).getByRole("button", { name: "Edit", exact: true }).click();
