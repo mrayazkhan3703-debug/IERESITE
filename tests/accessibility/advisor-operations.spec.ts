@@ -26,7 +26,7 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
     const root = locale === "ar" ? "/ar" : "";
     await page.goto(root + "/admin/knowledge-base");
     const panel = page.getByRole("region", { name: "Advisor readiness and knowledge indexing" });
-    await expect(panel).toContainText("BLOCKED"); await expect(panel).toContainText("AI_KILL_SWITCH"); await expect(panel).toContainText("CURRENT_REVISION_NOT_INDEXED");
+    await expect(panel).toContainText("LOCAL_ONLY"); await expect(panel).toContainText("CURRENT_REVISION_NOT_INDEXED");
     const pending = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/rag/index" && response.request().method() === "POST");
     await panel.getByRole("button", { name: "Index up to 10 approved revisions", exact: true }).click();
     expect((await pending).status()).toBe(200);
@@ -34,7 +34,7 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
     expect(await db.ragChunk.count({ where: { documentId, documentVersion: 1 } })).toBeGreaterThan(0);
     if (locale === "en" && size === "desktop") {
       await panel.getByRole("button", { name: "Verify selected provider", exact: true }).click();
-      await expect(panel.getByRole("status")).toContainText("AI_KILL_SWITCH");
+      await expect(panel.getByRole("status")).toContainText("LOCAL_ONLY");
     }
     expect((await new AxeBuilder({ page }).include('[aria-label="Advisor readiness and knowledge indexing"]').analyze()).violations).toEqual([]);
     await page.goto(root + "/admin/crm");
