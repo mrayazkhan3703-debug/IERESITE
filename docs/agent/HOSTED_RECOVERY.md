@@ -10,7 +10,9 @@ Database credentials use an explicit session-pooler connection with verified TLS
 
 ## Actual recovery evidence, 2026-10-01
 
-The hosted capture beginning 14:38 UTC contained 118 application tables, 39 migration checksums, 54 referenced objects/derivatives and 17,221,367 object bytes. The encrypted run `78ec1907093d4b91b16732a902915878` was uploaded to private R2 bucket `iere` under `private/iere-live`, then fully read back and verified. Download and decryption reproduced all three original archive hashes.
+The first hosted capture beginning 14:38 UTC contained 39 migration checksums, 54 referenced objects/derivatives and 17,221,367 object bytes. Its operations run was `78ec1907093d4b91b16732a902915878`; the corresponding encrypted R2 run was `2ad4bb27cfae4fd1a5bb3578bb013212`. It was uploaded to private R2 bucket `iere` under `private/iere-live`, then fully read back and verified. Download and decryption reproduced all three original archive hashes.
+
+A fresh capture at 15:38:56 UTC included all 41 current migrations. Operations run `2c77bc99d962414c889f74cf4434eb5b`, encrypted R2 run `0bf2f703bf3e4f12990981f11b488eb7`, passed complete readback. Recovery `1b0bf4cfc8a24f5ab65bbb082fcbf706` passed actual download, decryption, table/migration reconciliation, all 54 object hashes and application delivery checks using the application compatible with those migrations.
 
 The isolated restore matched all table counts and migration checksums and verified every object hash before and after rehydration. The exact deployed application image served an image, a full video, a video byte range and an authenticated protected PDF; anonymous protected-PDF access was denied. Outbound jobs were disabled. Disposable resources used an internal Docker network and ownership labels, and cleanup passed.
 
@@ -29,6 +31,10 @@ Use `new-live-backup-identity.ps1` only for a new identity; it refuses to overwr
 ## Schedule and failure reporting
 
 Enable the 30-minute Windows schedule only through `enable-hosted-backup-schedule.ps1`, with a recent passing hosted roundtrip result for the configured source and `-OwnerKeyCopyConfirmed`. Registration starts disabled; activation is recorded separately. Existing tasks are preserved. The task uses the current interactive Windows account, ignores overlapping runs and requires Docker. No dedicated paid Render worker is created.
+
+The task runs `run-backup-scheduled.vbs` through the built-in Windows Script Host. That GUI host launches the PowerShell runner hidden, waits for completion and propagates its exit code. Invalid or missing runner/config paths are rejected before execution. This avoids tying the task to a closable interactive console. Windows Script Host must be available; a disabled host is an operational failure, not a successful backup.
+
+The initial direct-PowerShell scheduled attempts exited with `0xC000013A`, without upload receipts. Their captures and incomplete operation records were preserved. The GUI-host scheduled test at 16:11 UTC completed operations run `4e8945535fa94c43aba6cb2c44730d6b` with `VERIFIED_CIPHERTEXT_RUN`, full encrypted readback and task exit code zero. The recurring task must use the exact passing launcher release before reactivation. That successful single run does not certify continuous cadence.
 
 Use `run-backup-operations.ps1 -Report -OperationsConfig <private-path>` to check the latest verified capture age. A missing success, stale receipt, Docker failure, capture failure or upload failure must be treated as an operational failure. Each attempt writes a stage/result file. Computer downtime or a signed-out account prevents execution; no process can emit an alert from a powered-off computer.
 
