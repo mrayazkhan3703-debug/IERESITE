@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { pipeline } from "node:stream/promises";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand,
-  AbortMultipartUploadCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+  AbortMultipartUploadCommand, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 
 export const PART_BYTES = 16 * 1024 ** 2;
 export const ARCHIVE_LIMIT = 64 * 1024 ** 3;
@@ -54,6 +54,7 @@ export function validateConfig(value, fixture = false) {
   if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== "/" ||
       (fixture ? endpoint.href !== "http://backup-fixture-store:8333/" : endpoint.protocol !== "https:")) fail("INVALID_ENDPOINT");
   const provider = value.provider ?? "s3-compatible";
+  if (value.maxStoredBytes !== undefined && (!Number.isSafeInteger(value.maxStoredBytes) || value.maxStoredBytes < 1024 ** 2 || value.maxStoredBytes > ARCHIVE_LIMIT)) fail("INVALID_STORAGE_CAP");
   if (!["s3-compatible", "cloudflare-r2"].includes(provider)) fail("INVALID_PROVIDER");
   if (provider === "cloudflare-r2" && (fixture ||
       !/^[a-f0-9]{32}(?:\.(?:eu|fedramp|us))?\.r2\.cloudflarestorage\.com$/.test(endpoint.hostname) ||
@@ -100,13 +101,23 @@ async function command(program, args, stdoutPath) {
     });
   } finally { await output?.close(); }
 }
+export function validateBackupScope(manifest, fixture = false) {
+  const local = manifest.format === 1 && manifest.source === "local-docker-compose";
+  const hosted = manifest.format === 2 && manifest.source === "hosted-postgres-r2"
+    && /^[a-z0-9][a-z0-9-]{2,80}$/.test(manifest.sourceId ?? "")
+    && manifest.database?.schema === "public"
+    && manifest.objectStorage?.format === "content-addressed-r2"
+    && Number.isInteger(manifest.objectStorage.objectCount) && manifest.objectStorage.objectCount >= 0
+    && manifest.objectStorage.objectCount <= 80000
+    && /^[a-f0-9]{64}$/.test(manifest.objectStorage.inventorySha256 ?? "");
+  if ((!local && !hosted) || (fixture ? manifest.syntheticFixture !== true : manifest.syntheticFixture === true)) fail("INVALID_BACKUP_SCOPE");
+}
 export async function inspectBackup(directory, fixture = false) {
   if ((await lstat(directory)).isSymbolicLink() || !(await stat(directory)).isDirectory()) fail("INVALID_BACKUP_DIRECTORY");
   try { await lstat(resolve(directory, "INCOMPLETE.txt")); fail("INCOMPLETE_BACKUP"); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   const manifest = await jsonFile(resolve(directory, "manifest.json"), 32768);
-  if (manifest.format !== 1 || manifest.source !== "local-docker-compose" ||
-      (fixture ? manifest.syntheticFixture !== true : manifest.syntheticFixture === true)) fail("INVALID_BACKUP_SCOPE");
+  validateBackupScope(manifest, fixture);
   for (const [field, file] of [["database", FILES[0]], ["objectStorage", FILES[1]]]) {
     if (manifest[field]?.file !== file || !/^[a-f0-9]{64}$/.test(manifest[field]?.sha256 ?? "")) fail("INVALID_MANIFEST");
     const digest = await hashFile(resolve(directory, file), ARCHIVE_LIMIT);
@@ -201,6 +212,26 @@ export function validateReceipt(receipt, config) {
   }
   return receipt;
 }
+// Optional whole-bucket limit: stop before uploading; never remove older backups.
+export async function checkStorageCap(store, config, additionalBytes) {
+  if (config.maxStoredBytes === undefined) return;
+  if (!Number.isSafeInteger(additionalBytes) || additionalBytes < 0) fail("INVALID_STORAGE_CAP");
+  let total = additionalBytes, token;
+  const seen = new Set();
+  for (let page = 0; page < 100; page++) {
+    const result = await store.send(new ListObjectsV2Command({ Bucket: config.bucket, MaxKeys: 1000, ContinuationToken: token }));
+    for (const object of result.Contents ?? []) {
+      if (!Number.isSafeInteger(object.Size) || object.Size < 0) fail("STORAGE_CAP_CHECK_FAILED");
+      total += object.Size;
+    }
+    if (total > config.maxStoredBytes) fail("STORAGE_CAP_REACHED");
+    if (!result.IsTruncated) return;
+    token = result.NextContinuationToken;
+    if (typeof token !== "string" || !token || seen.has(token)) fail("STORAGE_CAP_CHECK_FAILED");
+    seen.add(token);
+  }
+  fail("STORAGE_CAP_CHECK_FAILED");
+}
 export async function uploadExistingBackup({ config, directory, outputDirectory, fixture = false, store }) {
   config = validateConfig(config, fixture);
   const manifest = await inspectBackup(directory, fixture);
@@ -210,6 +241,12 @@ export async function uploadExistingBackup({ config, directory, outputDirectory,
   const remote = store ?? await client(config);
     const objects = [];
   try {
+    let projectedBytes = 32768;
+    for (const file of FILES) {
+      const source = await hashFile(resolve(directory, file), ARCHIVE_LIMIT);
+      projectedBytes += source.bytes + Math.ceil(source.bytes / 65536) * 16 + 4096;
+    }
+    await checkStorageCap(remote, config, projectedBytes);
     for (const file of FILES) {
       const path = resolve(outputDirectory, `${file}.age`);
       const sourceHash = await hashFile(resolve(directory, file), file === "manifest.json" ? 32768 : ARCHIVE_LIMIT);

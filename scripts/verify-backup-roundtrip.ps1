@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory=$true)][string]$IdentityFile,
   [Parameter(Mandatory=$true)][string]$ReceiptFile,
   [Parameter(Mandatory=$true)][string]$SourceBackupDirectory,
-  [string]$OperationsConfig
+  [string]$OperationsConfig,
+  [string]$HostedRestoreConfig
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'backup-runner.ps1')
@@ -44,8 +45,16 @@ try {
     $checks+=@{file=$file;sha256=$after;bytes=(Get-Item -LiteralPath $recovered).Length;sourceByteHashEqual=$true}
   }
   $result.reason='ISOLATED_RESTORE_FAILED'
-  Invoke-IereRunnerProcess -Program 'powershell.exe' -RepositoryRoot $repository -Arguments @('-NoProfile','-NonInteractive',
-    '-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'restore-drill-local.ps1'),'-BackupDirectory',$restoredDirectory) | Out-Null
+  $manifest=Get-Content -LiteralPath (Join-Path $restoredDirectory 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($manifest.source -eq 'hosted-postgres-r2') {
+    $result.source=$manifest.source;$result.sourceId=$manifest.sourceId
+    $restoreConfig=Get-IereSafeRunnerPath -Path $HostedRestoreConfig -RepositoryRoot $repository -OutsideRepository -RequireFile
+    Invoke-IereRunnerProcess -Program 'node' -RepositoryRoot $repository -Arguments @(
+      (Join-Path $PSScriptRoot 'restore-hosted.mjs'),$restoredDirectory,$restoreConfig) | Out-Null
+  } else {
+    Invoke-IereRunnerProcess -Program 'powershell.exe' -RepositoryRoot $repository -Arguments @('-NoProfile','-NonInteractive',
+      '-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'restore-drill-local.ps1'),'-BackupDirectory',$restoredDirectory) | Out-Null
+  }
   $drill=Get-Content -LiteralPath (Join-Path $restoredDirectory 'restore-drill-result.json') -Raw -Encoding UTF8 | ConvertFrom-Json
   if ($drill.status -ne 'PASS') { throw 'ISOLATED_RESTORE_FAILED' }
   $result.status='PASS_SCOPED_REAL_BACKUP_ROUNDTRIP';$result.reason='SOURCE_HASH_EQUAL_AND_ISOLATED_RESTORE_VERIFIED'
@@ -53,6 +62,13 @@ try {
   $result.databaseMigrationRows=$drill.databaseMigrationRows;$result.requiredPostgresExtensions=$drill.requiredPostgresExtensions
   $result.restoredObjectStorageFileCount=$drill.restoredObjectStorageFileCount;$result.scriptedRestoreSeconds=$drill.elapsedSeconds
   $result.scope='Exact captured archives plus isolated local DB/volume restore; not independent-site/incident recovery or customer-object-level read'
+  if ($manifest.source -eq 'hosted-postgres-r2') {
+    $result.databaseMigrationRows=$drill.databaseChecks.migrations
+    $result.requiredPostgresExtensions=$drill.databaseChecks.extensions.Count
+    $result.restoredObjectStorageFileCount=$drill.objectChecks.objectCount
+    $result.deliveryChecks=$drill.deliveryChecks
+    $result.scope='Hosted snapshot archive roundtrip, isolated database counts/migrations, all object byte hashes and application delivery; not incident recovery or achieved RPO/RTO'
+  }
 } catch {
   # Preserve only stable stage codes, never Docker/key/provider error content.
 } finally {
