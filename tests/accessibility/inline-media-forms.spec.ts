@@ -70,7 +70,10 @@ async function save(page: Page, scope: Locator, button: string, endpoint: string
   await scope.getByRole("button", { name: button, exact: true }).click();
   const response = await pending;
   expect(response.status(), await response.text()).toBe(method === "POST" ? 201 : 200);
-  const result = await response.json(); if (result.id) entityIds.push(result.id); return result;
+  const result = await response.json();
+  const entityId = result.id ?? result.agentId;
+  if (entityId) entityIds.push(entityId);
+  return { ...result, ...(entityId ? { id: entityId } : {}) };
 }
 async function select(page: Page, scope: Locator, label: string, option: string | RegExp) {
   await scope.getByRole("combobox", { name: label, exact: true }).click();
