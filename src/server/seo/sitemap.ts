@@ -5,7 +5,7 @@ import { PUBLIC_AGENT_WHERE, PUBLIC_COMMUNITY_WHERE, PUBLIC_DEVELOPER_WHERE, PUB
 import { contentSitemapPath } from "./sitemap-content-path";
 import { publicStaticRoutePaths } from "./route-contract";
 
-export const PRIVATE_CRAWLER_PATHS = ["/api/", "/account", "/admin", "/compare", "/cookie-settings", "/ar/account", "/ar/admin", "/ar/compare", "/ar/cookie-settings"];
+export const PRIVATE_CRAWLER_PATHS = ["/api/", "/account", "/account/", "/admin", "/admin/", "/compare", "/cookie-settings", "/ar/account", "/ar/account/", "/ar/admin", "/ar/admin/", "/ar/compare", "/ar/cookie-settings"];
 export type CanonicalSitemapEntry = {
   section: string; path: string; priority: number; changefreq: string; noindex: boolean;
   lastmod?: Date; languages?: Record<string, string>;
