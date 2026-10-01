@@ -628,7 +628,7 @@ export default function AdvisorView() {
               if (!suggestions.length) return null;
               return (
                 <div className="flex flex-wrap items-center gap-2 pl-0 sm:pl-11" aria-label={locale === "ar" ? "أسئلة متابعة مقترحة" : "Suggested follow-up questions"}>
-                  <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">{locale === "ar" ? "التالي:" : "Next:"}</span>
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{locale === "ar" ? "التالي:" : "Next:"}</span>
                   {suggestions.map((s) => (
                     <button
                       key={s}
