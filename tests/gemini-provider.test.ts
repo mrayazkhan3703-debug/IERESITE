@@ -110,7 +110,7 @@ describe("Gemini provider adapter", () => {
   });
   it("uses bounded Gemini 3 thinking and never returns thought parts", async () => {
     let body: Record<string, unknown> = {};
-    const result = await generateWithGemini({ messages: [{ role: "user", content: "Hello" }], maxTokens: 1024 }, {
+    const result = await generateWithGemini({ messages: [{ role: "user", content: "Hello" }], maxTokens: 1024, temperature: 0.2 }, {
       apiKey: "test-key", model: "gemini-3.8-flash", timeoutMs: 1000,
       fetchImpl: async (_input, init) => {
         body = JSON.parse(String(init?.body));
@@ -118,6 +118,7 @@ describe("Gemini provider adapter", () => {
       },
     });
     expect(body.generationConfig).toMatchObject({ maxOutputTokens: 1024, thinkingConfig: { thinkingLevel: "low" } });
+    expect(body.generationConfig).not.toHaveProperty("temperature");
     expect(result.content).toBe("READY"); expect(result.completionTokens).toBe(42);
   });
 

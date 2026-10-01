@@ -19,6 +19,7 @@
  *  - Compare community CTA → /compare?community={slug} (U12 will consume).
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { useRoute } from "@/lib/router";
@@ -68,7 +69,7 @@ function listingCardDto(p: EntityListingLite, community: { id: string; name: str
     project: null,
     developer: null,
     agent: null,
-    cover: p.cover ? { id: p.cover.id, url: p.cover.url } : null,
+    cover: p.cover ? { ...p.cover } : null,
     lat: p.lat,
     lng: p.lng,
     isDemoData,
@@ -364,8 +365,8 @@ export default function CommunityDetailView({ slug }: { slug: string }) {
                           className="group overflow-hidden rounded-xl border border-border/70 transition-all duration-200 hover:-translate-y-1 hover:border-brand/40 hover:shadow-md"
                         >
                           <div className="aspect-[16/9] overflow-hidden bg-sand">
-                            {p.cover && (
-                              <img src={p.cover.url} alt={p.cover.altText ?? p.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            {p.cover && mediaPreviewUrl(p.cover) && (
+                              <img src={mediaPreviewUrl(p.cover) ?? undefined} alt={p.cover.altText ?? p.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                             )}
                           </div>
                           <div className="p-4">

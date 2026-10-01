@@ -10,6 +10,7 @@
  * fields — never editorial claims — and every card links to the project page.
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { api } from "@/lib/api-client";
 import { Link } from "@/lib/router";
@@ -122,9 +123,9 @@ export function SimilarProjects({
               className="group flex flex-col overflow-hidden rounded-xl border border-border/70 bg-card transition-all duration-200 hover:-translate-y-1 hover:border-brand/40 hover:shadow-md"
             >
               <div className="aspect-[16/9] overflow-hidden bg-sand">
-                {p.cover && (
+                {p.cover && mediaPreviewUrl(p.cover) && (
                   <img
-                    src={p.cover.url}
+                    src={mediaPreviewUrl(p.cover) ?? undefined}
                     alt={p.cover.altText ?? `${p.name} — development render`}
                     loading="lazy"
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"

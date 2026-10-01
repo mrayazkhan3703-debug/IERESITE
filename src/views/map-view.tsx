@@ -15,6 +15,7 @@
  * - community jump panel, graceful tile-failure fallback, sr-only description
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { navigate, useRoute, Link } from "@/lib/router";
 import { api } from "@/lib/api-client";
@@ -996,7 +997,7 @@ export default function MapView() {
                   )}
                 >
                   <div className="h-16 w-24 shrink-0 overflow-hidden rounded-md bg-sand">
-                    <PublicImage src={p.cover?.url} alt="" className="h-full w-full object-cover" fallback={<MapPin className="m-auto mt-5 h-5 w-5 text-brand" aria-hidden />} />
+                    <PublicImage src={mediaPreviewUrl(p.cover) ?? undefined} alt="" className="h-full w-full object-cover" fallback={<MapPin className="m-auto mt-5 h-5 w-5 text-brand" aria-hidden />} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 text-sm font-semibold">{p.title}</p>
@@ -1073,7 +1074,7 @@ export default function MapView() {
                     )}
                   >
                     <div className="h-16 w-24 shrink-0 overflow-hidden rounded-md bg-sand">
-                      <PublicImage src={p.cover?.url} alt="" className="h-full w-full object-cover" fallback={<MapPin className="m-auto mt-5 h-5 w-5 text-brand" aria-hidden />} />
+                      <PublicImage src={mediaPreviewUrl(p.cover) ?? undefined} alt="" className="h-full w-full object-cover" fallback={<MapPin className="m-auto mt-5 h-5 w-5 text-brand" aria-hidden />} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold">{p.title}</p>

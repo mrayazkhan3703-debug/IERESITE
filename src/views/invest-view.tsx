@@ -1,5 +1,6 @@
 "use client";
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { usePageMeta } from "@/components/layout/app-shell";
@@ -30,7 +31,7 @@ const TOOLS = [
 interface ListingDTO {
   slug: string; title: string; community: { name: string; slug: string };
   price: { minor: string; currency: string }; bedrooms: number; areaSqft: number | null;
-  cover?: { url: string; altText?: string | null } | null;
+  cover?: { url: string; altText?: string | null; kind?: string; mimeType?: string; posterUrl?: string | null } | null;
 }
 
 interface CommunityCardDTO {
@@ -160,8 +161,8 @@ export default function InvestView() {
                     <div key={l.slug} className="group relative overflow-hidden rounded-xl border border-border/70 bg-card transition-all duration-200 hover:-translate-y-1 hover:border-brand/40 hover:shadow-[0_12px_32px_-8px_rgba(0,0,0,0.12)]">
                       <Link to={`/properties/${l.slug}`} className="block">
                         <div className="aspect-[16/10] overflow-hidden bg-sand">
-                          {l.cover?.url ? (
-                            <img src={l.cover.url} alt={l.cover.altText ?? l.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                          {l.cover && mediaPreviewUrl(l.cover) ? (
+                            <img src={mediaPreviewUrl(l.cover) ?? undefined} alt={l.cover.altText ?? l.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                           ) : (
                             <div className="flex h-full items-center justify-center text-muted-foreground/40"><Home className="h-8 w-8" aria-hidden /></div>
                           )}

@@ -22,6 +22,7 @@
  * only when history exists. All motion respects prefers-reduced-motion.
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { Layers, History, X } from "lucide-react";
@@ -224,7 +225,7 @@ export function RecentlyViewedStrip({ locale }: { locale: Locale }) {
             >
               <span className="flex h-11 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-sand" aria-hidden>
                 {l.cover ? (
-                  <img src={l.cover.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover zoom-media" />
+                  <img src={mediaPreviewUrl(l.cover) ?? undefined} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover zoom-media" />
                 ) : (
                   <Layers className="h-5 w-5 text-muted-foreground/40" />
                 )}

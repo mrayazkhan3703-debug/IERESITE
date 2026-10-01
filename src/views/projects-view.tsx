@@ -1,5 +1,6 @@
 "use client";
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link, navigate } from "@/lib/router";
 import { api } from "@/lib/api-client";
@@ -25,7 +26,7 @@ interface ProjectCard {
   startingPrice: { minor: string; currency: string } | null;
   handoverDate: string | null;
   completionPercent: number | null;
-  cover: { url: string; altText: string | null } | null;
+  cover: { url: string; altText: string | null; kind?: string; mimeType?: string; posterUrl?: string | null } | null;
   totalUnits: number | null;
 }
 
@@ -102,10 +103,10 @@ export default function ProjectsView() {
               className="group relative overflow-hidden rounded-xl border border-border/70 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-200 hover:-translate-y-1 hover:border-brand/40 hover:shadow-[0_12px_32px_-8px_rgba(0,0,0,0.14)]"
             >
               <div className="aspect-[16/9] overflow-hidden bg-sand">
-                {p.cover && (
+                {p.cover && mediaPreviewUrl(p.cover) && (
                   
                   <img
-                    src={p.cover.url}
+                    src={mediaPreviewUrl(p.cover) ?? undefined}
                     alt={p.cover.altText ?? `${p.name} — development render`}
                     loading="lazy"
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"

@@ -12,6 +12,8 @@ export const mediaDtoSchema: z.ZodType<MediaDTO> = z.object({
   width: nullableOptionalNumber,
   height: nullableOptionalNumber,
   kind: z.string().optional(),
+  mimeType: z.string().optional(),
+  posterUrl: nullableOptionalString,
 });
 
 export const priceDtoSchema: z.ZodType<PriceDTO> = z.object({

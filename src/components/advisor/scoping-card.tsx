@@ -8,6 +8,7 @@
  * is also injected into the server-side system prompt (see advisor.ts scope).
  * "Clear scope" removes the URL param — the conversation continues unscoped.
  */
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { api } from "@/lib/api-client";
 import { t, type Locale } from "@/lib/i18n";
@@ -24,7 +25,7 @@ interface ScopedProperty {
   bedrooms: number;
   community: { name: string };
   listing: { priceMinor: string; listingType: string } | null;
-  media: { url: string; altText?: string | null }[];
+  media: { url: string; altText?: string | null; kind?: string; mimeType?: string; posterUrl?: string | null }[];
 }
 
 interface ScopedProject {
@@ -36,7 +37,7 @@ interface ScopedProject {
   handoverDate: string | null;
   status: string;
   completionPercent: number | null;
-  media: { url: string; altText?: string | null }[];
+  media: { url: string; altText?: string | null; kind?: string; mimeType?: string; posterUrl?: string | null }[];
 }
 
 export function ScopingCard({
@@ -117,8 +118,8 @@ export function ScopingCard({
     return (
       <div className="flex items-center gap-3 border-b border-border/70 bg-sand/40 px-4 py-2.5">
         <div className="h-11 w-[72px] shrink-0 overflow-hidden rounded-md bg-sand">
-          {p.media?.[0] ? (
-            <img src={p.media[0].url} alt={p.media[0].altText ?? p.title} width={72} height={44} loading="lazy" className="h-full w-full object-cover" />
+          {mediaPreviewUrl(p.media?.[0]) ? (
+            <img src={mediaPreviewUrl(p.media[0]) ?? undefined} alt={p.media[0].altText ?? p.title} width={72} height={44} loading="lazy" className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-muted-foreground/40"><Layers className="h-4 w-4" aria-hidden /></div>
           )}
@@ -143,8 +144,8 @@ export function ScopingCard({
   return (
     <div className={cn("flex items-center gap-3 border-b border-border/70 bg-sand/40 px-4 py-2.5")}>
     <div className="h-11 w-[72px] shrink-0 overflow-hidden rounded-md bg-sand">
-      {j.media?.[0] ? (
-        <img src={j.media[0].url} alt={j.media[0].altText ?? j.name} width={72} height={44} loading="lazy" className="h-full w-full object-cover" />
+      {mediaPreviewUrl(j.media?.[0]) ? (
+        <img src={mediaPreviewUrl(j.media[0]) ?? undefined} alt={j.media[0].altText ?? j.name} width={72} height={44} loading="lazy" className="h-full w-full object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-muted-foreground/40"><Building2 className="h-4 w-4" aria-hidden /></div>
       )}

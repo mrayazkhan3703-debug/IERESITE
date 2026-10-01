@@ -6,6 +6,8 @@ import { getPropertyDetailV2 } from "@/server/domain/read-models";
 import { updateManagedUserCommand } from "@/server/domain/user-admin-command";
 import { createSession, type SessionUser } from "@/server/auth";
 import { audit } from "@/server/auth";
+import { reindexProperty, search, autocomplete } from "@/server/search/service";
+import { searchStateSchema } from "@/server/search/types";
 const baseUrl = process.env.TEST_BASE_URL ?? "http://web:3000";
 if (!["web", "web-test", "localhost", "127.0.0.1"].includes(new URL(baseUrl).hostname) || !["postgres", "db", "localhost", "127.0.0.1"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Security tests require disposable services.");
 const prefix = "security-current-" + randomUUID(), ownerId = prefix + "-owner", userId = prefix + "-user", agentId = prefix + "-agent", orgId = prefix + "-org", communityId = prefix + "-community", projectId = prefix + "-project", propertyId = prefix + "-property";
@@ -23,6 +25,7 @@ beforeAll(async () => {
   await db.property.create({ data: { id: propertyId, slug: propertyId, title: "Disposable property", communityId, projectId, propertyType: "APARTMENT", bedrooms: 1, bathrooms: 1, lat: 25, lng: 55, publicationStatus: "PUBLISHED" } });
 });
 afterAll(async () => {
+  await db.searchDocument.deleteMany({ where: { propertyId } });
   await db.auditLog.deleteMany({ where: { actorId: ownerId } }); await db.outboxEvent.deleteMany({ where: { aggregateId: userId } });
   await db.property.deleteMany({ where: { id: propertyId } }); await db.project.deleteMany({ where: { id: projectId } });
   await db.community.deleteMany({ where: { id: communityId } }); await db.developer.deleteMany({ where: { id: prefix + "-developer" } });
@@ -49,6 +52,22 @@ test("linked advisor accounts are withdrawn after suspension and do not auto-rep
   expect(await db.agent.findUnique({ where: { id: agentId }, select: { active: true, publicAdvisor: true } })).toEqual({ active: false, publicAdvisor: false });
   await db.user.update({ where: { id: userId }, data: { isActive: true } });
   expect(await db.agent.count({ where: { id: agentId, ...PUBLIC_AGENT_WHERE } })).toBe(0);
+});
+test("search, facets and autocomplete withdraw current parents without rebuilding cached projections", async () => {
+  await db.listing.create({ data: { id: prefix + "-listing", propertyId, agentId, listingType: "SALE", priceMinor: 100000n, publishedAt: new Date(Date.now() - 60000) } });
+  await reindexProperty(propertyId);
+  const state = searchStateSchema.parse({ listingType: "SALE", communities: [communityId], page: 1, pageSize: 10 });
+  expect((await search(state)).results.some(row => row.slug === propertyId)).toBe(true);
+  expect((await search(state)).results.find(row => row.slug === propertyId)?.agent).toBeNull();
+  await db.project.update({ where: { id: projectId }, data: { publicationStatus: "DRAFT" } });
+  expect((await search(state)).total).toBe(0);
+  await db.project.update({ where: { id: projectId }, data: { publicationStatus: "PUBLISHED" } });
+  expect((await search(state)).total).toBe(1);
+  await db.community.update({ where: { id: communityId }, data: { publicationStatus: "DRAFT" } });
+  const withdrawn = await search(state);
+  expect(withdrawn.total).toBe(0); expect(withdrawn.facets.communities).toEqual([]);
+  expect((await autocomplete("Disposable property", 20)).some(row => row.slug === propertyId)).toBe(false);
+  await db.community.update({ where: { id: communityId }, data: { publicationStatus: "PUBLISHED" } });
 });
 test("audit responses redact legacy credentials, tolerate broken JSON and bound pagination", async () => {
   await audit({ actorId: ownerId, action: "verification", resourceType: prefix, resourceId: prefix, after: { accessToken: "fixture-sensitive" } });

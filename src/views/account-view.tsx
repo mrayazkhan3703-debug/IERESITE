@@ -1,5 +1,6 @@
 "use client";
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link, navigate } from "@/lib/router";
 import { usePageMeta } from "@/components/layout/app-shell";
@@ -350,7 +351,7 @@ export default function AccountView() {
                     className="flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2 transition-ui hover:border-brand/40"
                   >
                     <div className="h-10 w-14 shrink-0 overflow-hidden rounded-md bg-sand">
-                      {c.cover && <img src={c.cover.url} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                      {c.cover && mediaPreviewUrl(c.cover) && <img src={mediaPreviewUrl(c.cover) ?? undefined} alt="" className="h-full w-full object-cover" loading="lazy" />}
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{c.title}</p>
@@ -383,8 +384,8 @@ export default function AccountView() {
             {recentlyViewed.slice(0, 6).map((r) => (
               <Link key={r.slug} to={`/properties/${r.slug}`} className="flex items-center gap-3 rounded-lg border border-border/70 bg-card p-3 transition-ui hover:border-brand/40">
                 <div className="h-12 w-16 shrink-0 overflow-hidden rounded-md bg-sand">
-                  {r.cover && (
-                    <img src={r.cover.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  {r.cover && mediaPreviewUrl(r.cover) && (
+                    <img src={mediaPreviewUrl(r.cover) ?? undefined} alt="" className="h-full w-full object-cover" loading="lazy" />
                   )}
                 </div>
                 <div className="min-w-0">

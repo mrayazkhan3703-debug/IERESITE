@@ -1,5 +1,6 @@
 "use client";
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { BedDouble, Bath, Ruler, MapPin, Heart, Layers, Eye, Info, Scale, Map as MapIcon, Sparkles } from "lucide-react";
@@ -99,7 +100,7 @@ export function PropertyCard({
           aria-label={`${listing.title} — view details`}
           className="block h-full w-full focus-visible:outline-offset-[-2px]"
         >
-          <PublicImage src={listing.cover?.url} alt={listing.cover?.altText || `${listing.title} in ${listing.community.name}`} width={listing.cover?.width ?? 800} height={listing.cover?.height ?? 600} className="h-full w-full object-cover zoom-media" fallback={
+          <PublicImage src={mediaPreviewUrl(listing.cover) ?? undefined} alt={listing.cover?.altText || `${listing.title} in ${listing.community.name}`} width={listing.cover?.width ?? 800} height={listing.cover?.height ?? 600} className="h-full w-full object-cover zoom-media" fallback={
             <div className="flex h-full w-full items-center justify-center text-muted-foreground/40">
               <Layers className="h-10 w-10" aria-hidden />
             </div>

@@ -39,7 +39,7 @@ async function loadMediaFor(properties: string[]): Promise<void> {
   if (!missing.length) return;
   const rows = await db.propertyMedia.findMany({
     where: { propertyId: { in: missing }, media: { isPrivate: false, kind: "IMAGE" } },
-    orderBy: [{ sortOrder: "asc" }, { isCover: "desc" }],
+    orderBy: [{ isCover: "desc" }, { sortOrder: "asc" }],
     include: { media: true },
   });
   // first per property = cover
@@ -413,21 +413,22 @@ async function hydrateAgentNames(cards: ListingCardDTO[]): Promise<void> {
   for (const c of cards) {
     if (c.agent) {
       const a = byId.get(c.agent.id);
-      if (a) c.agent = { id: a.id, name: a.name, slug: a.slug, phone: a.phoneE164 };
+        c.agent = a ? { id: a.id, name: a.name, slug: a.slug, phone: a.phoneE164 } : null;
     }
   }
 }
 
 export async function search(state: SearchState): Promise<SearchResponse> {
-  const key = `search:${usesPostgres() ? "postgres" : "local"}:${JSON.stringify(state)}`;
-  const cached = cache.get<SearchResponse>(key);
-  if (cached) return cached;
+  // Public visibility and advisor access are evaluated on every request.
+  // Response caching can retain withdrawn entities and revoked contact details.
 
   const execution = await withSearchFallback(async () => {
     await ensureIndex();
     if (usesPostgres()) return await searchPostgres(state);
-    const result = provider.search(state);
-    return { result, documents: (provider as LocalSearchProvider).getDocs(result.ids) };
+    const current = new LocalSearchProvider();
+    for (const document of await assembleSearchDocuments(undefined, 1000)) current.upsert(document);
+    const result = current.search(state);
+    return { result, documents: current.getDocs(result.ids) };
   }, async () => {
     const fallback = new LocalSearchProvider();
     for (const document of await assembleSearchDocuments(undefined, 1000)) fallback.upsert(document);
@@ -440,7 +441,7 @@ export async function search(state: SearchState): Promise<SearchResponse> {
   await hydrateAgentNames(cards);
 
   const communityNames = await db.community.findMany({
-    where: { slug: { in: [...result.facets.communities.keys()] } },
+      where: { ...PUBLIC_COMMUNITY_WHERE, slug: { in: [...result.facets.communities.keys()] } },
     select: { id: true, name: true, slug: true },
   });
   const developerNames = await db.developer.findMany({
@@ -479,14 +480,16 @@ export async function search(state: SearchState): Promise<SearchResponse> {
     },
   };
   const contracted = searchResponseSchema.parse(response);
-  if (!execution.degraded) cache.set(key, contracted, 30_000);
   return contracted;
 }
 
 export async function autocomplete(prefix: string, limit = 8): Promise<AutocompleteItem[]> {
   const execution = await withSearchFallback(async () => {
     await ensureIndex();
-    return usesPostgres() ? autocompletePostgres(prefix, limit) : provider.autocomplete(prefix, limit);
+    if (usesPostgres()) return autocompletePostgres(prefix, limit);
+    const current = new LocalSearchProvider();
+    for (const document of await assembleSearchDocuments(undefined, 1000)) current.upsert(document);
+    return current.autocomplete(prefix, limit);
   }, async () => {
     const fallback = new LocalSearchProvider();
     for (const document of await assembleSearchDocuments(undefined, 1000)) fallback.upsert(document);

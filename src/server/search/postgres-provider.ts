@@ -188,8 +188,13 @@ function quarterIndex(raw: string): number | null {
 
 const PUBLIC_DOCUMENT_CONDITION = Prisma.sql`EXISTS (
   SELECT 1 FROM "Listing" current_listing JOIN "Property" current_property ON current_property.id = current_listing."propertyId"
+  JOIN "Community" current_community ON current_community.id = current_property."communityId"
+  LEFT JOIN "Project" current_project ON current_project.id = current_property."projectId"
+  LEFT JOIN "Community" project_community ON project_community.id = current_project."communityId"
   WHERE current_listing.id = "SearchDocument"."listingId"
     AND current_property."publicationStatus" = 'PUBLISHED' AND current_property."deletedAt" IS NULL
+    AND current_community."publicationStatus" = 'PUBLISHED'
+    AND (current_property."projectId" IS NULL OR (current_project."publicationStatus" = 'PUBLISHED' AND current_project."deletedAt" IS NULL AND project_community."publicationStatus" = 'PUBLISHED'))
     AND current_listing."publishedAt" <= CURRENT_TIMESTAMP
     AND (current_listing."expiresAt" IS NULL OR current_listing."expiresAt" > CURRENT_TIMESTAMP)
     AND current_listing."availabilityStatus" <> 'WITHDRAWN'

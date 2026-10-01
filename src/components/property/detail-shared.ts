@@ -270,7 +270,7 @@ export function detailToCard(d: PropertyDetailV2): ListingCardDTO {
     project: d.project ? { id: d.project.id, name: d.project.name, slug: d.project.slug } : null,
     developer: d.developer ? { id: d.developer.id, name: d.developer.name, slug: d.developer.slug } : null,
     agent: null,
-    cover: d.media[0] ? { id: d.media[0].id, url: d.media[0].url, altText: d.media[0].altText } : null,
+    cover: d.media[0] ? { ...d.media[0] } : null,
     lat: d.lat,
     lng: d.lng,
     handoverQuarter: d.handoverQuarter,

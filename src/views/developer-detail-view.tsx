@@ -20,6 +20,7 @@
  *    aggregated figure links back to project-level source fields.
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { useRoute } from "@/lib/router";
@@ -433,8 +434,8 @@ function ProjectTile({ p, locale }: { p: DeveloperDetailV2["projects"][number]; 
   return (
     <Link to={`/projects/${p.slug}`} className="group overflow-hidden rounded-xl border border-border/70 transition-all duration-200 hover:-translate-y-1 hover:border-brand/40 hover:shadow-md">
       <div className="aspect-[16/9] overflow-hidden bg-sand">
-        {p.cover && (
-          <img src={p.cover.url} alt={p.cover.altText ?? p.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        {p.cover && mediaPreviewUrl(p.cover) && (
+          <img src={mediaPreviewUrl(p.cover) ?? undefined} alt={p.cover.altText ?? p.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
         )}
       </div>
       <div className="p-4">

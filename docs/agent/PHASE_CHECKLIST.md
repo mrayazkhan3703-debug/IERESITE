@@ -16,11 +16,11 @@
 | 11 Search + map production upgrade | COMPLETE | `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` | CI 56 passes 79 browser checks including EN/AR singleton pins; Render `dep-dauj52gu01pc738jhml0` live; direct rebuild, default pins, selection/reload and price/pin switching verified |
 | 12 AI Advisor + RAG | IN_PROGRESS | `ba3326f` | CI 36835040693 passes; live readiness accurately records PROVIDER_TIMEOUT; actual Gemini generation and approved-source facts remain pending |
 | 13 Leads/CRM operations | COMPLETE_LOCAL_SCOPE | `ba3326f` | CI 36835040693 full gate; live OWNER Deferred banner and disabled GHL connection; external sync intentionally deferred |
-| 14 SEO/routing/multilingual | IN_PROGRESS | `7131fe2` | CI 36838547634 full gate passes; main pushed, live acceptance pending |
-| 15 Analytics/data quality/observability | IN_PROGRESS | `7131fe2` | CI 36838547634 full gate passes; current UTC measurements/coverage, live acceptance pending |
+| 14 SEO/routing/multilingual | COMPLETE | `7131fe2` | CI 36838547634 full gate; exact Render deployment live; native sitemap 84 canonical URLs, bilingual alternates and private exclusions; staging crawl block |
+| 15 Analytics/data quality/observability | COMPLETE | `7131fe2` | CI 36838547634 full gate; live OWNER analytics UTC measurement/consent limits and NO_RECORDS market coverage verified |
 | 16 Security/RBAC/privacy | IN_PROGRESS | candidate pending | Parent/account revocation, audit/monitoring privacy, CSV safeguards; regression/full gate pending |
 | 17 Public UX restoration | IN_PROGRESS | candidate pending | Canonical opportunities route, source-bound claims, media posters, independent feeds/degraded states; EN/AR desktop/mobile journeys pending |
-| 18 Performance/accessibility/full QA | NOT_STARTED | — | — |
-| 19 Production cleanup/cutover | NOT_STARTED | — | — |
+| 18 Performance/accessibility/full QA | IN_PROGRESS | candidate pending | Exact final commit gate required; prior releases passed full recovery/performance/accessibility suites |
+| 19 Production cleanup/cutover | IN_PROGRESS | candidate pending | Read-only canonical reconciliation complete; report preparation; worker, live AI and verified owner facts still gate cutover |
 
 Owner-approved 2026-10-01 scope: finish inline media first, then Phases 12–19 in verified staged releases. External CRM synchronization and the paid worker remain deferred.

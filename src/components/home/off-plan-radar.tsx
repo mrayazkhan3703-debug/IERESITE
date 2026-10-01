@@ -7,6 +7,7 @@
  * rather than fabricated — the data state travels instead.
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { Button } from "@/components/ui/button";
@@ -78,7 +79,7 @@ export function OffPlanRadar({ locale, projects }: { locale: Locale; projects: P
                     <div className="relative aspect-[16/10] overflow-hidden bg-sand">
                       {p.cover ? (
                         <img
-                          src={p.cover.url}
+                          src={mediaPreviewUrl(p.cover) ?? undefined}
                           alt={p.cover.altText || `${p.name} — development render`}
                           loading="lazy"
                           decoding="async"

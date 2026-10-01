@@ -6,6 +6,7 @@
  * the U03 off-plan radar card style. Only fields the projects API provides.
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { Building2, MapPin, Layers, ChevronRight } from "lucide-react";
@@ -70,7 +71,7 @@ export function ProjectResultCard({
         <Link to={to} aria-label={`${project.name} — ${t("search.project.viewProject", locale)}`} className="block h-full w-full">
           {project.cover ? (
             <img
-              src={project.cover.url}
+              src={mediaPreviewUrl(project.cover) ?? undefined}
               alt={project.cover.altText || `${project.name}, ${project.community.name}`}
               loading="lazy"
               decoding="async"

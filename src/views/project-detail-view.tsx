@@ -23,6 +23,7 @@
  * provenance is badged; nothing is fabricated.
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { api } from "@/lib/api-client";
@@ -114,7 +115,7 @@ export default function ProjectDetailView({ slug }: { slug: string }) {
               url: `/projects/${data.slug}`,
               description: data.summary ?? undefined,
               address: { "@type": "PostalAddress", addressLocality: data.community.name, addressRegion: "Dubai", addressCountry: "AE" },
-              ...(data.media[0] ? { image: [data.media[0].url] } : {}),
+              ...(mediaPreviewUrl(data.media[0]) ? { image: [mediaPreviewUrl(data.media[0])] } : {}),
             },
             {
               "@context": "https://schema.org",
@@ -615,7 +616,7 @@ export default function ProjectDetailView({ slug }: { slug: string }) {
                       project: { id: data.id, name: data.name, slug: data.slug },
                       developer: data.developer,
                       agent: null,
-                      cover: p.cover ? { id: p.cover.id, url: p.cover.url } : null,
+                      cover: p.cover ? { ...p.cover } : null,
                       lat: data.lat,
                       lng: data.lng,
                       isDemoData: data.isDemoData,

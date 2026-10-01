@@ -12,6 +12,7 @@
  * missing fields render UnavailableValue, never a bare dash.
  */
 
+import { mediaPreviewUrl } from "@/lib/media-preview";
 import * as React from "react";
 import { Link } from "@/lib/router";
 import { useRoute } from "@/lib/router";
@@ -128,7 +129,7 @@ export default function PropertyDetailView({
                 priceCurrency: data.listing?.currency ?? "AED",
                 availability: data.listing?.availabilityStatus === "AVAILABLE" ? "https://schema.org/InStock" : "https://schema.org/SoldOut",
               },
-              ...(data.media[0] ? { image: [data.media[0].url] } : {}),
+              ...(mediaPreviewUrl(data.media[0]) ? { image: [mediaPreviewUrl(data.media[0])] } : {}),
               address: {
                 "@type": "PostalAddress",
                 addressLocality: data.community.name,
