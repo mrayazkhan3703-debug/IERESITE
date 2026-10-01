@@ -54,6 +54,7 @@ test("linked advisor accounts are withdrawn after suspension and do not auto-rep
   expect(await db.agent.count({ where: { id: agentId, ...PUBLIC_AGENT_WHERE } })).toBe(0);
 });
 test("search, facets and autocomplete withdraw current parents without rebuilding cached projections", async () => {
+  await db.agent.update({ where: { id: agentId }, data: { active: false, publicAdvisor: false } });
   await db.listing.create({ data: { id: prefix + "-listing", propertyId, agentId, listingType: "SALE", priceMinor: 100000n, publishedAt: new Date(Date.now() - 60000) } });
   await reindexProperty(propertyId);
   const state = searchStateSchema.parse({ listingType: "SALE", communities: [communityId], page: 1, pageSize: 10 });
@@ -68,6 +69,12 @@ test("search, facets and autocomplete withdraw current parents without rebuildin
   expect(withdrawn.total).toBe(0); expect(withdrawn.facets.communities).toEqual([]);
   expect((await autocomplete("Disposable property", 20)).some(row => row.slug === propertyId)).toBe(false);
   await db.community.update({ where: { id: communityId }, data: { publicationStatus: "PUBLISHED" } });
+});
+test("database trigger lookup is fixed and extension metadata has no public write grant", async () => {
+  const functions = await db.$queryRaw<{ proconfig: string[] }[]>`SELECT proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='iere_sync_point_geography'`;
+  expect(functions[0].proconfig).toContain("search_path=pg_catalog");
+  const grants = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE n.nspname='public' AND c.relname='spatial_ref_sys' AND (a.grantee=0 OR a.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated'))) AND a.privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE')`;
+  expect(Number(grants[0].count)).toBe(0);
 });
 test("audit responses redact legacy credentials, tolerate broken JSON and bound pagination", async () => {
   await audit({ actorId: ownerId, action: "verification", resourceType: prefix, resourceId: prefix, after: { accessToken: "fixture-sensitive" } });
