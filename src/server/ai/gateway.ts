@@ -9,6 +9,7 @@ import { logEvent } from "@/server/rate-limit";
 import { Prisma } from "@prisma/client";
 import { aiBudgetDecision, aiProviderGateCode, AiProviderBlockedError, estimateAiPromptCharacters, estimateAiReservationTokens } from "./controls";
 import { generateWithGemini, GeminiProviderError } from "./gemini-provider";
+import { aiRetryDelay } from "./retry-policy";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -139,6 +140,10 @@ class GeminiChatProvider implements ChatProvider {
   readonly name = "gemini";
 
   async chat(req: ChatRequest): Promise<ChatResponse> {
+    return this.attempt(req, Date.now() + getConfig().AI_REQUEST_TIMEOUT_MS, false);
+  }
+
+  private async attempt(req: ChatRequest, deadline: number, alreadyRetried: boolean): Promise<ChatResponse> {
     const config = getConfig();
     await assertAiFeatureAvailable(this.name);
     const apiKey = config.GEMINI_API_KEY?.trim();
@@ -150,7 +155,7 @@ class GeminiChatProvider implements ChatProvider {
       const result = await generateWithGemini({ ...req, maxTokens: config.AI_MAX_OUTPUT_TOKENS }, {
         apiKey,
         model: config.GEMINI_MODEL,
-        timeoutMs: config.AI_REQUEST_TIMEOUT_MS,
+        timeoutMs: Math.max(1, deadline - Date.now()),
       });
       await finishAiUsage(reservation, result, null);
       logEvent("ai.chat", {
@@ -165,6 +170,13 @@ class GeminiChatProvider implements ChatProvider {
       const errorCode = safeProviderFailureCode(error);
       await finishAiUsage(reservation, error instanceof GeminiProviderError ? error.usage : null, errorCode).catch(() => {});
       logEvent("ai.chat_failed", { provider: this.name, kind: req.meta?.kind, latencyMs: Date.now() - started, errorCode });
+      const delay = aiRetryDelay(errorCode, alreadyRetried, deadline - Date.now());
+      if (delay !== null) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        // A fresh attempt repeats the feature/budget checks and retains a
+        // separate reservation for the failed call. No hidden free retry.
+        return this.attempt(req, deadline, true);
+      }
       throw error;
     }
   }

@@ -115,7 +115,9 @@ export async function generateWithGemini(
           "content-type": "application/json",
           "x-goog-api-key": apiKey,
         },
-        body: JSON.stringify(buildGeminiRequest({ ...req, ...(/^gemini-3[.-]/.test(options.model) ? { thinkingLevel: req.thinkingLevel ?? "low" } : {}) })),
+        // Gemini 3 guidance recommends its default sampling temperature;
+        // earlier app defaults below 1 can degrade thinking-model behavior.
+        body: JSON.stringify(buildGeminiRequest({ ...req, ...(/^gemini-3[.-]/.test(options.model) ? { thinkingLevel: req.thinkingLevel ?? "low", temperature: undefined } : {}) })),
         signal: controller.signal,
       }
     );
