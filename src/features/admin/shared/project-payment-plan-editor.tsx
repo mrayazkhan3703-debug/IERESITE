@@ -28,6 +28,7 @@ export function ProjectPaymentPlanEditor({ projectId, initialCount = 0, onChange
   const [plans, setPlans] = React.useState<Plan[]>([]);
   const [form, setForm] = React.useState(blank());
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [mediaBusy, setMediaBusy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const total = form.installments.reduce((sum, row) => sum + (Number(row.percent) || 0), 0);
@@ -49,6 +50,7 @@ export function ProjectPaymentPlanEditor({ projectId, initialCount = 0, onChange
   const startNew = () => { setEditingId(null); setForm(blank()); setExpanded(true); };
   const cancel = () => { setEditingId(null); setForm(blank()); };
   const submit = async () => {
+    if (mediaBusy || busy) return;
     if (Math.abs(total - 100) > 0.01) { toast.error(`Installments total ${total.toFixed(2)}%. They must total 100%.`); return; }
     setBusy(true);
     try {
@@ -65,9 +67,9 @@ export function ProjectPaymentPlanEditor({ projectId, initialCount = 0, onChange
   };
 
   return <section className="space-y-3 rounded-lg border border-border/70 p-3">
-    <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">Payment plans</h3><p className="text-xs text-muted-foreground">{plans.length || initialCount} plan(s). Only plans marked Published or Verified appear publicly; Verified requires a source PDF.</p></div><Button type="button" size="sm" variant="outline" onClick={() => expanded ? setExpanded(false) : startNew()}>{expanded ? "Hide editor" : "Add payment plan"}</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">Payment plans</h3><p className="text-xs text-muted-foreground">{plans.length || initialCount} plan(s). Only plans marked Published or Verified appear publicly; Verified requires a source PDF.</p></div><Button type="button" size="sm" variant="outline" disabled={mediaBusy || busy} onClick={() => expanded ? setExpanded(false) : startNew()}>{expanded ? "Hide editor" : "Add payment plan"}</Button></div>
     {expanded && <>
-      {plans.length > 0 && <ul className="space-y-2">{plans.map((plan) => <li key={plan.id} className="flex flex-wrap items-center gap-2 rounded border border-border/60 p-2 text-xs"><span className="min-w-0 flex-1 font-medium">{plan.name}{plan.isDefault ? " · Default" : ""} · {plan.verificationStatus} · {plan.installments.length} installments</span><Button type="button" size="sm" variant="outline" onClick={() => startEdit(plan)}>Edit</Button></li>)}</ul>}
+      {plans.length > 0 && <ul className="space-y-2">{plans.map((plan) => <li key={plan.id} className="flex flex-wrap items-center gap-2 rounded border border-border/60 p-2 text-xs"><span className="min-w-0 flex-1 font-medium">{plan.name}{plan.isDefault ? " · Default" : ""} · {plan.verificationStatus} · {plan.installments.length} installments</span><Button type="button" size="sm" variant="outline" disabled={mediaBusy || busy} onClick={() => startEdit(plan)}>Edit</Button></li>)}</ul>}
       <div className="space-y-3 rounded-md bg-muted/30 p-3">
         <h4 className="text-sm font-medium">{editingId ? "Edit payment plan" : "New payment plan"}</h4>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -76,7 +78,7 @@ export function ProjectPaymentPlanEditor({ projectId, initialCount = 0, onChange
           <label className="space-y-1 text-xs">Publication<select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.verificationStatus} onChange={(e) => setForm({ ...form, verificationStatus: e.target.value as Plan["verificationStatus"] })}><option value="UNVERIFIED">Draft — hidden publicly</option><option value="PUBLISHED">Published</option><option value="VERIFIED">Verified from source document</option></select></label>
           <div className="grid grid-cols-2 gap-2"><label className="space-y-1 text-xs">Valid from<Input type="date" value={form.validFrom ?? ""} onChange={(e) => setForm({ ...form, validFrom: e.target.value || null })} /></label><label className="space-y-1 text-xs">Valid to<Input type="date" value={form.validTo ?? ""} onChange={(e) => setForm({ ...form, validTo: e.target.value || null })} /></label></div>
         </div>
-        <PublicMediaPicker label="Source PDF (required for Verified)" value={form.sourceDocumentId ?? ""} allowedKinds={["DOCUMENT", "BROCHURE"]} onChange={(sourceDocumentId) => setForm({ ...form, sourceDocumentId: sourceDocumentId || null })} />
+        <PublicMediaPicker onBusyChange={setMediaBusy} label="Source PDF (required for Verified)" value={form.sourceDocumentId ?? ""} allowedKinds={["DOCUMENT", "BROCHURE"]} onChange={(sourceDocumentId) => setForm({ ...form, sourceDocumentId: sourceDocumentId || null })} />
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />Default plan</label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.postHandover} onChange={(e) => setForm({ ...form, postHandover: e.target.checked })} />Includes post-handover payments</label>
         <div className="space-y-2"><div className="flex items-center justify-between"><h5 className="text-sm font-medium">Installments <span className={Math.abs(total - 100) < 0.01 ? "text-success" : "text-destructive"}>· {total.toFixed(2)}%</span></h5><Button type="button" size="sm" variant="outline" disabled={form.installments.length >= 24} onClick={() => setForm({ ...form, installments: [...form.installments, { label: "", percent: 0, dueOffsetMonths: null, amountMinor: null }] })}>Add row</Button></div>
@@ -84,7 +86,7 @@ export function ProjectPaymentPlanEditor({ projectId, initialCount = 0, onChange
           <p className="text-[11px] text-muted-foreground">Optional amounts use the selected plan currency. Due month is relative to booking or handover; negative values represent pre-launch stages.</p>
         </div>
         <Textarea maxLength={2000} rows={2} value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value || null })} placeholder="Internal notes or terms" aria-label="Payment plan notes" />
-        <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={cancel}>Cancel</Button><Button type="button" disabled={busy || Math.abs(total - 100) > 0.01} onClick={() => void submit()}>{busy ? "Saving…" : "Save plan"}</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={mediaBusy || busy} onClick={cancel}>Cancel</Button><Button type="button" disabled={busy || mediaBusy || Math.abs(total - 100) > 0.01} onClick={() => void submit()}>{busy ? "Saving…" : "Save plan"}</Button></div>
       </div>
     </>}
   </section>;

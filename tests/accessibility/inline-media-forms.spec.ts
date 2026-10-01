@@ -5,6 +5,8 @@ import type { Page, Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "./fixtures";
 
+test.use({ actionTimeout: 15000, navigationTimeout: 30000 });
+
 const db = new PrismaClient();
 const prefix = `inline-forms-${Date.now()}-${randomBytes(4).toString("hex")}`;
 const ownerId = prefix + "-owner", token = randomBytes(32).toString("hex");
@@ -44,7 +46,7 @@ test.afterAll(async () => {
 async function upload(page: Page, field: Locator, filename: string) {
   const bytes = await sharp({ create: { width: 32, height: 24, channels: 3, background: { r: (++sequence * 7) % 255, g: (sequence * 19) % 255, b: (sequence * 23) % 255 } } }).png().toBuffer();
   await field.getByRole("button", { name: "Upload New", exact: true }).click();
-  const response = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST");
+  const response = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST", { timeout: 30000 });
   await field.getByLabel("Upload new media").setInputFiles({ name: filename, mimeType: "image/png", buffer: bytes });
   const uploaded = await response;
   expect(uploaded.status(), await uploaded.text()).toBe(201);
@@ -64,7 +66,7 @@ async function choose(page: Page, field: Locator, filename: string) {
   await expect(library).toHaveCount(0);
 }
 async function save(page: Page, scope: Locator, button: string, endpoint: string, method: string) {
-  const pending = page.waitForResponse((r) => new URL(r.url()).pathname === endpoint && r.request().method() === method);
+  const pending = page.waitForResponse((r) => new URL(r.url()).pathname === endpoint && r.request().method() === method, { timeout: 30000 });
   await scope.getByRole("button", { name: button, exact: true }).click();
   const response = await pending;
   expect(response.status(), await response.text()).toBe(method === "POST" ? 201 : 200);
@@ -90,11 +92,11 @@ test("inline uploads retry interruption, reuse duplicates, cancel and retain lib
   const file = { name: prefix + "-retry.png", mimeType: "image/png", buffer: bytes };
   await field.getByLabel("Upload new media").setInputFiles(file);
   await expect(field.getByText("Connection interrupted. Retry this upload.", { exact: true })).toBeVisible();
-  const retried = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST");
+  const retried = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST", { timeout: 30000 });
   await field.getByRole("button", { name: "Retry", exact: true }).click();
   const response = await retried; expect(response.status()).toBe(201); const asset = await response.json(); mediaIds.push(asset.id);
   await expect(field.getByText(file.name + " · done", { exact: true })).toBeVisible();
-  const duplicate = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST");
+  const duplicate = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST", { timeout: 30000 });
   await field.getByLabel("Upload new media").setInputFiles(file); expect((await duplicate).status()).toBe(409);
   await field.getByRole("button", { name: "Use existing asset", exact: true }).click();
   await expect(field.locator("img")).toHaveAttribute("src", asset.url);
@@ -202,7 +204,7 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
     const report = page.getByRole("dialog"); await report.getByLabel("Title", { exact: true }).fill(reportTitle); await report.getByLabel("URL slug", { exact: true }).fill(reportSlug);
     const reportFilename = reportSlug + ".png", cover = await upload(page, report.getByRole("group", { name: "Report cover image", exact: true }), reportFilename);
     const pdfField = report.getByRole("group", { name: "Report PDF", exact: true }); await pdfField.getByRole("button", { name: "Upload New", exact: true }).click();
-    const pdfUpload = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST");
+    const pdfUpload = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/media" && r.request().method() === "POST", { timeout: 30000 });
     await pdfField.getByLabel("Upload new media").setInputFiles({ name: reportSlug + ".pdf", mimeType: "application/pdf", buffer: Buffer.from(`%PDF-1.4\n% Synthetic unpublished verification ${reportSlug}\n%%EOF\n`) });
     const pdfResponse = await pdfUpload; expect(pdfResponse.status()).toBe(201); const pdf = await pdfResponse.json(); mediaIds.push(pdf.id);
     await expect(pdfField.getByText(reportSlug + ".pdf · done", { exact: true })).toBeVisible();

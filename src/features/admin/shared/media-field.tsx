@@ -9,6 +9,12 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { MEDIA_MIME_TYPES, mediaMatchesMode, type MediaAssetChoice, type MediaAttachment, type MediaMode } from "@/lib/media-contract";
 
 const UploadState = React.createContext<((id: string, busy: boolean) => void) | null>(null);
+function useMediaOperation(busy: boolean, onBusyChange?: (busy: boolean) => void) {
+  const id = React.useId();
+  const register = React.useContext(UploadState);
+  React.useEffect(() => { register?.(id, busy); return () => register?.(id, false); }, [register, id, busy]);
+  React.useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+}
 export function MediaForm({ children, onSubmit, ...props }: React.ComponentProps<"form">) {
   const [uploads, setUploads] = React.useState<Record<string, boolean>>({});
   const register = React.useCallback((id: string, busy: boolean) => setUploads((previous) => {
@@ -44,6 +50,7 @@ export function MediaUploader({ mode, kind, altText, multiple = false, onUploade
   const [error, setError] = React.useState("");
   const policyRequest = React.useRef<Promise<{ maxBytes: number; allowedMimeTypes: string[] } | null> | null>(null);
   const uploadId = React.useId();
+  const sequence = React.useRef(0);
   const register = React.useContext(UploadState);
   const input = React.useRef<HTMLInputElement>(null);
   const requests = React.useRef(new Map<string, XMLHttpRequest>());
@@ -114,7 +121,7 @@ export function MediaUploader({ mode, kind, altText, multiple = false, onUploade
   }
   function choose(files: FileList | null) {
     if (!files || running.current) return;
-    const batch = Array.from(files).slice(0, multiple ? 60 : 1).map((file) => ({ key: crypto.randomUUID(), file, progress: 0, status: "waiting" as const }));
+    const batch = Array.from(files).slice(0, multiple ? 60 : 1).map((file) => ({ key: `${uploadId}-${++sequence.current}`, file, progress: 0, status: "waiting" as const }));
     setItems((previous) => [...previous, ...batch]);
     void run(batch);
   }
@@ -147,8 +154,8 @@ export function MediaPicker({ open, onOpenChange, mode, onSelect }: {
   React.useEffect(() => {
     if (!open) return;
     let active = true;
+    setLoading(true); setError("");
     const timer = setTimeout(() => {
-      setLoading(true); setError("");
       api.get<typeof page>("/api/media?" + new URLSearchParams({ take: "24", q, mode, ...(cursor ? { cursor } : {}) })).then((result) => {
         if (active) setPage(result);
       }).catch(() => { if (active) setError("Media Library could not be loaded."); }).finally(() => { if (active) setLoading(false); });
@@ -160,7 +167,7 @@ export function MediaPicker({ open, onOpenChange, mode, onSelect }: {
     <Input aria-label="Search Media Library" value={q} onChange={(event) => { setQ(event.target.value); setCursor(""); }} placeholder="Search filename, caption or alt text" />
     {loading && <p role="status">Loading media…</p>}
     {error && <p role="alert">{error} <Button type="button" onClick={() => setRetry((value) => value + 1)}>Retry</Button></p>}
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{page.media.filter((asset) => mediaMatchesMode(asset, mode)).map((asset) => <button type="button" key={asset.id} className="rounded-lg border p-2 text-left focus-visible:ring-2" onClick={() => { onSelect(asset); onOpenChange(false); }}>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{page.media.filter((asset) => mediaMatchesMode(asset, mode)).map((asset) => <button type="button" key={asset.id} disabled={loading || Boolean(error)} className="rounded-lg border p-2 text-left focus-visible:ring-2" onClick={() => { onSelect(asset); onOpenChange(false); }}>
       {asset.mimeType.startsWith("image/") ? <MediaPreview asset={asset} /> : <div className="flex h-24 items-center justify-center rounded bg-muted">{asset.kind}</div>}
       <span className="block truncate text-sm">{asset.originalFilename || asset.altText || asset.id}</span>
     </button>)}</div>
@@ -180,8 +187,8 @@ function AttachmentPreview({ row }: { row: MediaAttachment }) {
   return row.url ? <MediaPreview asset={{ url: row.url, mimeType: row.mimeType ?? (row.kind === "VIDEO" ? "video/mp4" : row.kind === "DOCUMENT" ? "application/pdf" : "image/jpeg"), altText: row.altText, posterUrl: row.posterUrl }} /> : asset ? <MediaPreview asset={asset} /> : <p className="text-xs">Loading media preview…</p>;
 }
 
-export function MediaField({ label, value, onChange, mode = "single-image", kind, onBusyChange }: {
-  label: string; value: string; onChange: (id: string) => void; mode?: MediaMode; kind?: string; onBusyChange?: (busy: boolean) => void;
+export function MediaField({ label, value, onChange, mode = "single-image", kind, onBusyChange, disabled = false }: {
+  label: string; value: string; onChange: (id: string) => void; mode?: MediaMode; kind?: string; onBusyChange?: (busy: boolean) => void; disabled?: boolean;
 }) {
   const [asset, setAsset] = React.useState<MediaAssetChoice | null>(null);
   const [error, setError] = React.useState("");
@@ -189,8 +196,10 @@ export function MediaField({ label, value, onChange, mode = "single-image", kind
   const [picker, setPicker] = React.useState(false);
   const [posterSaving, setPosterSaving] = React.useState(false);
   const [uploadBusy, setUploadBusy] = React.useState(false);
-  const busy = uploadBusy || posterSaving;
-  const busyChange = React.useCallback((next: boolean) => { setUploadBusy(next); onBusyChange?.(next); }, [onBusyChange]);
+  const [posterUploadBusy, setPosterUploadBusy] = React.useState(false);
+  const busy = uploadBusy || posterSaving || posterUploadBusy;
+  useMediaOperation(busy, onBusyChange);
+  const busyChange = React.useCallback((next: boolean) => setUploadBusy(next), []);
   React.useEffect(() => {
     let active = true; setError("");
     if (!value) { setAsset(null); return; }
@@ -211,9 +220,9 @@ export function MediaField({ label, value, onChange, mode = "single-image", kind
     <h4 className="text-sm font-medium">{label}</h4>
     {asset && <MediaPreview asset={asset} />}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setUpload((value) => !value)}>{value ? "Replace / Upload New" : "Upload New"}</Button><Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setPicker(true)}>Choose Existing</Button>{value && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setAsset(null); onChange(""); }}>Remove</Button>}</div>
+    <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={() => setUpload((value) => !value)}>{value ? "Replace / Upload New" : "Upload New"}</Button><Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={() => setPicker(true)}>Choose Existing</Button>{value && <Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={() => { setAsset(null); onChange(""); }}>Remove</Button>}</div>
     {upload && <MediaUploader mode={mode} kind={kind} onUploaded={select} onBusyChange={busyChange} />}
-    {asset?.mimeType.startsWith("video/") && <div><p className="text-xs text-muted-foreground">The poster belongs to this video asset and is shared wherever this video is used. No poster uses a neutral player background.</p><MediaField label="Video poster image" value={asset.posterMediaId ?? ""} onChange={(id) => { void savePoster(id); }} />{posterSaving && <p role="status">Saving video poster…</p>}</div>}
+    {asset?.mimeType.startsWith("video/") && <div><p className="text-xs text-muted-foreground">The poster belongs to this video asset and is shared wherever this video is used. No poster uses a neutral player background.</p><MediaField label="Video poster image" disabled={posterSaving || disabled} onBusyChange={setPosterUploadBusy} value={asset.posterMediaId ?? ""} onChange={(id) => { void savePoster(id); }} />{posterSaving && <p role="status">Saving video poster…</p>}</div>}
     <MediaPicker open={picker} onOpenChange={setPicker} mode={mode} onSelect={select} />
   </div>;
 }
@@ -227,8 +236,15 @@ export function MediaGalleryManager({ label, value, onChange, mode = "gallery", 
   const [upload, setUpload] = React.useState(false);
   const [picker, setPicker] = React.useState(false);
   const [replace, setReplace] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const busyChange = React.useCallback((next: boolean) => { setBusy(next); onBusyChange?.(next); }, [onBusyChange]);
+  const [uploadBusy, setUploadBusy] = React.useState(false);
+  const [posterOperations, setPosterOperations] = React.useState<Record<string, boolean>>({});
+  const busy = uploadBusy || Object.values(posterOperations).some(Boolean);
+  useMediaOperation(busy, onBusyChange);
+  const busyChange = React.useCallback((next: boolean) => setUploadBusy(next), []);
+  const posterBusyChange = (id: string, next: boolean) => setPosterOperations((previous) => {
+    if (Boolean(previous[id]) === next) return previous;
+    const updated = { ...previous }; if (next) updated[id] = true; else delete updated[id]; return updated;
+  });
   const [error, setError] = React.useState("");
   const dragged = React.useRef<number | null>(null);
   const select = (asset: MediaAssetChoice) => {
@@ -255,7 +271,7 @@ export function MediaGalleryManager({ label, value, onChange, mode = "gallery", 
     <ol className="grid gap-3 sm:grid-cols-2">{value.map((row, index) => <li key={row.mediaId} draggable={!busy} onDragStart={() => { dragged.current = index; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (dragged.current !== null) move(dragged.current, index); dragged.current = null; }} className="space-y-2 rounded-lg border p-3">
       <AttachmentPreview row={row} />
       <p className="text-xs">{row.kind || "Media"}{row.isCover ? " · Cover / Primary" : ""}</p>
-      {row.kind === "VIDEO" && <VideoPosterField mediaId={row.mediaId} onSaved={(posterUrl) => onChange(value.map((item, at) => at === index ? { ...item, posterUrl } : item))} />}
+      {row.kind === "VIDEO" && <VideoPosterField mediaId={row.mediaId} onBusyChange={(next) => posterBusyChange(row.mediaId, next)} onSaved={(posterUrl) => { const rows = current.current.map((item) => item.mediaId === row.mediaId ? { ...item, posterUrl } : item); current.current = rows; onChange(rows); }} />}
       {mode !== "document" && mode !== "floor-plan" && <><Input aria-label={"Caption for media " + (index + 1)} placeholder="Caption" value={row.caption ?? ""} maxLength={500} onChange={(event) => onChange(value.map((item, at) => at === index ? { ...item, caption: event.target.value } : item))} />
       <Input aria-label={"Alt text for media " + (index + 1)} placeholder="Alt text" value={row.altText ?? ""} maxLength={300} onChange={(event) => onChange(value.map((item, at) => at === index ? { ...item, altText: event.target.value } : item))} /></>}
       <div className="flex flex-wrap gap-2">
@@ -270,22 +286,26 @@ export function MediaGalleryManager({ label, value, onChange, mode = "gallery", 
   </section>;
 }
 
-function VideoPosterField({ mediaId, onSaved }: { mediaId: string; onSaved: (url: string | null) => void }) {
+function VideoPosterField({ mediaId, onSaved, onBusyChange }: { mediaId: string; onSaved: (url: string | null) => void; onBusyChange: (busy: boolean) => void }) {
   const [asset, setAsset] = React.useState<MediaAssetChoice | null>(null);
   const [error, setError] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [uploadBusy, setUploadBusy] = React.useState(false);
+  useMediaOperation(saving || uploadBusy, onBusyChange);
   React.useEffect(() => {
     let active = true;
     api.get<MediaAssetChoice>("/api/media/" + encodeURIComponent(mediaId)).then((result) => { if (active) setAsset(result); }).catch(() => { if (active) setError("Video poster could not be loaded."); });
     return () => { active = false; };
   }, [mediaId]);
   async function save(posterMediaId: string) {
-    if (!asset?.updatedAt) return;
-    setError("");
+    if (!asset?.updatedAt || saving) return;
+    setSaving(true); setError("");
     try {
       await api.patch("/api/media/" + encodeURIComponent(mediaId), { expectedUpdatedAt: asset.updatedAt, altText: asset.altText ?? null, caption: asset.caption ?? null, posterMediaId: posterMediaId || null });
       const updated = await api.get<MediaAssetChoice>("/api/media/" + encodeURIComponent(mediaId));
       setAsset(updated); onSaved(updated.posterUrl ?? null);
     } catch (error) { setError(error instanceof Error ? error.message : "Poster could not be saved."); }
+    finally { setSaving(false); }
   }
-  return <div><p className="text-xs text-muted-foreground">Poster changes update the video asset in Media Library wherever it is used.</p><MediaField label="Video poster" value={asset?.posterMediaId ?? ""} onChange={(id) => { void save(id); }} />{error && <p role="alert" className="text-sm text-destructive">{error}</p>}</div>;
+  return <div><p className="text-xs text-muted-foreground">Poster changes update the video asset in Media Library wherever it is used.</p><MediaField label="Video poster" disabled={saving} onBusyChange={setUploadBusy} value={asset?.posterMediaId ?? ""} onChange={(id) => { void save(id); }} />{error && <p role="alert" className="text-sm text-destructive">{error}</p>}</div>;
 }
