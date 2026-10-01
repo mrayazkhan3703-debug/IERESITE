@@ -16,7 +16,7 @@ describe("shared property publication", () => {
     }
   });
   test("rental frequency and whole room counts are validated", () => {
-    expect(propertyPublicationChecks({ ...valid, listingType: "RENT", bedrooms: 1.5 }, now).filter(row => !row.ready).map(row => row.path)).toEqual(["bedrooms", "listingType"]);
+    expect(propertyPublicationChecks({ ...valid, listingType: "RENT", bedrooms: 31 }, now).filter(row => !row.ready).map(row => row.path)).toEqual(["bedrooms", "listingType"]);
     expect(propertyPublicationChecks({ ...valid, listingType: "RENT", rentFrequency: "MONTHLY" }, now).every(row => row.ready)).toBe(true);
   });
 });

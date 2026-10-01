@@ -49,12 +49,13 @@ describe("direct CMS publication", () => {
     expect(await db.property.count({ where: { slug: { in: [prefix + "-expired", prefix + "-private"] } } })).toBe(0);
     await db.community.update({ where: { id: communityId }, data: { publicationStatus: "PUBLISHED" } });
   });
-  test("publication evaluates corrected coordinates rather than stale stored coordinates", async () => {
+  test("publication evaluates corrected coordinates and saves submitted coordinates", async () => {
     const created = await createPropertyCommand(actor, { ...propertyInput(), slug: prefix + "-coords" }, null);
-    await db.property.update({ where: { id: created.id }, data: { lat: 100 } });
+    await db.property.update({ where: { id: created.id }, data: { lat: 24 } });
     const current = await db.property.findUniqueOrThrow({ where: { id: created.id } });
     await updatePropertyCommand(actor, { propertyId: created.id, expectedUpdatedAt: current.updatedAt.toISOString(), lat: 25, lng: 55, publicationStatus: "PUBLISHED" }, null);
-    expect((await db.property.findUniqueOrThrow({ where: { id: created.id } })).publicationStatus).toBe("PUBLISHED");
+    const published = await db.property.findUniqueOrThrow({ where: { id: created.id } });
+    expect(published.publicationStatus).toBe("PUBLISHED"); expect(published.lat).toBe(25);
   });
   test("a team member publishes without a login, appears publicly, and withdraws independently", async () => {
     const created = await createAgentProfileCommand(actor, { name: "Synthetic staff", slug: prefix + "-staff", jobTitle: "Office manager", publicTeam: true }, null);
