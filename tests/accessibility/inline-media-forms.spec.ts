@@ -212,7 +212,8 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
         expect(preview).toBeTruthy();
         await page.goto(preview!);
         await expect(page.getByText("Private draft preview.", { exact: true })).toBeVisible();
-        await page.getByRole("button", { name: /View all photos|عرض كل الصور/ }).click();
+        if (size === "mobile") await page.getByRole("button", { name: locale === "ar" ? "عرض الصورة 1" : "View photo 1", exact: true }).click();
+        else await page.getByRole("button", { name: /View all photos|عرض كل الصور/ }).click();
         await expect(page.getByRole("dialog").getByText("Synthetic editorial caption " + suffix, { exact: true })).toBeVisible();
         await expect(page.getByRole("dialog").locator("img")).toHaveAttribute("alt", "Synthetic descriptive alternative " + suffix);
       } else await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
