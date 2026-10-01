@@ -30,6 +30,10 @@ export const PUBLIC_AGENT_WHERE = {
   AND: [{ OR: [{ userId: null }, { user: { is: { isActive: true, emailVerified: { not: null }, roles: { some: { role: { key: "AGENT" } } } } } }] }],
 } satisfies Prisma.AgentWhereInput;
 
+/** Website staff publication does not require a login or email verification. */
+export const PUBLIC_TEAM_WHERE = { active: true, publicTeam: true } satisfies Prisma.AgentWhereInput;
+export const PUBLIC_PROFILE_WHERE = { OR: [PUBLIC_AGENT_WHERE, PUBLIC_TEAM_WHERE] } satisfies Prisma.AgentWhereInput;
+
 export const PUBLIC_TESTIMONIAL_WHERE = {
   status: "PUBLISHED",
   verified: true,

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { HttpError } from "@/server/auth";
 import { publicCareerWhere } from "@/server/domain/career-query";
-import { PUBLIC_AGENT_WHERE, PUBLIC_COMMUNITY_WHERE, PUBLIC_DEVELOPER_WHERE, PUBLIC_PROJECT_WHERE, PUBLIC_PROPERTY_WHERE, publicContentWhere, publicMarketReportWhere } from "@/server/domain/visibility";
+import { PUBLIC_PROFILE_WHERE, PUBLIC_COMMUNITY_WHERE, PUBLIC_DEVELOPER_WHERE, PUBLIC_PROJECT_WHERE, PUBLIC_PROPERTY_WHERE, publicContentWhere, publicMarketReportWhere } from "@/server/domain/visibility";
 import { contentSitemapPath } from "./sitemap-content-path";
 import { publicStaticRoutePaths } from "./route-contract";
 
@@ -23,7 +23,7 @@ export async function canonicalSitemapEntries(now = new Date()): Promise<Canonic
     db.project.findMany({ where: PUBLIC_PROJECT_WHERE, select: { slug: true, updatedAt: true }, take: QUERY_LIMIT }),
     db.community.findMany({ where: PUBLIC_COMMUNITY_WHERE, select: { slug: true, updatedAt: true }, take: QUERY_LIMIT }),
     db.developer.findMany({ where: PUBLIC_DEVELOPER_WHERE, select: { slug: true, updatedAt: true }, take: QUERY_LIMIT }),
-    db.agent.findMany({ where: PUBLIC_AGENT_WHERE, select: { slug: true, updatedAt: true }, take: QUERY_LIMIT }),
+    db.agent.findMany({ where: PUBLIC_PROFILE_WHERE, select: { slug: true, updatedAt: true }, take: QUERY_LIMIT }),
     db.careerOpening.findMany({ where: { ...publicCareerWhere(undefined, now), locale: { in: ["en", "ar"] } }, select: { slug: true, locale: true, updatedAt: true }, take: QUERY_LIMIT }),
     db.contentEntry.findMany({ where: { ...publicContentWhere(now), locale: { in: ["en", "ar"] }, contentType: { in: ["GUIDE", "AREA_GUIDE", "ARTICLE", "PAGE", "INTERNATIONAL_GUIDE"] }, OR: [{ contentType: { not: "INTERNATIONAL_GUIDE" } }, { sourceName: { not: null }, sourceUrl: { startsWith: "https://" }, sourceVerifiedAt: { not: null, lte: now }, freshnessReviewDueAt: { gt: now } }] }, select: { slug: true, locale: true, contentType: true, translationGroupId: true, updatedAt: true }, take: QUERY_LIMIT }),
     db.marketReport.findMany({ where: publicMarketReportWhere(now), select: { slug: true, updatedAt: true }, take: QUERY_LIMIT }),

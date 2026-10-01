@@ -71,7 +71,7 @@ export function scopedLeadWhere(
 export function agentProfileScope(user: SessionUser): Prisma.AgentWhereInput {
   if (user.roles.includes("OWNER")) return {};
   if (hasAnyRole(user, ["ADMIN", "MANAGER"])) {
-    return user.organizationId ? { user: { is: { organizationId: user.organizationId } } } : NO_AGENTS;
+    return user.organizationId ? { OR: [{ ownerOrganizationId: user.organizationId }, { ownerOrganizationId: null, user: { is: { organizationId: user.organizationId } } }] } : NO_AGENTS;
   }
   if (user.roles.includes("CONTENT_EDITOR")) return { publicAdvisor: true };
   return NO_AGENTS;

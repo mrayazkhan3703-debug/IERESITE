@@ -143,8 +143,8 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
       { section: "developers", create: "Create developer", submit: "Create unverified developer", label: "Public developer logo",  },
       { section: "communities", create: "Create community", submit: "Create draft community", label: "Public community cover image",  },
       { section: "projects", create: "Create project", submit: "Create draft project", label: "Public project brochure or image",  },
-      { section: "properties", create: "Create property", submit: "Create draft property", label: "Cover image",  },
-      { section: "agents", create: "New team profile", submit: "Create inactive profile", label: "Public team profile photo",  },
+      { section: "properties", create: "Create property", submit: "Save draft", label: "Cover image",  },
+      { section: "agents", create: "New team profile", submit: "Save draft", label: "Public team profile photo",  },
     ];
     for (const entityModule of modules) {
       const slug = `${prefix}-${suffix}-${entityModule.section}`, name = `Synthetic media ${suffix} ${entityModule.section}`;
@@ -171,7 +171,7 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
         }
       }
       if (entityModule.section === "agents") {
-        await select(page, editor, "Active, verified AGENT account", new RegExp(name));
+        await expect(editor.getByRole("combobox", { name: "Optional AGENT login account", exact: true })).toContainText("No login account needed");
         await editor.getByLabel("Job title", { exact: true }).fill("Synthetic test advisor");
       }
       const filename = slug + ".png", field = editor.getByRole("group", { name: entityModule.label, exact: true });

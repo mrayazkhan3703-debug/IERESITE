@@ -49,7 +49,7 @@ export default function TeamView() {
   const locale = localeOf(loc.locale);
 
   React.useEffect(() => {
-    api.get<{ agents: AgentDTO[] }>("/api/agents").then((r) => setAgents(r.agents)).catch(() => setAgents([]));
+    api.get<{ agents: AgentDTO[] }>("/api/team").then((r) => setAgents(r.agents)).catch(() => setAgents([]));
   }, []);
 
   /* Verified roster only (exclude the advisory-desk fallback record) */

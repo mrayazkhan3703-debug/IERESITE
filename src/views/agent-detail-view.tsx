@@ -66,7 +66,7 @@ export default function AgentDetailView({ slug }: { slug: string }) {
            *   exists (advisory desk carries the company phone + address);
            * - Person: name + jobTitle when supplied + telephone when supplied.
            * No email, no ratings/reviews (none supplied — never fabricated). */
-          jsonLd: [realEstateAgentJsonLd(data), personJsonLd(data)],
+          jsonLd: [...(data.publicAdvisor ? [realEstateAgentJsonLd(data)] : []), personJsonLd(data)],
         }
       : {},
     [data?.id, locale, isDesk]
@@ -269,9 +269,9 @@ export default function AgentDetailView({ slug }: { slug: string }) {
             )}
 
             <div className="mt-5 space-y-2.5">
-              <Button className="w-full" onClick={openMessage}>
+              {data.publicAdvisor && <Button className="w-full" onClick={openMessage}>
                 {t("advisorV2.profile.sendMessage", locale)}
-              </Button>
+              </Button>}
 
               {/* WhatsApp — member's own number (contextual message); the desk
                * uses the company line with a generic prefilled message. */}
@@ -312,7 +312,7 @@ export default function AgentDetailView({ slug }: { slug: string }) {
 
               {/* Calendar / consultation booking (§18) */}
               <Button asChild className="w-full gap-2">
-                <Link to="/consultation" query={{ agent: slug }}>
+                <Link to="/consultation" query={data.publicAdvisor ? { agent: slug } : undefined}>
                   <CalendarClock className="h-4 w-4" aria-hidden /> {t("advisorV2.profile.bookConsultation", locale)}
                 </Link>
               </Button>

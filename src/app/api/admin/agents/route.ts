@@ -49,7 +49,7 @@ export const GET = apiHandler(async (req) => {
     agents: agents.map((agent) => ({
       id: agent.id, name: agent.name, slug: agent.slug, jobTitle: agent.jobTitle, bio: agent.bio,
       department: agent.department, yearsExperience: agent.yearsExperience, active: agent.active,
-      publicAdvisor: agent.publicAdvisor, updatedAt: agent.updatedAt.toISOString(),
+      publicAdvisor: agent.publicAdvisor, publicTeam: agent.publicTeam, updatedAt: agent.updatedAt.toISOString(),
       photoMediaId: agent.photoMediaId,
       phoneE164: agent.phoneE164, whatsappE164: agent.whatsappE164, email: agent.email,
       linkedAccountEmail: agent.user?.email ?? null, linkedAccountVerified: Boolean(agent.user?.emailVerified),
@@ -63,7 +63,8 @@ export const GET = apiHandler(async (req) => {
 });
 
 const createSchema = z.object({
-  userId: z.string().min(1).max(100),
+  userId: z.string().min(1).max(100).nullable().optional(),
+  publicTeam: z.boolean().optional(),
   name: z.string().trim().min(1).max(200),
   slug: z.string().trim().min(1).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   jobTitle: z.string().trim().min(1).max(120),
@@ -96,6 +97,7 @@ const patchSchema = z.object({
   yearsExperience: z.number().int().min(0).max(80).optional(),
   active: z.boolean().optional(),
   publicAdvisor: z.boolean().optional(),
+  publicTeam: z.boolean().optional(),
   photoMediaId: z.string().min(1).nullable().optional(),
   phoneE164: z.string().trim().max(16).nullable().optional(),
   whatsappE164: z.string().trim().max(16).nullable().optional(),
