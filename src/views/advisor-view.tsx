@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Link, navigate, useRoute } from "@/lib/router";
+import { clientRequestId } from "@/lib/client-request-id";
 import { api, ApiError } from "@/lib/api-client";
 import { usePageMeta } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,28 @@ interface ChatResponse {
 /** Conversation continuity across reloads (blueprint: conversations persist server-side;
  *  the client remembers the last conversation id locally and restores it silently). */
 const CONVERSATION_KEY = "ie_advisor_conversation";
+interface SavedConversation {
+  id: string;
+  messages: { role: "user" | "assistant"; content: string; citations?: { label: string; url?: string | null }[]; toolNames?: string[] }[];
+  turns?: { clientRequestId: string; status: string; result: ChatResponse | null }[];
+}
+function waitForRecovery(signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const aborted = () => { clearTimeout(timer); reject(new DOMException("Cancelled", "AbortError")); };
+    const timer = setTimeout(() => { signal.removeEventListener("abort", aborted); resolve(); }, 3000);
+    signal.addEventListener("abort", aborted, { once: true });
+    if (signal.aborted) aborted();
+  });
+}
+async function recoverTurn(id: string, requestId: string, signal: AbortSignal): Promise<ChatResponse> {
+  for (;;) {
+    const saved = await api.get<SavedConversation>(`/api/ai/conversations/${id}`, signal);
+    const turn = saved.turns?.find(turn => turn.clientRequestId === requestId);
+    if (turn?.result) return turn.result;
+    if (!turn || turn.status !== "PENDING") throw new ApiError("Saved request did not complete. You can send a new message.", 409, "AI_TURN_FAILED");
+    await waitForRecovery(signal);
+  }
+}
 
 const SUGGESTIONS = [
   // V2 §22.2 showcase pair — the second one demonstrates structured chips parsing
@@ -162,6 +185,8 @@ export default function AdvisorView() {
   const [busy, setBusy] = React.useState(false);
   const [rateLimited, setRateLimited] = React.useState<string | null>(null);
   const [restored, setRestored] = React.useState(false);
+  const activeRequest = React.useRef<AbortController | null>(null);
+  const [recoveryNotice, setRecoveryNotice] = React.useState(false);
   const listRef = React.useRef<HTMLDivElement>(null);
   const taRef = React.useRef<HTMLTextAreaElement>(null);
   const leadForm = useLeadForm();
@@ -225,123 +250,97 @@ export default function AdvisorView() {
     }
   }, [messages]);
 
-  // Restore the last conversation (server is the source of truth; local key only points at it).
+  // Only the conversation identifier is stored locally. Ownership and messages remain on the server.
   React.useEffect(() => {
-    const saved = typeof window !== "undefined" ? window.localStorage.getItem(CONVERSATION_KEY) : null;
+    const saved = window.localStorage.getItem(CONVERSATION_KEY);
     if (!saved) return;
-    let cancelled = false;
-    api
-      .get<{
-        id: string;
-        messages: { role: "user" | "assistant"; content: string; citations?: { label: string; url?: string | null }[]; toolNames?: string[] }[];
-      }>(`/api/ai/conversations/${saved}`)
-      .then((res) => {
-        if (cancelled) return;
-        if (res.messages?.length) {
-          setConversationId(res.id);
-          setMessages(
-            res.messages.map((m) => ({
-              id: `restored-${msgSeq++}`,
-              role: m.role,
-              content: m.content,
-              citations: m.citations,
-              toolNames: m.toolNames,
-            }))
-          );
-          setRestored(true);
-        } else {
-          window.localStorage.removeItem(CONVERSATION_KEY);
-        }
-      })
-      .catch(() => {
-        // expired or unavailable — start fresh
-        window.localStorage.removeItem(CONVERSATION_KEY);
-      });
-    return () => {
-      cancelled = true;
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const timer = setTimeout(() => controller.abort(), 130_000);
+    setBusy(true);
+    const restore = async () => {
+      let res = await api.get<SavedConversation>(`/api/ai/conversations/${saved}`, controller.signal);
+      if (controller.signal.aborted) return;
+      setConversationId(res.id);
+      setMessages(res.messages.map(m => ({ ...m, id: `restored-${msgSeq++}` })));
+      setRestored(Boolean(res.messages.length));
+      const pending = res.turns?.find(turn => turn.status === "PENDING");
+      if (pending) {
+        await recoverTurn(res.id, pending.clientRequestId, controller.signal);
+        res = await api.get<SavedConversation>(`/api/ai/conversations/${saved}`, controller.signal);
+        if (!controller.signal.aborted) setMessages(res.messages.map(m => ({ ...m, id: `restored-${msgSeq++}` })));
+      } else if (res.turns?.[0]?.status === "FAILED") setRecoveryNotice(true);
     };
+    void restore().catch(err => {
+      if (err instanceof ApiError && err.status === 404) window.localStorage.removeItem(CONVERSATION_KEY);
+      else if (activeRequest.current === controller) setRecoveryNotice(true);
+    }).finally(() => {
+      clearTimeout(timer);
+      if (activeRequest.current === controller) { activeRequest.current = null; setBusy(false); }
+    });
+    return () => { controller.abort(); clearTimeout(timer); if (activeRequest.current === controller) activeRequest.current = null; };
   }, []);
 
+  React.useEffect(() => () => activeRequest.current?.abort(), []);
+
   const startNewConversation = () => {
-    setMessages([]);
-    setConversationId(undefined);
-    setRestored(false);
-    setRateLimited(null);
+    activeRequest.current?.abort(); activeRequest.current = null;
+    setBusy(false); setRecoveryNotice(false);
+    setMessages([]); setConversationId(undefined); setRestored(false); setRateLimited(null);
     window.localStorage.removeItem(CONVERSATION_KEY);
   };
 
   const send = async (text?: string) => {
     const message = (text ?? input).trim();
-    if (!message || busy) return;
-    setInput("");
-    setRateLimited(null);
+    if (!message || busy || activeRequest.current) return;
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const timer = setTimeout(() => controller.abort(), 130_000);
+    const nlController = new AbortController();
+    const nlTimer = setTimeout(() => nlController.abort(), 60_000);
+    controller.signal.addEventListener("abort", () => nlController.abort(), { once: true });
     const msgId = `u-${msgSeq++}`;
-    setMessages((m) => [...m, { id: msgId, role: "user", content: message }]);
-    setBusy(true);
+    setInput(""); setRateLimited(null); setRecoveryNotice(false); setBusy(true);
+    setMessages(m => [...m, { id: msgId, role: "user", content: message }]);
     events.aiConversation("message");
-
-    // V2 §22.2 — parse the natural-language intent in parallel with the chat
-    // turn; chips render under the user message as soon as the parse lands
-    // (independent of the assistant reply timing). Silent failure = no chips.
-    let intent: NlIntent | null = null;
-    const nlPromise = looksLikeSearchIntent(message, locale)
-      ? api
-          .post<NlIntent>("/api/search/nl", { query: message, locale })
-          .then((r) => {
-            if (r && r.filters && Object.keys(r.filters).length) {
-              intent = { filters: r.filters, explanation: r.explanation, unrecognized: r.unrecognized };
-              setMessages((m) => m.map((x) => (x.id === msgId ? { ...x, intent: intent ?? x.intent } : x)));
-            }
-          })
-          .catch(() => {})
-      : Promise.resolve();
-
+    // Optional search chips never delay the chat answer, including when search stalls.
+    if (looksLikeSearchIntent(message, locale)) {
+      void api.post<NlIntent>("/api/search/nl", { query: message, locale }, { signal: nlController.signal })
+        .then(intent => { if (!controller.signal.aborted && intent?.filters && Object.keys(intent.filters).length) setMessages(m => m.map(x => x.id === msgId ? { ...x, intent } : x)); })
+        .catch(() => {}).finally(() => clearTimeout(nlTimer));
+    } else clearTimeout(nlTimer);
     try {
-      const res = await api.post<ChatResponse>("/api/ai/chat", {
-        message,
-        conversationId,
-        locale,
-        context: propertySlug || projectSlug ? { propertySlug, projectSlug } : undefined,
-      });
-      await nlPromise;
-      setConversationId(res.conversationId);
-      if (typeof window !== "undefined") window.localStorage.setItem(CONVERSATION_KEY, res.conversationId);
-      setMessages((m) => [
-        ...m,
-        {
-          id: `a-${msgSeq++}`,
-          role: "assistant",
-          content: res.reply,
-          citations: res.citations,
-          handoff: res.handoff,
-          toolNames: res.toolCalls.map((tc) => tc.name),
-          // V1 protocol field kept for compatibility (old clients / old turns).
-          matches: res.matches?.length ? res.matches : undefined,
-          attachments: res.attachments?.length ? res.attachments : undefined,
-          searchCriteria: res.searchCriteria && Object.keys(res.searchCriteria).length ? res.searchCriteria : undefined,
-          handoffDetail: res.handoffDetail ?? undefined,
-          fallback: res.fallback,
-        },
-      ]);
-    } catch (err) {
-      await nlPromise;
-      if (err instanceof ApiError && err.status === 429) {
-        setRateLimited(err.message);
-      } else {
-        setMessages((m) => [
-          ...m,
-          {
-            id: `e-${msgSeq++}`,
-            role: "assistant",
-            content: locale === "ar"
-              ? "تعذّر الوصول إلى خدمة المساعد الآن. حاول مجدداً أو أرسل طلب استشارة منفصلاً؛ لم يتم تحويل هذه المحادثة تلقائياً."
-              : "I couldn't reach the assistant service just now. Please try again, or submit a separate consultation request; this chat is not transferred automatically.",
-            fallback: true,
-          },
-        ]);
+      let id = conversationId;
+      if (!id) {
+        const created = await api.post<{ conversationId: string }>("/api/ai/conversations", { locale }, { signal: controller.signal });
+        id = created.conversationId;
+        if (controller.signal.aborted) return;
+        setConversationId(id); window.localStorage.setItem(CONVERSATION_KEY, id);
       }
+      const requestId = clientRequestId();
+      const response = await api.post<ChatResponse | { status: "PENDING" }>("/api/ai/chat", {
+        message, conversationId: id, clientRequestId: requestId, locale,
+        context: propertySlug || projectSlug ? { propertySlug, projectSlug } : undefined,
+      }, { signal: controller.signal });
+      const res = "status" in response ? await recoverTurn(id, requestId, controller.signal) : response;
+      if (controller.signal.aborted) return;
+      setMessages(m => [...m, {
+        id: `a-${msgSeq++}`, role: "assistant", content: res.reply, citations: res.citations,
+        handoff: res.handoff, toolNames: res.toolCalls.map(tc => tc.name),
+        matches: res.matches?.length ? res.matches : undefined,
+        attachments: res.attachments?.length ? res.attachments : undefined,
+        searchCriteria: res.searchCriteria && Object.keys(res.searchCriteria).length ? res.searchCriteria : undefined,
+        handoffDetail: res.handoffDetail ?? undefined, fallback: res.fallback,
+      }]);
+    } catch (err) {
+      if (activeRequest.current !== controller) return;
+      if (err instanceof ApiError && err.status === 429) setRateLimited(err.message);
+      else setRecoveryNotice(true);
     } finally {
-      setBusy(false);
+      clearTimeout(timer);
+      // A completed answer leaves no optional request holding the spinner or consuming a connection.
+      nlController.abort(); clearTimeout(nlTimer);
+      if (activeRequest.current === controller) { activeRequest.current = null; setBusy(false); }
     }
   };
 
@@ -617,6 +616,7 @@ export default function AdvisorView() {
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
                   <span className="ml-2 text-xs text-muted-foreground">{t("advisor.streaming", locale)}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => activeRequest.current?.abort()}>{locale === "ar" ? "إيقاف الانتظار" : "Stop waiting"}</Button>
                 </div>
               </div>
             )}
@@ -644,6 +644,10 @@ export default function AdvisorView() {
             })()}
           </div>
 
+          {recoveryNotice && <div role="status" className="border-t border-border p-3 text-sm">
+            {locale === "ar" ? "توقف الانتظار. أعد تحميل المحادثة لاستعادة الرد المحفوظ قبل إرسال الرسالة مرة أخرى." : "Waiting stopped or the request failed. Reload this conversation to recover any saved reply before resending."}
+            <Button variant="outline" size="sm" className="ml-2" onClick={() => window.location.reload()}>{locale === "ar" ? "استعادة المحادثة" : "Recover conversation"}</Button>
+          </div>}
           {/* Rate limit notice */}
           {rateLimited && (
             <div className="border-t border-warning/40 bg-warning/10 p-3 text-center text-xs text-warning">

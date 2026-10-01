@@ -10,6 +10,7 @@ export function AdvisorOperations({ canManage }: { canManage: boolean }) {
   const [readiness, setReadiness] = React.useState<Readiness | null>(null);
   const [knowledge, setKnowledge] = React.useState<Knowledge | null>(null);
   const [busy, setBusy] = React.useState(false), [error, setError] = React.useState("");
+  const [scenario, setScenario] = React.useState("MINIMAL");
   const [message, setMessage] = React.useState("");
   const load = React.useCallback(async (cursor = "") => {
     setError("");
@@ -19,7 +20,7 @@ export function AdvisorOperations({ canManage }: { canManage: boolean }) {
   React.useEffect(() => { void load(); }, [load]);
   async function verify() {
     setBusy(true); setError(""); setMessage("");
-    try { const result = await api.post<{ succeeded: boolean; reason: string | null; latencyMs: number; readiness: Readiness }>("/api/admin/ai/readiness", { action: "VERIFY_PROVIDER" }); setReadiness(result.readiness); setMessage(result.succeeded ? `Provider verification succeeded in ${result.latencyMs} ms.` : `Verification did not succeed: ${result.reason}.`); }
+    try { const result = await api.post<{ succeeded: boolean; reason: string | null; latencyMs: number; diagnostics?: { httpStatus: number; providerCode: string | null; requestId: string | null } | null; readiness: Readiness }>("/api/admin/ai/readiness", { action: "VERIFY_PROVIDER", scenario }); setReadiness(result.readiness); setMessage(result.succeeded ? `Provider verification succeeded in ${result.latencyMs} ms.` : `Verification did not succeed: ${result.reason}.${result.diagnostics ? ` HTTP ${result.diagnostics.httpStatus} · ${result.diagnostics.providerCode ?? "no provider code"} · request ${result.diagnostics.requestId ?? "not supplied"}` : ""}`); }
     catch { setError("Provider verification could not be completed. Refresh diagnostics before retrying."); }
     finally { setBusy(false); }
   }
@@ -35,6 +36,7 @@ export function AdvisorOperations({ canManage }: { canManage: boolean }) {
     <h2 className="text-lg font-semibold">Advisor readiness</h2>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {readiness ? <><p>{readiness.provider} · {readiness.model} · <strong>{readiness.status}</strong>{readiness.reason ? ` · ${readiness.reason}` : ""}</p><p className="text-sm">{readiness.limits.requestsToday}/{readiness.limits.dailyRequests} requests today · {readiness.limits.reservedTokensToday}/{readiness.limits.dailyTokens} reserved budget tokens · {readiness.limits.timeoutMs} ms timeout</p><p className="text-xs text-muted-foreground">{readiness.note}</p></> : <p>Loading provider diagnostics…</p>}
+    {canManage && <label className="block text-sm">Provider check <select aria-label="Provider check" value={scenario} onChange={event => setScenario(event.target.value)} className="ml-2 rounded border p-2"><option value="MINIMAL">Minimal generation</option><option value="ADVISOR">Actual Advisor prompt</option><option value="TOOL_FOLLOWUP">Tool result and follow-up</option></select></label>}
     <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={() => void load()}>Refresh diagnostics</Button>{canManage && <Button disabled={busy} onClick={() => void verify()}>Verify selected provider</Button>}</div>
     <h3 className="font-medium">Approved knowledge index</h3>
     <p className="text-xs text-muted-foreground">{knowledge?.note} Indexing uses reviewed records already stored here. Maximum 10 documents and 15 seconds per operation.</p>

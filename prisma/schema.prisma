@@ -1829,10 +1829,31 @@ model AiConversation {
 
   user           User?             @relation(fields: [userId], references: [id])
   messages       AiMessage[]
+  turns          AiTurn[]
   toolExecutions AiToolExecution[]
   usage          AiUsage[]
 
   @@index([createdAt])
+}
+
+/** Durable request ownership and single-flight generation; no prompt text in the request record. */
+model AiTurn {
+  id              String   @id @default(cuid())
+  conversationId  String
+  clientRequestId String
+  requestHash     String
+  status          String   @default("PENDING") // PENDING|SUCCEEDED|FAILED
+  activeKey       String?  @unique // conversation id only while generation is pending
+  resultJson      String?
+  errorCode       String?
+  deadlineAt      DateTime @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  finishedAt      DateTime? @db.Timestamptz(3)
+  conversation    AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, clientRequestId])
+  @@index([conversationId, createdAt])
+  @@index([status, deadlineAt])
 }
 
 model AiMessage {

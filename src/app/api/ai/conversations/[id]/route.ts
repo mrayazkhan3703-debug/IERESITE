@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiHandler } from "@/server/api-handler";
+import { expireAdvisorTurns } from "@/server/ai/turn-recovery";
 import { db } from "@/lib/db";
 import { currentUser } from "@/server/auth";
 import { aiConversationOwnerWhere, getAiSessionHash } from "@/server/ai/session";
@@ -17,7 +18,10 @@ export const GET = apiHandler(async (_req, ctx: { params: Promise<{ id: string }
     include: { messages: { orderBy: { createdAt: "asc" }, take: 60 } },
   });
   if (!conversation) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+  await expireAdvisorTurns(conversation.id);
+  const turns = await db.aiTurn.findMany({ where: { conversationId: id }, orderBy: { createdAt: "desc" }, take: 30 });
   return NextResponse.json({
+    turns: turns.map(turn => ({ clientRequestId: turn.clientRequestId, status: turn.status, deadlineAt: turn.deadlineAt.toISOString(), errorCode: turn.errorCode, result: turn.resultJson ? JSON.parse(turn.resultJson) : null })),
     id: conversation.id,
     status: conversation.status,
     handoff: conversation.status === "HANDED_OFF",
@@ -37,10 +41,17 @@ export const GET = apiHandler(async (_req, ctx: { params: Promise<{ id: string }
         return {
           role: m.role as "user" | "assistant",
           content: m.content,
-          citations: m.citationsJson ? JSON.parse(m.citationsJson) : undefined,
+          citations: safeCitations(m.citationsJson),
           toolNames,
           createdAt: m.createdAt.toISOString(),
         };
       }),
   });
 });
+
+function safeCitations(value: string | null) {
+  try {
+    const parsed: unknown = value ? JSON.parse(value) : null;
+    return Array.isArray(parsed) ? parsed.filter(item => item && typeof item.label === "string" && (item.url == null || typeof item.url === "string")) : undefined;
+  } catch { return undefined; }
+}

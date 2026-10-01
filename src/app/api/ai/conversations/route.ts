@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
-import { apiHandler } from "@/server/api-handler";
-import { requireUser } from "@/server/auth";
+import { z } from "zod";
+import { apiHandler, jsonBody } from "@/server/api-handler";
 import { db } from "@/lib/db";
+import { currentUser, requireUser } from "@/server/auth";
+import { ensureConversation } from "@/server/ai/advisor";
+import { getAiSessionHash } from "@/server/ai/session";
+
+export const POST = apiHandler(async req => {
+  const { locale } = z.object({ locale: z.enum(["en", "ar"]).default("en") }).parse(await jsonBody(req));
+  const user = await currentUser();
+  const sessionHash = user ? null : await getAiSessionHash(true);
+  const conversation = await ensureConversation(undefined, user?.id, sessionHash, locale);
+  return NextResponse.json({ conversationId: conversation.id }, { status: 201 });
+}, { rateLimit: { limit: 12, windowMs: 60_000, key: "ai-conversation-create" } });
 
 export const dynamic = "force-dynamic";
 

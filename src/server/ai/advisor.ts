@@ -21,6 +21,7 @@ import { HttpError } from "@/server/auth";
 import { aiConversationOwnerWhere } from "./session";
 import { isDisabledAdvisorAction } from "./action-policy";
 import { getChatProvider, type ChatMessage } from "./gateway";
+import { ADVISOR_PROCESSING_MS, requireTurnBudget, withinTurnBudget } from "./turn-budget";
 import { advisorFailureReply } from "./failure-reply";
 import { AiProviderBlockedError } from "./controls";
 import { advisorLocaleInstruction, extractArabicSearchCriteria } from "./locale";
@@ -185,6 +186,11 @@ function describeSchema(schema: z.ZodTypeAny): string {
   }
 }
 
+/** Same prompt builder used by real turns and owner-only request-shape diagnostics. */
+export async function advisorSystemPrompt(locale = "en", scope?: AdvisorScope) {
+  return SYSTEM_PROMPT.replace("{{TOOLS}}", toolsBlock()).replace("{{SCOPE}}", await scopeContextBlock(scope)).replace("{{LOCALE}}", advisorLocaleInstruction(locale));
+}
+
 /* Conversation persistence ----------------------------------------------------- */
 
 export async function ensureConversation(
@@ -263,11 +269,14 @@ async function scopeContextBlock(scope: AdvisorScope | undefined): Promise<strin
 export async function advisorTurn(opts: {
   conversationId: string;
   userMessage: string;
+  turnId?: string;
+  deadlineAt?: number;
   locale?: string;
   /** V2 §22 — scoped entry context (?property= / ?project=). */
   scope?: AdvisorScope;
 }): Promise<AdvisorTurnResult> {
   const config = getConfig();
+  const deadlineAt = Math.min(opts.deadlineAt ?? Infinity, Date.now() + ADVISOR_PROCESSING_MS);
   const conversation = await db.aiConversation.findUnique({ where: { id: opts.conversationId } });
   if (!conversation) throw new Error("Conversation not found");
   if (conversation.messageCount > 60) {
@@ -315,10 +324,7 @@ export async function advisorTurn(opts: {
   const communitySnapshots: Awaited<ReturnType<typeof communityCard>>[] = [];
   const communityRaw: Parameters<typeof communityComparison>[0] = [];
 
-  const systemPrompt = SYSTEM_PROMPT.replace("{{TOOLS}}", toolsBlock()).replace(
-    "{{SCOPE}}",
-    await scopeContextBlock(opts.scope)
-  ).replace("{{LOCALE}}", advisorLocaleInstruction(opts.locale));
+  const systemPrompt = await withinTurnBudget(() => advisorSystemPrompt(opts.locale, opts.scope), deadlineAt);
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     ...persistedHistory.reverse().map((message) => ({
@@ -330,8 +336,10 @@ export async function advisorTurn(opts: {
 
   try {
     for (let turn = 0; turn < config.AI_MAX_TOOL_TURNS; turn++) {
+      requireTurnBudget(deadlineAt);
       const res = await getChatProvider().chat({
         messages,
+        deadlineAt,
         temperature: 0.3,
         meta: { kind: "CHAT", conversationId: opts.conversationId },
       });
@@ -369,13 +377,14 @@ export async function advisorTurn(opts: {
           status = "BLOCKED";
           result = { ok: false, data: null, error: `Invalid arguments: ${args.error.issues[0]?.message}` };
         } else {
-          result = await tool.execute(args.data, { locale: opts.locale ?? "en" });
+          result = await withinTurnBudget(() => tool.execute(args.data, { locale: opts.locale ?? "en" }), deadlineAt);
           if (!result.ok) status = "ERROR";
         }
       } catch (err) {
         status = "ERROR";
         result = { ok: false, data: null, error: String(err).slice(0, 300) };
       }
+      requireTurnBudget(deadlineAt);
       const latencyMs = Date.now() - started;
       toolCalls.push({ name: parsed.tool, status, latencyMs });
 
@@ -535,26 +544,7 @@ export async function advisorTurn(opts: {
     finalContent = advisorFailureReply(err instanceof AiProviderBlockedError ? err.code : null, opts.locale ?? "en");
   }
 
-  // persist assistant message
-  await db.aiMessage.create({
-    data: {
-      conversationId: opts.conversationId,
-      role: "assistant",
-      content: finalContent,
-      citationsJson: citations.length ? JSON.stringify(citations) : null,
-      toolCallsJson: toolCalls.length ? JSON.stringify(toolCalls) : null,
-    },
-  });
-  await db.aiConversation.update({
-    where: { id: opts.conversationId },
-    data: {
-      messageCount: { increment: 1 },
-      status: "ACTIVE",
-      topicSummary: conversation.topicSummary ?? opts.userMessage.slice(0, 120),
-    },
-  });
-
-  return {
+  const result: AdvisorTurnResult = {
     reply: finalContent,
     citations,
     toolCalls,
@@ -565,6 +555,26 @@ export async function advisorTurn(opts: {
     attachments: attachments.length ? attachments : [],
     searchCriteria,
   };
+  // The answer and its recoverable result commit together. A stale request cannot overwrite a newer turn.
+  await db.$transaction(async tx => {
+    if (opts.turnId) {
+      const saved = await tx.aiTurn.updateMany({ where: { id: opts.turnId, status: "PENDING" }, data: {
+        status: "SUCCEEDED", activeKey: null, resultJson: JSON.stringify(result), finishedAt: new Date(),
+      } });
+      if (saved.count !== 1) throw new HttpError(409, "This reply has expired. Reload the saved conversation.", "AI_TURN_EXPIRED");
+    }
+    await tx.aiMessage.create({ data: {
+      conversationId: opts.conversationId, role: "assistant", content: finalContent,
+      citationsJson: citations.length ? JSON.stringify(citations) : null,
+      toolCallsJson: toolCalls.length ? JSON.stringify(toolCalls) : null,
+    } });
+    await tx.aiConversation.update({ where: { id: opts.conversationId }, data: {
+      messageCount: { increment: 1 }, status: "ACTIVE",
+      topicSummary: conversation.topicSummary ?? opts.userMessage.slice(0, 120),
+    } });
+  }, { maxWait: 5000, timeout: 15000 });
+  return result;
+
 }
 
 /* NL search intent parsing (deterministic structured output + validation) ---------- */
