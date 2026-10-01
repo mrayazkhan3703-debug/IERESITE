@@ -11,6 +11,7 @@ import { pseudonymizeIp } from "@/server/security/ip-address";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requiresPrivilegedMfa } from "@/server/mfa";
+import { serializeAuditData } from "@/server/audit-data";
 
 export { hasPermission, permissionsForRoles } from "@/server/authz-policy";
 
@@ -210,15 +211,6 @@ export async function audit(opts: {
   after?: unknown;
   ip?: string | null;
 }, client: AuditClient = db) {
-  const redact = (v: unknown) => {
-    if (v === null || v === undefined) return null;
-    const s = JSON.stringify(v, (k, val) => {
-      if (typeof val === "bigint") return val.toString();
-      if (["password", "passwordHash", "token", "tokenHash", "apiKey", "secret"].includes(k)) return "[REDACTED]";
-      return val;
-    });
-    return s?.slice(0, 4000) ?? null;
-  };
   await client.auditLog.create({
     data: {
       actorType: opts.actorType ?? "USER",
@@ -227,8 +219,8 @@ export async function audit(opts: {
       action: opts.action,
       resourceType: opts.resourceType,
       resourceId: opts.resourceId,
-      beforeJson: redact(opts.before),
-      afterJson: redact(opts.after),
+      beforeJson: serializeAuditData(opts.before),
+      afterJson: serializeAuditData(opts.after),
       ipHash: hashIp(opts.ip),
     },
   });

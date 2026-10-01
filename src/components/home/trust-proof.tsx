@@ -35,19 +35,19 @@ export function TrustProof({
       icon: Users,
       label: t("home.trust.advisors", locale),
       value: advisorCount !== null ? t("home.trust.advisorsValue", locale).replace("{n}", formatNumber(advisorCount)) : "—",
-      note: null,
+      note: locale === "ar" ? "عدد المستشارين المعروضين في هذه الصفحة" : "Advisors displayed on this page",
     },
     {
       icon: BookOpen,
       label: t("home.trust.research", locale),
       value: researchCount !== null ? t("home.trust.researchValue", locale).replace("{n}", formatNumber(researchCount)) : "—",
-      note: "Published on the platform — countable, not decorative",
+      note: locale === "ar" ? "عدد المقالات والأدلة المسترجعة؛ حد أقصى 50 لكل نوع" : "Retrieved articles and guides; maximum 50 per type",
     },
     {
       icon: Timer,
       label: t("home.trust.response", locale),
-      value: t("home.trust.responseValue", locale),
-      note: t("home.trust.operational", locale),
+      value: locale === "ar" ? "تواصل مع الفريق" : "Contact the team",
+      note: locale === "ar" ? "وقت الاستجابة غير مقاس بعد" : "Response time has not been measured",
     },
   ];
 

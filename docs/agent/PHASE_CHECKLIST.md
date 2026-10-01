@@ -14,12 +14,12 @@
 | 09 Careers + International governance | COMPLETE | `d07444ae0b188599c831a4010600a5f8309d3133` | Independent approval/publication, private restore, scheduling/source expiry and bilingual browser checks pass; live Admin/public routes verified |
 | 10 Market Intelligence operations | COMPLETE | `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` | CI 54/56, 37 migrations; registry/file mapping/private validation/review/apply/metrics/report embeds; live OWNER imports verified |
 | 11 Search + map production upgrade | COMPLETE | `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` | CI 56 passes 79 browser checks including EN/AR singleton pins; Render `dep-dauj52gu01pc738jhml0` live; direct rebuild, default pins, selection/reload and price/pin switching verified |
-| 12 AI Advisor + RAG | IN_PROGRESS | candidate pending | Safe provider diagnostics, token accounting, bounded approved indexing; exact CI/live generation pending |
-| 13 Leads/CRM operations | IN_PROGRESS | candidate pending | Explicit external deferral, retained jobs, local capture/assignment; exact CI/live checks pending |
-| 14 SEO/routing/multilingual | IN_PROGRESS | candidate pending | Read-only canonical bilingual sitemaps, peer publication/SEO/redirect checks and crawler policy; exact CI/live pending |
-| 15 Analytics/data quality/observability | IN_PROGRESS | candidate pending | Consistent UTC analytics window, measured coverage/freshness/partial states; exact CI/live pending |
-| 16 Security/RBAC/privacy | NOT_STARTED | — | — |
-| 17 Public UX restoration | NOT_STARTED | — | — |
+| 12 AI Advisor + RAG | IN_PROGRESS | `ba3326f` | CI 36835040693 passes; live readiness accurately records PROVIDER_TIMEOUT; actual Gemini generation and approved-source facts remain pending |
+| 13 Leads/CRM operations | COMPLETE_LOCAL_SCOPE | `ba3326f` | CI 36835040693 full gate; live OWNER Deferred banner and disabled GHL connection; external sync intentionally deferred |
+| 14 SEO/routing/multilingual | IN_PROGRESS | `7131fe2` | CI 36838547634 full gate passes; main pushed, live acceptance pending |
+| 15 Analytics/data quality/observability | IN_PROGRESS | `7131fe2` | CI 36838547634 full gate passes; current UTC measurements/coverage, live acceptance pending |
+| 16 Security/RBAC/privacy | IN_PROGRESS | candidate pending | Parent/account revocation, audit/monitoring privacy, CSV safeguards; regression/full gate pending |
+| 17 Public UX restoration | IN_PROGRESS | candidate pending | Canonical opportunities route, source-bound claims, media posters, independent feeds/degraded states; EN/AR desktop/mobile journeys pending |
 | 18 Performance/accessibility/full QA | NOT_STARTED | — | — |
 | 19 Production cleanup/cutover | NOT_STARTED | — | — |
 

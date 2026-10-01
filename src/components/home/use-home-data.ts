@@ -82,6 +82,7 @@ function median(values: number[]): number | null {
 }
 
 export interface HomeData {
+  failedFeeds: string[];
   featured: ListingCardDTO[] | null;
   radarPool: ListingCardDTO[] | null;
   projects: ProjectCardDTO[] | null;
@@ -95,6 +96,7 @@ export interface HomeData {
 }
 
 export function useHomeData(): HomeData {
+  const [failedFeeds, setFailedFeeds] = React.useState<string[]>([]);
   const [featured, setFeatured] = React.useState<ListingCardDTO[] | null>(null);
   const [radarPool, setRadarPool] = React.useState<ListingCardDTO[] | null>(null);
   const [projects, setProjects] = React.useState<ProjectCardDTO[] | null>(null);
@@ -105,128 +107,58 @@ export function useHomeData(): HomeData {
   const [research, setResearch] = React.useState<{ guides: number; insights: number } | null>(null);
 
   React.useEffect(() => {
-    api
-      .get<{ results: ListingCardDTO[] }>("/api/properties?featured=1&limit=6")
-      .then((r) => setFeatured(r.results ?? []))
-      .catch(() => setFeatured([]));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    let active = true;
+    const failed = (name: string) => { if (active) setFailedFeeds((previous) => [...new Set([...previous, name])]); };
+    const load = <T,>(path: string) => api.get<T>(path, controller.signal);
+    void load<{ results: ListingCardDTO[] }>("/api/properties?featured=1&limit=6").then((r) => { if (active) setFeatured(r.results ?? []); }).catch(() => { failed("featured inventory"); if (active) setFeatured([]); });
+    void load<{ results: ListingCardDTO[] }>("/api/properties?limit=9").then((r) => { if (active) setRadarPool(r.results ?? []); }).catch(() => { failed("inventory"); if (active) setRadarPool([]); });
+    void load<{ projects: ProjectCardDTO[] }>("/api/projects?limit=4").then((r) => { if (active) setProjects(r.projects ?? []); }).catch(() => { failed("projects"); if (active) setProjects([]); });
+    void load<{ communities: CommunityCardDTO[] }>("/api/communities").then((r) => { if (active) setCommunities(r.communities ?? []); }).catch(() => { failed("communities"); if (active) setCommunities([]); });
+    void load<{ agents: AgentDTO[] }>("/api/agents?public=1").then((r) => { if (active) setAgents((r.agents ?? []).slice(0, 4)); }).catch(() => { failed("advisors"); if (active) setAgents([]); });
 
-    api
-      .get<{ results: ListingCardDTO[] }>("/api/properties?limit=9")
-      .then((r) => setRadarPool(r.results ?? []))
-      .catch(() => setRadarPool([]));
-
-    api
-      .get<{ projects: ProjectCardDTO[] }>("/api/projects?limit=4")
-      .then((r) => setProjects(r.projects ?? []))
-      .catch(() => setProjects([]));
-
-    api
-      .get<{ communities: CommunityCardDTO[] }>("/api/communities")
-      .then((r) => setCommunities(r.communities ?? []))
-      .catch(() => setCommunities([]));
-
-    api
-      .get<MetricsResponse>("/api/market/metrics?latest=1")
-      .then(async (r) => {
-        const bySlug: Record<string, CommunityMetricSet> = {};
-        let latestEnd: string | null = null;
-        for (const m of r.metrics) {
-          const slug = m.community?.slug;
-          if (!slug) continue;
-          const entry = (bySlug[slug] ??= {
-            slug,
-            name: m.community?.name ?? slug,
-            state: m.state,
-            periodEnd: m.periodEnd,
-            sourceName: m.sourceName,
-            methodology: m.methodology ?? null,
-          });
-          switch (m.metricKey) {
-            case "AVG_PRICE_PER_SQFT":
-              entry.avgPricePerSqft = m.valueNumeric;
-              break;
-            case "AVG_RENT_1BR":
-              entry.avgRent1Br = m.valueNumeric;
-              break;
-            case "MEDIAN_TRANS_PRICE":
-              entry.medianTransPrice = m.valueNumeric;
-              break;
-            case "TRANSACTION_COUNT":
-              entry.transactionCount = m.valueNumeric;
-              break;
-            case "YIELD_PCT":
-              entry.yieldPct = m.valueNumeric;
-              break;
-          }
-          if (!latestEnd || m.periodEnd > latestEnd) latestEnd = m.periodEnd;
+    // Start independent feeds together: a metrics failure cannot suppress live
+    // inventory counts or published research. Each request has a bounded wait.
+    void Promise.allSettled([
+      load<MetricsResponse>("/api/market/metrics?latest=1"),
+      load<TransactionsResponse>("/api/market/transactions?pageSize=50"),
+      load<RentsResponse>("/api/market/rents?pageSize=1"),
+      load<{ total: number }>("/api/properties?limit=1"),
+      load<{ total: number }>("/api/properties?offPlan=1&limit=1"),
+      load<{ entries: unknown[] }>("/api/content/guides"),
+      load<{ entries: unknown[] }>("/api/content/insights"),
+    ]).then(([metrics, tx, rents, allListings, offPlanListings, guides, insights]) => {
+      if (!active) return;
+      const names = ["community metrics", "transactions", "rents", "inventory totals", "off-plan totals", "guides", "insights"];
+      [metrics, tx, rents, allListings, offPlanListings, guides, insights].forEach((result, index) => { if (result.status === "rejected") failed(names[index]); });
+      const r = metrics.status === "fulfilled" ? metrics.value : null;
+      const bySlug: Record<string, CommunityMetricSet> = {};
+      let latestEnd: string | null = null;
+      for (const m of r?.metrics ?? []) {
+        const slug = m.community?.slug; if (!slug) continue;
+        const entry = (bySlug[slug] ??= { slug, name: m.community?.name ?? slug, state: m.state, periodEnd: m.periodEnd, sourceName: m.sourceName, methodology: m.methodology ?? null });
+        switch (m.metricKey) {
+          case "AVG_PRICE_PER_SQFT": entry.avgPricePerSqft = m.valueNumeric; break;
+          case "AVG_RENT_1BR": entry.avgRent1Br = m.valueNumeric; break;
+          case "MEDIAN_TRANS_PRICE": entry.medianTransPrice = m.valueNumeric; break;
+          case "TRANSACTION_COUNT": entry.transactionCount = m.valueNumeric; break;
+          case "YIELD_PCT": entry.yieldPct = m.valueNumeric; break;
         }
-        setCommunityMetrics(bySlug);
-
-        /* Pulse needs three more small responses; failures degrade to nulls
-           rather than blocking the rest of the strip. */
-        const [tx, rents, allListings, offPlanListings, guides, insights] = await Promise.allSettled([
-          api.get<TransactionsResponse>("/api/market/transactions?pageSize=50"),
-          api.get<RentsResponse>("/api/market/rents?pageSize=1"),
-          api.get<{ total: number }>("/api/properties?limit=1"),
-          api.get<{ total: number }>("/api/properties?offPlan=1&limit=1"),
-          api.get<{ entries: unknown[] }>("/api/content/guides"),
-          api.get<{ entries: unknown[] }>("/api/content/insights"),
-        ]);
-        const txOk = tx.status === "fulfilled" ? tx.value : null;
-        const psqftSample = txOk
-          ? txOk.rows
-              .filter((row) => row.pricePerSqftMinor)
-              .map((row) => Number(row.pricePerSqftMinor) / 100)
-          : [];
-        const totalAll = allListings.status === "fulfilled" ? allListings.value.total : null;
-        const totalOffPlan = offPlanListings.status === "fulfilled" ? offPlanListings.value.total : null;
-        setPulse({
-          latestDataDate: latestEnd,
-          transactionTotal: txOk ? txOk.total : null,
-          transactionSampleSize: psqftSample.length,
-          medianPsqft: median(psqftSample),
-          perSqftEligible: txOk ? txOk.validation.perSqftEligibleRecords : null,
-          offPlanListings: totalOffPlan,
-          readyListings: totalAll !== null && totalOffPlan !== null ? Math.max(0, totalAll - totalOffPlan) : null,
-          rentalContracts: rents.status === "fulfilled" ? rents.value.total : null,
-          rentalExcluded: rents.status === "fulfilled" ? rents.value.validation.excludedRecords : null,
-          communityCount: Object.keys(bySlug).length,
-          dataState: r.dataState ?? null,
-          metricState: r.metrics[0]?.state ?? null,
-          sourceName: r.metrics[0]?.sourceName ?? null,
-          methodology: r.metrics[0]?.methodology ?? null,
-        });
-        setResearch({
-          guides: guides.status === "fulfilled" ? guides.value.entries.length : 0,
-          insights: insights.status === "fulfilled" ? insights.value.entries.length : 0,
-        });
-      })
-      .catch(() => {
-        setCommunityMetrics({});
-        setPulse({
-          latestDataDate: null,
-          transactionTotal: null,
-          transactionSampleSize: 0,
-          medianPsqft: null,
-          perSqftEligible: null,
-          offPlanListings: null,
-          readyListings: null,
-          rentalContracts: null,
-          rentalExcluded: null,
-          communityCount: 0,
-          dataState: null,
-          metricState: null,
-          sourceName: null,
-          methodology: null,
-        });
-      });
-
-    api
-      /* V3-02 (§13): public advisors only — the home advisor strip shows real
-       * people; verified-attribute filters are gone until CRM data exists. */
-      .get<{ agents: AgentDTO[] }>("/api/agents?public=1")
-      .then((r) => setAgents((r.agents ?? []).slice(0, 4)))
-      .catch(() => setAgents([]));
+        if (!latestEnd || m.periodEnd > latestEnd) latestEnd = m.periodEnd;
+      }
+      setCommunityMetrics(bySlug);
+      const txOk = tx.status === "fulfilled" ? tx.value : null;
+      const sample = (txOk?.rows ?? []).filter((row) => row.pricePerSqftMinor).map((row) => Number(row.pricePerSqftMinor) / 100).filter((n) => Number.isFinite(n) && n > 0);
+      const totalAll = allListings.status === "fulfilled" ? allListings.value.total : null;
+      const totalOffPlan = offPlanListings.status === "fulfilled" ? offPlanListings.value.total : null;
+      setPulse({ latestDataDate: latestEnd, transactionTotal: txOk?.total ?? null, transactionSampleSize: sample.length, medianPsqft: median(sample), perSqftEligible: txOk?.validation.perSqftEligibleRecords ?? null,
+        offPlanListings: totalOffPlan, readyListings: totalAll !== null && totalOffPlan !== null ? Math.max(0, totalAll - totalOffPlan) : null,
+        rentalContracts: rents.status === "fulfilled" ? rents.value.total : null, rentalExcluded: rents.status === "fulfilled" ? rents.value.validation.excludedRecords : null,
+        communityCount: Object.keys(bySlug).length, dataState: r?.dataState ?? null, metricState: r?.metrics[0]?.state ?? null, sourceName: r?.metrics[0]?.sourceName ?? null, methodology: r?.metrics[0]?.methodology ?? null });
+      setResearch(guides.status === "fulfilled" && insights.status === "fulfilled" ? { guides: guides.value.entries.length, insights: insights.value.entries.length } : null);
+    });
+    return () => { active = false; clearTimeout(timer); controller.abort(); };
   }, []);
 
   const contextFor = React.useCallback(
@@ -243,5 +175,5 @@ export function useHomeData(): HomeData {
     [communityMetrics]
   );
 
-  return { featured, radarPool, projects, communities, communityMetrics, agents, pulse, research, contextFor };
+  return { failedFeeds, featured, radarPool, projects, communities, communityMetrics, agents, pulse, research, contextFor };
 }

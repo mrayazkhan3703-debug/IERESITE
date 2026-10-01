@@ -120,7 +120,8 @@ async function resolveSpaRoutePageBase(path: string, locale: "en" | "ar"): Promi
     const entity = await getPropertyDetailV2(slug);
     if (!entity) return null;
     const description = entity.shortDescription ?? `${entity.propertyType} in ${entity.community.name}. ${entity.bedrooms === 0 ? "Studio" : `${entity.bedrooms} bedroom`}, ${entity.bathrooms} bath${entity.builtUpAreaSqft ? `, ${entity.builtUpAreaSqft.toLocaleString("en-US")} sqft` : ""}.`;
-    return { title: entity.title, description, ogImageUrl: entity.media[0]?.url ?? OG_IMAGE.url };
+    const primary = entity.media[0];
+    return { title: entity.title, description, ogImageUrl: (primary?.kind === "IMAGE" ? primary.url : primary?.posterUrl) ?? entity.media.find((media) => media.kind === "IMAGE")?.url ?? OG_IMAGE.url };
   }
   if (parts.length === 2 && parts[0] === "developers") {
     const entity = await getDeveloperDetailV2(slug);

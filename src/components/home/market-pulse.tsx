@@ -108,7 +108,7 @@ export function MarketPulse({ locale, pulse }: { locale: Locale; pulse: MarketPu
               transformation:
                 "Median AED/sqft is computed client-side over the latest page of validated transactions; " +
                 "off-plan / ready split is a count over the listing index; community metrics are per-community " +
-                "fixtures joined by slug.",
+                "published records joined by slug. This page sample is not a market-wide median.",
               sampleSize: pulse.transactionSampleSize ?? null,
             }}
             trigger={
@@ -130,7 +130,6 @@ export function MarketPulse({ locale, pulse }: { locale: Locale; pulse: MarketPu
             label={t("home.pulse.transactions", locale)}
             value={<CountUpValue value={pulse.transactionTotal} format={formatNumber} />}
             note="validated records"
-            state={stateBadge}
           />
           <PulseCell
             label={t("home.pulse.medianPsqft", locale)}
@@ -146,7 +145,6 @@ export function MarketPulse({ locale, pulse }: { locale: Locale; pulse: MarketPu
                 ? t("home.pulse.latestSample", locale).replace("{n}", formatNumber(pulse.transactionSampleSize))
                 : "per-sqft eligible records only"
             }
-            state={stateBadge}
           />
           <PulseCell
             label={t("home.pulse.offplanSplit", locale)}
@@ -171,7 +169,6 @@ export function MarketPulse({ locale, pulse }: { locale: Locale; pulse: MarketPu
                 ? `${formatNumber(pulse.rentalExcluded)} excluded as invalid`
                 : "validated contracts"
             }
-            state={stateBadge}
           />
           <PulseCell
             label={t("home.pulse.communities", locale)}

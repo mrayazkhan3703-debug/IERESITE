@@ -1,4 +1,5 @@
 "use client";
+import { csvCell } from "@/lib/csv-cell";
 
 import * as React from "react";
 import Image from "next/image";
@@ -3063,12 +3064,12 @@ function DataQualitySection() {
     for (const [k, v] of Object.entries(data.transactions.exclusionReasons)) lines.push(`${k},${v}`);
     lines.push("");
     lines.push("Area,Valid records,Per-sqft eligible,Coverage %");
-    for (const c of data.perSqftCoverage) lines.push(`${c.areaName},${c.validRecords},${c.perSqftEligible},${c.coveragePct}`);
+    for (const c of data.perSqftCoverage) lines.push([c.areaName, c.validRecords, c.perSqftEligible, c.coveragePct].map(csvCell).join(","));
     lines.push("");
     lines.push("Open ingestion issues," + data.openIssues);
     lines.push("");
     lines.push("Rule,Domain,Severity,Description");
-    for (const r of data.rules) lines.push(`"${r.key}",${r.domain},${r.severity},"${r.description.replace(/"/g, '""')}"`);
+    for (const r of data.rules) lines.push([r.key, r.domain, r.severity, r.description].map(csvCell).join(","));
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

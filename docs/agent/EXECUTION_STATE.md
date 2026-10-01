@@ -5,23 +5,25 @@
 - Current source checkpoint: `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` (tested correction head `7800c59b09b133af260e93c953cb4128201ac374` has the same tracked tree)
 - Deployment environment: Render staging at `https://ieresite.onrender.com`
 - Admin login MFA requirement: disabled at the owner's request with Render `AUTH_MFA_REQUIRED=false`; deploy `dep-datvi0rncjis73a6iq60` is live. Existing encrypted MFA enrollment data remains stored.
-- Last completed phase: Phase 11 (`e9c189cc2e229ffa8e12800b1fb7191527f55cc7`)
-- Current phase status: Phases 02–11 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28. Phases 12–19 remain NOT_STARTED.
-- Last verified migration: `20260930000300_market_import_workflow` (37/37 completed in hosted CI and shared Supabase)
+- Last verified live additions: inline CMS media and Phase 13 local lead operations. Phase 12 live Gemini verification remains unresolved.
+- Current phase status: Phases 02–11 COMPLETE; Phase 01 remains BLOCKED because the owner explicitly deferred the paid Render background worker on 2026-09-28. Phase 13 local operations and the media release are deployed; Phases 14–15 passed CI and await live verification; Phases 16–17 are the active candidate; Phases 18–19 are pending.
+- Last verified migration: `20260930180000_inline_media` (38/38 applied on Render/Supabase on 2026-10-01).
 - Last verified implementation deployment: `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` / Render deploy `dep-dauj52gu01pc738jhml0` (live at 16:05:46 UTC; market/search operations and singleton pin correction)
 
 ## Completed phase evidence
 
-## Active inline media release (owner-approved scope, 2026-09-30)
+## Verified releases and active acceptance (2026-10-01)
 
-- Status: IN_PROGRESS. Source remains undeployed until the exact candidate passes hosted Docker CI and browser/live storage verification.
-- Shared MediaField, MediaPicker, MediaUploader, MediaGalleryManager and MediaForm extend existing MediaAsset/R2 upload APIs.
-- Property/Project create/edit attachments now save inside the version-checked entity transaction. Detachment preserves library assets.
-- Pending forward migration: 20260930180000_inline_media (poster references, attachment overrides, project primary selection, short-lived report download grants).
-- Completed local checks during implementation: TypeScript typecheck, full ESLint, optimized Next build, four new media contract/range unit tests, repository filename/context hygiene.
-- Database-dependent suite is pending hosted verification; local Docker daemon is unavailable. A local combined unit command also selected existing database-dependent integration.test.ts files and failed without DATABASE_URL; that run is not acceptance evidence.
-- Remaining media acceptance: complete all module/locale/viewport journeys, interrupted/retry/duplicate cases, protected-document delivery and full integration suites; verify exact CI commit; deploy and verify unpublished live media record.
-- Phases 12–19 remain queued after this media release. External CRM synchronization and paid Render worker remain deferred.
+- Inline media: exact commit `2e68ec80ec2e5b517b1031372cc86129f5764537`, CI `36834016725`: 272 unit/contract, 114 integration, 84 browser and 16 performance checks; full build/security/recovery gate passes. Render `dep-dav1hmg473hc73a9ntf0` live, forward migration applied.
+- Live media verification: repository image uploaded directly in a new Property form; abandoned form left its asset in Media Library. An explicitly unpublished PAGE draft selected that asset, saved/reloaded, replaced it using an inline upload, saved/reloaded again. Both normalized image deliveries returned HTTP 200 and rendered at 1344x768. Draft `/pages/unpublished-media-verification-20261001` returned anonymous HTTP 404. Two retained revisions; no new property facts were published.
+- Verification asset IDs: `9c855736-d1b7-4474-8558-0113ef869d50`, `e14dc899-a9a7-4e1a-b744-f1784ed1881f`. Screenshots retained in ignored local `test-results`; source repository has no credentials or customer files.
+- Advisor/local leads: exact commit `ba3326f70ac6f618537566df0d2c88a905b7555e`, CI `36835040693`: 278 unit/contract, 118 integration, 88 browser, 16 performance checks, full gate passes. Render `dep-dav1nepsrm7s73bjibq0` live.
+- Live OWNER CRM page confirms **Deferred**, no external delivery, Connect GHL disabled; zero current leads/sync records. Local capture/assignment/consent and retry retention passed isolated integration and bilingual browser journeys.
+- Actual Gemini service probe failed with typed `PROVIDER_TIMEOUT` at the configured 20 seconds. No live generation success or approved-source RAG acceptance is claimed. There are no approved knowledge documents/sources on the live service. A bounded 60-second setting is being verified through Render; do not present an attempted setting edit as successful configuration.
+- SEO/analytics: exact commit `7131fe2aa75bc15735a257425fc61c2b01fd08bf`, CI `36838547634`: 280 unit/contract, 124 integration, 92 browser, 16 performance checks and complete recovery/storage/security gate pass. Fast-forward pushed to main; Render rollout and live acceptance pending.
+- Security/public UX candidate: current parent publication guards, linked advisor account revocation, robust nested audit redaction/valid JSON size marker/legacy parser, private no-store bounded monitoring responses without raw payload/error bodies, safe CSV cells, missing-listing freshness fix, image/poster OG selection, repaired opportunities route, removed unsupported homepage comparison/response-time claims and independent bounded feeds with explicit degraded state.
+- Candidate local checks: 275 isolated unit/contract checks pass (67 files); full typecheck and ESLint pass. Local credential scan could not run because its Docker scanner depends on the unavailable local daemon; hosted exact-head scanning is required. Full integration/browser/build/performance/recovery acceptance remains pending.
+- Worker remains deferred. External CRM synchronization remains deferred. Actual inventory and editorial/market source facts require owner input. Full production cutover cannot be claimed while these dependencies remain outstanding.
 
 - Phase 00: baseline, topology, source map, design reference, phase checklist and CMS gap matrix recorded.
 - Files changed: `docs/agent/{EXECUTION_STATE,VERIFICATION_LOG,SOURCE_MAP,DESIGN_REFERENCE,PHASE_CHECKLIST,CMS_GAP_MATRIX}.md`.

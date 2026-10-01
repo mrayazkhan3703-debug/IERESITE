@@ -1,4 +1,5 @@
 import type { DeadLetterEvent, JobRun, OutboxEvent, Prisma } from "@prisma/client";
+import { safeOperationalError } from "@/server/jobs/safe-error";
 
 // The visual Jobs panel needs metadata and the DLQ error, never a payload body.
 // Keep selection narrow so sensitive payloads are not even loaded into this read path.
@@ -33,13 +34,13 @@ export function adminJobRunView(row: AdminJobRun) {
     scheduledAt: row.scheduledAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,
     finishedAt: row.finishedAt?.toISOString() ?? null,
-    durationMs: row.durationMs, error: row.error,
+    durationMs: row.durationMs, error: safeOperationalError(row.error),
   };
 }
 
 export function adminDeadLetterView(row: AdminDeadLetter) {
   return {
-    id: row.id, jobKey: row.jobKey, error: row.error,
+    id: row.id, jobKey: row.jobKey, error: safeOperationalError(row.error),
     attempts: row.attempts, createdAt: row.createdAt.toISOString(),
   };
 }
@@ -48,6 +49,6 @@ export function adminOutboxView(row: AdminOutbox) {
   return {
     id: row.id, eventType: row.eventType, aggregateType: row.aggregateType,
     publishedAt: row.publishedAt?.toISOString() ?? null,
-    attemptCount: row.attemptCount, lastError: row.lastError,
+    attemptCount: row.attemptCount, lastError: safeOperationalError(row.lastError),
   };
 }

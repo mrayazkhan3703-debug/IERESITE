@@ -19,14 +19,6 @@ import { formatPctPrecise } from "@/lib/format-precise";
 import type { CommunityCardDTO } from "@/lib/types";
 import type { CommunityMetricSet } from "@/components/home/use-home-data";
 
-const USER_QUERY = "Compare Downtown Dubai and Business Bay for a AED 3M rental investment.";
-
-const TRADEOFFS = [
-  "Downtown trades at a higher modeled AED/sqft; Business Bay lists lower entry prices for canal-side stock.",
-  "Business Bay's modeled 1BR rent sits below Downtown's, while service charges vary tower-by-tower — model both.",
-  "Both districts serve short-stay demand; licensing eligibility differs by building and must be checked per unit.",
-];
-
 export function AiDemo({
   locale,
   communities,
@@ -43,9 +35,15 @@ export function AiDemo({
   });
   const dt = get("downtown-dubai");
   const bb = get("business-bay");
-  const sourceDate = dt.metrics?.periodEnd ?? bb.metrics?.periodEnd ?? null;
-  const sourceName = dt.metrics?.sourceName ?? bb.metrics?.sourceName ?? null;
-  const state = dt.metrics?.state ?? bb.metrics?.state ?? null;
+  const checks = locale === "ar" ? [
+    "راجع مصدر وتاريخ كل مقياس قبل مقارنة المناطق.",
+    "تحقق من سعر الإيجار ورسوم الخدمة والمستندات لكل عقار.",
+    "القيم غير المتاحة تظهر بشرطة؛ لا يمكن استنتاج أفضل استثمار منها.",
+  ] : [
+    "Check the source and date of each metric before comparing areas.",
+    "Verify rent, service charges and documents for each property.",
+    "Unavailable values show a dash; they cannot establish a better investment.",
+  ];
 
   const rows: { label: string; render: (side: ReturnType<typeof get>) => React.ReactNode }[] = [
     {
@@ -108,7 +106,7 @@ export function AiDemo({
             <div className="rounded-xl border border-border/70 bg-card shadow-[0_18px_50px_-24px_rgba(0,0,0,0.18)]">
               <div className="border-b border-border/60 px-5 py-3.5">
                 <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <Sparkles className="h-4 w-4 text-brand" aria-hidden /> AI Property Advisor
+                  <Sparkles className="h-4 w-4 text-brand" aria-hidden /> {locale === "ar" ? "مستشار العقارات بالذكاء الاصطناعي" : "AI Property Advisor"}
                   <span className="ml-auto text-xs font-normal text-muted-foreground">{t("home.aidemo.demoNote", locale)}</span>
                 </p>
               </div>
@@ -120,7 +118,7 @@ export function AiDemo({
                     <User className="h-4 w-4" aria-hidden />
                   </span>
                   <p className="rounded-xl rounded-tl-sm border border-border/70 bg-secondary/60 px-4 py-2.5 text-sm leading-relaxed text-ink">
-                    {USER_QUERY}
+                    {locale === "ar" ? "ما البيانات المتاحة لمقارنة وسط مدينة دبي والخليج التجاري؟" : "What data is available to compare Downtown Dubai and Business Bay?"}
                   </p>
                 </div>
 
@@ -131,8 +129,7 @@ export function AiDemo({
                   </span>
                   <div className="min-w-0 flex-1 rounded-xl rounded-tl-sm border border-border/70 bg-sand/40 px-4 py-3.5">
                     <p className="text-sm leading-relaxed text-ink">
-                      Here is a sourced comparison for a AED 3M budget. Figures marked <em>modeled</em> are estimates —
-                      not directly observed values.
+                      {locale === "ar" ? "هذا مثال ثابت للبيانات المتاحة على المنصة، وليس إجابة مولدة. القيم غير المتاحة لا تدعم مقارنة استثمارية." : "This static example shows available platform data, not a generated answer. Missing values do not support an investment comparison."}
                     </p>
 
                     <div className="scroll-elegant mt-4 overflow-x-safe rounded-lg border border-border/70 bg-card">
@@ -141,10 +138,10 @@ export function AiDemo({
                         <thead>
                           <tr className="border-b border-border/70 bg-sand/60 text-left whitespace-nowrap">
                             <th scope="col" className="px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              <span className="inline-flex items-center gap-1.5"><Scale className="h-3.5 w-3.5" aria-hidden /> Metric</span>
+                              <span className="inline-flex items-center gap-1.5"><Scale className="h-3.5 w-3.5" aria-hidden /> {locale === "ar" ? "المقياس" : "Metric"}</span>
                             </th>
-                            <th scope="col" className="px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Downtown Dubai</th>
-                            <th scope="col" className="px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Business Bay</th>
+                            <th scope="col" className="px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{locale === "ar" ? "وسط مدينة دبي" : "Downtown Dubai"}</th>
+                            <th scope="col" className="px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{locale === "ar" ? "الخليج التجاري" : "Business Bay"}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -165,7 +162,7 @@ export function AiDemo({
                           data-state badges stay visible at every size. */}
                       <MobileDisclosure label={t("home.aidemo.tradeoffs", locale)} contentClassName="space-y-1.5">
                         <ul className="space-y-1.5">
-                          {TRADEOFFS.map((line) => (
+                          {checks.map((line) => (
                             <li key={line} className="flex items-start gap-2 text-sm leading-relaxed text-foreground/90">
                               <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
                               {line}
@@ -178,14 +175,14 @@ export function AiDemo({
                     <div className="mt-4 border-t border-border/60 pt-3">
                       <p className="type-label text-[10px] text-muted-foreground">{t("home.aidemo.sources", locale)}</p>
                       <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
-                        <li className="flex flex-wrap items-center gap-1.5">
-                          {sourceName ?? "Community metrics"} ·{" "}
-                          {sourceDate ? `period ending ${formatDate(sourceDate, l, { year: "numeric", month: "short", day: "numeric" })}` : "period not provided"}
-                          {state && <DataStateBadge state={state} />}
-                        </li>
-                        <li className="flex flex-wrap items-center gap-1.5">
-                          Platform inventory — listing counts over the demo dataset <DataStateBadge state="ILLUSTRATIVE" />
-                        </li>
+                        {[dt, bb].map((side, index) => (
+                          <li key={index} className="flex flex-wrap items-center gap-1.5">
+                            {index === 0 ? (locale === "ar" ? "وسط مدينة دبي" : "Downtown Dubai") : (locale === "ar" ? "الخليج التجاري" : "Business Bay")}: {side.metrics?.sourceName ?? (locale === "ar" ? "لا يوجد مصدر مقياس متاح" : "No metric source available")}
+                            {side.metrics?.periodEnd && ` · ${formatDate(side.metrics.periodEnd, l, { year: "numeric", month: "short", day: "numeric" })}`}
+                            {side.metrics?.state && <DataStateBadge state={side.metrics.state} />}
+                          </li>
+                        ))}
+                        <li>{locale === "ar" ? "أعداد المخزون من السجلات العامة الحالية؛ قد تتضمن إعلانات توضيحية تحمل علامتها." : "Inventory counts use current public records; illustrative listings retain their labels."}</li>
                       </ul>
                     </div>
                   </div>

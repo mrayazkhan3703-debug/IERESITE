@@ -182,8 +182,8 @@ export function OpportunityRadar({
             <p className="mt-2 text-balance text-muted-foreground">{t("home.radar.subtitle", locale)}</p>
           </div>
           <Button asChild variant="ghost" size="sm" className="gap-1 text-brand-strong">
-            <Link to="/opportunities">
-              <RadarIcon className="h-4 w-4" aria-hidden /> Opportunities <ChevronRight className="h-4 w-4 rtl:rotate-180" aria-hidden />
+            <Link to="/invest/opportunities">
+              <RadarIcon className="h-4 w-4" aria-hidden /> {locale === "ar" ? "الفرص" : "Opportunities"} <ChevronRight className="h-4 w-4 rtl:rotate-180" aria-hidden />
             </Link>
           </Button>
         </div>
@@ -260,7 +260,7 @@ export function OpportunityRadar({
         </div>
 
         <p className="mt-4 text-xs text-muted-foreground">
-          {t("home.radar.benchmark", locale)} · pool: 9 listings from the general inventory feed
+          {t("home.radar.benchmark", locale)} · {locale === "ar" ? "الإعلانات المعروضة من المخزون" : "Displayed listings from inventory"}: {pool === null ? "—" : formatNumber(pool.length)}
         </p>
       </div>
     </section>

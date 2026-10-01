@@ -52,7 +52,7 @@ test("DLQ summary preserves human-review metadata and omits raw payload, source 
   };
   const view = adminDeadLetterView(row);
   expect(view).toEqual({
-    id: "synthetic-letter", jobKey: "media.process", error: "Synthetic test failure",
+    id: "synthetic-letter", jobKey: "media.process", error: "Processing failed. Review the protected server logs for details.",
     attempts: 3, createdAt: "2026-09-27T10:00:00.000Z",
   });
   expect(JSON.stringify(view)).not.toContain("SYNTHETIC-NO-EXPOSURE");

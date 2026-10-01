@@ -105,7 +105,7 @@ export async function getPropertyDetail(
   if (!property) return null;
 
   const listing = property.listings[0] ?? null;
-  const agent = listing?.agent?.active && listing.agent.publicAdvisor ? listing.agent : null;
+  const agent = listing?.agentId ? await db.agent.findFirst({ where: { id: listing.agentId, ...PUBLIC_AGENT_WHERE } }) : null;
 
   const plan = property.project?.paymentPlans[0] ?? null;
 
@@ -310,14 +310,15 @@ export async function getPropertyDetailV2(
     where: { id: base.id },
     select: { updatedAt: true },
   });
-  const listing = await db.listing.findFirst({
-    where: { id: base.listing?.id },
+  if (!property) return null;
+  const listing = base.listing ? await db.listing.findUnique({
+    where: { id: base.listing.id },
     select: { updatedAt: true },
-  });
+  }) : null;
   return {
     ...base,
     listingRef: base.slug,
-    updatedAt: (property?.updatedAt ?? new Date()).toISOString(),
+    updatedAt: property.updatedAt.toISOString(),
     listingUpdatedAt: listing?.updatedAt.toISOString() ?? null,
   };
 }

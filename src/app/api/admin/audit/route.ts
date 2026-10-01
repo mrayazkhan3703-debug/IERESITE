@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { apiHandler } from "@/server/api-handler";
 import { requirePermission } from "@/server/auth";
 import { db } from "@/lib/db";
+import { z } from "zod";
+import { readAuditData } from "@/server/audit-data";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +11,8 @@ export const dynamic = "force-dynamic";
 export const GET = apiHandler(async (req) => {
   const user = await requirePermission("audit:read");
   const url = new URL(req.url);
-  const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
-  const resourceType = url.searchParams.get("resource") ?? undefined;
+  const page = z.coerce.number().int().min(1).max(100000).parse(url.searchParams.get("page") ?? 1);
+  const resourceType = z.string().min(1).max(100).optional().parse(url.searchParams.get("resource") ?? undefined);
 
   const where = {
     ...(resourceType ? { resourceType } : {}),
@@ -37,9 +39,9 @@ export const GET = apiHandler(async (req) => {
       action: e.action,
       resourceType: e.resourceType,
       resourceId: e.resourceId,
-      before: e.beforeJson ? JSON.parse(e.beforeJson) : null,
-      after: e.afterJson ? JSON.parse(e.afterJson) : null,
+      before: readAuditData(e.beforeJson),
+      after: readAuditData(e.afterJson),
       createdAt: e.createdAt.toISOString(),
     })),
-  });
+  }, { headers: { "Cache-Control": "private, no-store" } });
 });

@@ -132,6 +132,10 @@ export async function updateManagedUserCommand(actor: SessionUser, input: {
     if (input.isActive !== undefined) {
       if (!input.isActive) await tx.session.deleteMany({ where: { userId: target.id } });
     }
+    // Account reactivation must not silently republish an advisor profile.
+    if (input.isActive === false || (input.roleKey !== undefined && input.roleKey !== "AGENT")) {
+      await tx.agent.updateMany({ where: { userId: target.id }, data: { active: false, publicAdvisor: false } });
+    }
     await audit({
       actorId: actor.id, organizationId: target.organizationId, action: "user.access.update",
       resourceType: "user", resourceId: target.id,

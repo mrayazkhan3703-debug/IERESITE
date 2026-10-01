@@ -69,6 +69,8 @@ export default function HomeView() {
       {/* §11.1 — no reveal wrapper: hero is the LCP element (§17) */}
       <Hero locale={locale} communities={data.communities} communityMetrics={data.communityMetrics} projects={data.projects} />
 
+      {data.failedFeeds.length > 0 && <p role="status" className="container-page my-4 rounded-lg border border-border p-4 text-sm text-muted-foreground">{locale === "ar" ? "بعض البيانات غير متاحة مؤقتاً. الأقسام الفارغة لا تؤكد عدم وجود سجلات. أعد تحميل الصفحة للمحاولة مجدداً." : "Some data is temporarily unavailable. Empty sections do not confirm that no records exist. Reload this page to retry."}</p>}
+
       {(() => {
         const modules: Record<HomeModuleId, React.ReactNode> = {
           "market-pulse": <Reveal><MarketPulse locale={locale} pulse={data.pulse} /></Reveal>,

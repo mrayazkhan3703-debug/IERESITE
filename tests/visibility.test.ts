@@ -16,11 +16,12 @@ describe("public visibility policy", () => {
   const now = new Date("2026-09-22T08:00:00.000Z");
 
   test("canonical entities exclude drafts and soft-deleted records", () => {
-    expect(PUBLIC_PROPERTY_WHERE).toEqual({ publicationStatus: "PUBLISHED", deletedAt: null });
-    expect(PUBLIC_PROJECT_WHERE).toEqual({ publicationStatus: "PUBLISHED", deletedAt: null });
+    expect(PUBLIC_PROPERTY_WHERE).toMatchObject({ publicationStatus: "PUBLISHED", deletedAt: null, community: { is: PUBLIC_COMMUNITY_WHERE }, AND: [{ OR: [{ projectId: null }, { project: { is: PUBLIC_PROJECT_WHERE } }] }] });
+    expect(PUBLIC_PROJECT_WHERE).toEqual({ publicationStatus: "PUBLISHED", deletedAt: null, community: { is: PUBLIC_COMMUNITY_WHERE } });
     expect(PUBLIC_COMMUNITY_WHERE).toEqual({ publicationStatus: "PUBLISHED" });
     expect(PUBLIC_DEVELOPER_WHERE).toEqual({ projects: { some: PUBLIC_PROJECT_WHERE } });
-    expect(PUBLIC_AGENT_WHERE).toEqual({ active: true, publicAdvisor: true });
+    expect(PUBLIC_AGENT_WHERE).toMatchObject({ active: true, publicAdvisor: true });
+    expect(PUBLIC_AGENT_WHERE.AND[0].OR[1]).toMatchObject({ user: { is: { isActive: true, emailVerified: { not: null }, roles: { some: { role: { key: "AGENT" } } } } } });
     expect(PUBLIC_TESTIMONIAL_WHERE).toEqual({ status: "PUBLISHED", verified: true, consentCapturedAt: { not: null } });
   });
 

@@ -3,7 +3,8 @@ import { z } from "zod";
 import { NextResponse } from "next/server";
 import { apiHandler } from "@/server/api-handler";
 import { requirePermission } from "@/server/auth";
-import { db, parseJson } from "@/lib/db";
+import { db } from "@/lib/db";
+import { safeOperationalError } from "@/server/jobs/safe-error";
 import { getConfig } from "@/lib/config";
 import { crmReconciliation } from "@/server/crm/adapter";
 import { ghlOAuthSettings } from "@/server/crm/ghl-oauth-config";
@@ -23,7 +24,7 @@ export const GET = apiHandler(async (req) => {
       orderBy: { createdAt: "desc" },
       take: 20,
       skip: (page - 1) * 20,
-      include: { lead: { include: { contact: { select: { name: true } } } } },
+      select: { id: true, leadId: true, provider: true, status: true, attempts: true, lastAttemptAt: true, nextRetryAt: true, deliveredAt: true, externalId: true, lastError: true, lead: { select: { contact: { select: { name: true } } } } },
     }),
     crmReconciliation(user.roles.includes("OWNER") ? undefined : user.organizationId),
     db.integrationConnection.findMany({ select: { providerKey: true, displayName: true, status: true, lastCheckedAt: true } }),
@@ -56,8 +57,7 @@ export const GET = apiHandler(async (req) => {
       nextRetryAt: r.nextRetryAt?.toISOString() ?? null,
       deliveredAt: r.deliveredAt?.toISOString() ?? null,
       externalId: r.externalId,
-      lastError: r.lastError,
-      payload: parseJson<Record<string, unknown>>(r.payloadJson, {}),
+      lastError: safeOperationalError(r.lastError),
     })),
-  });
+  }, { headers: { "Cache-Control": "private, no-store" } });
 });

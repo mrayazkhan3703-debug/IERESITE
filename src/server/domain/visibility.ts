@@ -1,19 +1,22 @@
 import type { Prisma } from "@prisma/client";
 
 /** Canonical predicates for data that may cross an unauthenticated boundary. */
-export const PUBLIC_PROPERTY_WHERE = {
+export const PUBLIC_COMMUNITY_WHERE = {
   publicationStatus: "PUBLISHED",
-  deletedAt: null,
-} satisfies Prisma.PropertyWhereInput;
+} satisfies Prisma.CommunityWhereInput;
 
 export const PUBLIC_PROJECT_WHERE = {
   publicationStatus: "PUBLISHED",
   deletedAt: null,
+  community: { is: PUBLIC_COMMUNITY_WHERE },
 } satisfies Prisma.ProjectWhereInput;
 
-export const PUBLIC_COMMUNITY_WHERE = {
+export const PUBLIC_PROPERTY_WHERE = {
   publicationStatus: "PUBLISHED",
-} satisfies Prisma.CommunityWhereInput;
+  deletedAt: null,
+  community: { is: PUBLIC_COMMUNITY_WHERE },
+  AND: [{ OR: [{ projectId: null }, { project: { is: PUBLIC_PROJECT_WHERE } }] }],
+} satisfies Prisma.PropertyWhereInput;
 
 export const PUBLIC_DEVELOPER_WHERE = {
   projects: { some: PUBLIC_PROJECT_WHERE },
@@ -22,6 +25,9 @@ export const PUBLIC_DEVELOPER_WHERE = {
 export const PUBLIC_AGENT_WHERE = {
   active: true,
   publicAdvisor: true,
+  // Older explicitly public standalone profiles have no linked login account.
+  // A linked account must still meet the publication prerequisites today.
+  AND: [{ OR: [{ userId: null }, { user: { is: { isActive: true, emailVerified: { not: null }, roles: { some: { role: { key: "AGENT" } } } } } }] }],
 } satisfies Prisma.AgentWhereInput;
 
 export const PUBLIC_TESTIMONIAL_WHERE = {
