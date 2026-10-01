@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
-import { db } from "@/lib/db";
-import { generateSitemap } from "@/server/seo/sitemap";
+import { canonicalSitemapEntries } from "@/server/seo/sitemap";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +14,7 @@ const VALID_CHANGE_FREQUENCIES = new Set<NonNullable<MetadataRoute.Sitemap[numbe
 ]);
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  await generateSitemap();
-  const entries = await db.sitemapEntry.findMany({
-    where: { noindex: false },
-    orderBy: [{ section: "asc" }, { path: "asc" }],
-  });
+  const entries = (await canonicalSitemapEntries()).filter((entry) => !entry.noindex);
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
 
   return entries.map((entry) => ({
@@ -31,5 +26,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ? (entry.changefreq as NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>)
       : "weekly",
     priority: entry.priority,
+    ...(entry.languages ? { alternates: { languages: Object.fromEntries(Object.entries(entry.languages).map(([locale, path]) => [locale, new URL(path, baseUrl).toString()])) } } : {}),
   }));
 }

@@ -317,9 +317,17 @@ export interface PerSqftCoverageRow {
   coveragePct: number;
 }
 
+export interface QualityScanCoverage {
+  storedRows: number; evaluatedRows: number; truncated: boolean; illustrativeRows: number;
+  latestObservedDate: string | null; latestStoredAt: string | null;
+}
+
 export interface DataQualitySummary {
   generatedAt: string;
   dataState: DataState;
+  status: "NO_RECORDS" | "COMPLETE_SCAN" | "PARTIAL_SCAN";
+  coverage: { rents: QualityScanCoverage; transactions: QualityScanCoverage };
+  note: string;
   rents: MarketValidationSummary;
   transactions: MarketValidationSummary;
   /** Per-community share of hard-valid rows carrying a usable size (per-sqft computable). */
@@ -331,22 +339,27 @@ export interface DataQualitySummary {
 }
 
 /**
- * Run the U09 validation pipeline over the FULL market tables and summarize.
+ * Validate a stable bounded scan and report its measured coverage separately from full table counts.
  * Query-scoped governance only — nothing is mutated or deleted (§38).
  */
 export async function getDataQualitySummary(): Promise<DataQualitySummary> {
-  const [rentRows, txRows, openIssues, openIssuesBySeverity] = await Promise.all([
+  const severityQuery = db.dataQualityIssue.groupBy({ by: ["severity"], where: { status: "OPEN" }, _count: true, orderBy: { severity: "asc" } });
+  const [rentRows, txRows, openIssues, openIssuesBySeverity, rentTotals, txTotals, illustrativeRents, illustrativeTransactions] = await db.$transaction([
     db.marketRent.findMany({
       select: { areaName: true, bedrooms: true, propertyType: true, annualRentMinor: true, sizeSqft: true },
-      take: 10000,
+      orderBy: { id: "asc" }, take: 10000,
     }),
     db.marketTransaction.findMany({
       select: { areaName: true, amountMinor: true, sizeSqft: true },
-      take: 10000,
+      orderBy: { id: "asc" }, take: 10000,
     }),
     db.dataQualityIssue.count({ where: { status: "OPEN" } }),
-    db.dataQualityIssue.groupBy({ by: ["severity"], where: { status: "OPEN" }, _count: { _all: true } }),
-  ]);
+    severityQuery,
+    db.marketRent.aggregate({ _count: true, _max: { contractDate: true, createdAt: true } }),
+    db.marketTransaction.aggregate({ _count: true, _max: { transactionDate: true, createdAt: true } }),
+    db.marketRent.count({ where: { isIllustrative: true } }),
+    db.marketTransaction.count({ where: { isIllustrative: true } }),
+  ], { isolationLevel: "RepeatableRead" });
 
   const rentsValidated = validateRentRecords(rentRows);
   const txsValidated = validateTransactionRecords(txRows);
@@ -378,12 +391,18 @@ export async function getDataQualitySummary(): Promise<DataQualitySummary> {
   return {
     generatedAt: new Date().toISOString(),
     dataState: getDataState(),
+    status: !rentTotals._count && !txTotals._count ? "NO_RECORDS" : rentTotals._count > rentRows.length || txTotals._count > txRows.length ? "PARTIAL_SCAN" : "COMPLETE_SCAN",
+    coverage: {
+      rents: { storedRows: rentTotals._count, evaluatedRows: rentRows.length, truncated: rentTotals._count > rentRows.length, illustrativeRows: illustrativeRents, latestObservedDate: rentTotals._max.contractDate?.toISOString() ?? null, latestStoredAt: rentTotals._max.createdAt?.toISOString() ?? null },
+      transactions: { storedRows: txTotals._count, evaluatedRows: txRows.length, truncated: txTotals._count > txRows.length, illustrativeRows: illustrativeTransactions, latestObservedDate: txTotals._max.transactionDate?.toISOString() ?? null, latestStoredAt: txTotals._max.createdAt?.toISOString() ?? null },
+    },
+    note: "Exclusions and per-area coverage describe up to 10,000 rows per domain, ordered by record ID. Stored totals and dates cover all rows; dates do not prove source verification or market freshness. Passing validation does not certify source facts.",
     rents: rentsValidated.validation,
     transactions: txsValidated.validation,
     perSqftCoverage,
     rules: DQ_RULES,
     openIssues,
-    openIssuesBySeverity: openIssuesBySeverity.map((g) => ({ severity: g.severity, count: g._count._all })),
+    openIssuesBySeverity: openIssuesBySeverity.map((g) => ({ severity: g.severity, count: g._count })),
   };
 }
 

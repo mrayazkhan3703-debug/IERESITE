@@ -72,6 +72,12 @@ const EXACT_ROUTES: Record<string, RouteContract> = {
   "/cookie-settings": { title: "Cookie Settings", noindex: true },
 };
 
+/** Shared inventory of concrete public routes; private routes never enter a sitemap. */
+export function publicStaticRoutePaths(): string[] {
+  return [...Object.entries(EXACT_ROUTES).filter(([, contract]) => !contract.noindex).map(([path]) => path),
+    ...["roi", "yield", "mortgage", "payment-plan", "currency"].map((slug) => `/calculators/${slug}`)];
+}
+
 const DYNAMIC_ROUTES: Array<{ pattern: RegExp; contract: RouteContract }> = [
   { pattern: /^\/properties\/[^/]+$/, contract: { title: "Property" } },
   { pattern: /^\/projects\/[^/]+$/, contract: { title: "Project" } },
@@ -177,10 +183,20 @@ export const resolveSpaRoutePage = cache(async (path: string, locale: "en" | "ar
   const contract = await resolveSpaRoutePageBase(path, locale);
   if (!contract) return null;
   const routeKey = path === "/" ? "home" : path.replace(/^\/+|\/+$/g, "");
-  const [seo, settingsRow] = await Promise.all([
-    db.seoMetadata.findUnique({ where: { routeKey } }),
+  const candidateAlternates = contract.noindex ? null : contract.localeAlternates === undefined
+    ? { en: path, ar: `/ar${path === "/" ? "" : path}`, "x-default": path } : contract.localeAlternates;
+  const alternatePaths = Object.values(candidateAlternates ?? {});
+  const alternateKey = (value: string) => value === "/" || value === "/ar" ? "home" : value.replace(/^\/ar\//, "/").replace(/^\/+|\/+$/g, "");
+  const [seoRows, redirects, settingsRow] = await Promise.all([
+    db.seoMetadata.findMany({ where: { routeKey: { in: [...new Set([routeKey, ...alternatePaths.map(alternateKey)])] } } }),
+    alternatePaths.length ? db.redirect.findMany({ where: { fromPath: { in: alternatePaths }, isActive: true }, select: { fromPath: true } }) : Promise.resolve([]),
     db.siteSetting.findUnique({ where: { id: "public" }, select: { settingsJson: true } }),
   ]);
+  const seo = seoRows.find((row) => row.routeKey === routeKey);
+  const localeAlternates = candidateAlternates && alternatePaths.every((alternatePath) => {
+    const metadata = seoRows.find((row) => row.routeKey === alternateKey(alternatePath));
+    return !metadata?.noindex && (!metadata?.canonicalPath || metadata.canonicalPath === alternatePath) && !redirects.some((redirect) => redirect.fromPath === alternatePath);
+  }) ? candidateAlternates : null;
   let siteSettings = null;
   try { siteSettings = settingsRow ? parseSiteSettings(JSON.parse(settingsRow.settingsJson)) : null; } catch { siteSettings = null; }
   const copyPrefix = path === "/about" ? "about" : path === "/careers" ? "careers" : path === "/international" ? "international" : path === "/" ? "home" : null;
@@ -191,9 +207,10 @@ export const resolveSpaRoutePage = cache(async (path: string, locale: "en" | "ar
   const availableIds = new Set(images.map((image) => image.id));
   const imageId = imageIds.find((id) => availableIds.has(id));
   const image = imageId ? { id: imageId } : null;
-  if (!seo && !image && !copyTitle && !copyDescription) return contract;
+  if (!seo && !image && !copyTitle && !copyDescription) return { ...contract, localeAlternates };
   return {
     ...contract,
+    localeAlternates,
     title: seo?.title?.trim() || copyTitle || contract.title,
     description: seo?.description?.trim() || copyDescription || contract.description,
     noindex: Boolean(contract.noindex || seo?.noindex),
@@ -212,7 +229,8 @@ export function spaRouteMetadata(
 
   const englishPath = path === "/" ? "/" : path;
   const canonical = contract.canonicalPath ?? (locale === "ar" ? `/ar${path === "/" ? "" : path}` : englishPath);
-  const alternates = contract.localeAlternates === undefined
+  const defaultCanonical = locale === "ar" ? `/ar${path === "/" ? "" : path}` : englishPath;
+  const alternates = canonical !== defaultCanonical ? null : contract.localeAlternates === undefined
     ? { en: englishPath, ar: `/ar${path === "/" ? "" : path}`, "x-default": englishPath }
     : contract.localeAlternates;
   return {

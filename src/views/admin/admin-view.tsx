@@ -2387,12 +2387,14 @@ function JobsSection() {
 /* ------------------------------ Analytics --------------------------------- */
 
 function AnalyticsSection() {
+  const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<Record<string, unknown> | null>(null);
 
   React.useEffect(() => {
-    api.get<Record<string, unknown> | null>("/api/admin/analytics").then(setData).catch(() => setData(null));
+    api.get<Record<string, unknown> | null>("/api/admin/analytics").then(setData).catch((error) => setError(error instanceof Error ? error.message : "Analytics are unavailable."));
   }, []);
 
+  if (error) return <ErrorState message={error} onRetry={() => location.reload()} />;
   if (!data) return <LoadingState rows={3} />;
 
   const byName = (data.byName as { name: string; count: number }[]) ?? [];
@@ -2402,9 +2404,15 @@ function AnalyticsSection() {
     <div className="space-y-6">
       <header>
         <h1 className="font-display text-2xl font-semibold">Analytics</h1>
-        <p className="mt-1 text-sm text-muted-foreground">First-party event taxonomy (PART J), attribution and top searches — 30-day window.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Recorded events, lead capture and searches for the same 30-day window (UTC).</p>
       </header>
 
+      <section aria-label="Analytics measurement" className="rounded-xl border p-4 text-sm">
+        <p><strong>{String(data.status)}</strong> · Measured {String(data.measuredAt)} · Latest event: {String(data.latestEventAt ?? "none recorded")}</p>
+        <p className="mt-2 text-muted-foreground">{String(data.note)}</p>
+        <p className="mt-2 text-muted-foreground">Events/searches cover the site; leads cover {String((data.scope as { leads?: string })?.leads)}.</p>
+        {Object.values((data.truncated as Record<string, boolean>) ?? {}).some(Boolean) && <p role="status">Some breakdowns show only the first 100 groups. Totals remain complete.</p>}
+      </section>
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-border/70 bg-card p-5">
           <h2 className="kicker mb-4">Events by name</h2>
@@ -2978,6 +2986,9 @@ interface ValidationSummaryDto {
 interface DataQualityResponse {
   generatedAt: string;
   dataState: string;
+  status: string;
+  note: string;
+  coverage: Record<"rents" | "transactions", { storedRows: number; evaluatedRows: number; truncated: boolean; illustrativeRows: number; latestObservedDate: string | null; latestStoredAt: string | null }>;
   rents: ValidationSummaryDto;
   transactions: ValidationSummaryDto;
   perSqftCoverage: { areaName: string; validRecords: number; perSqftEligible: number; coveragePct: number }[];
@@ -3038,6 +3049,8 @@ function DataQualitySection() {
     const lines: string[] = [];
     lines.push(`Investment Experts — Data Quality Report,${data.generatedAt}`);
     lines.push(`Environment data state,${data.dataState}`);
+    lines.push(`Scan status,${data.status}`);
+    for (const [domain, coverage] of Object.entries(data.coverage)) lines.push(`${domain} scan coverage,${coverage.evaluatedRows},${coverage.storedRows},${coverage.truncated ? "PARTIAL" : "COMPLETE"}`);
     lines.push("");
     lines.push("Domain,Total rows,Valid,Excluded,Per-sqft eligible");
     lines.push(`Rents,${data.rents.totalRecords},${data.rents.validRecords},${data.rents.excludedRecords},${data.rents.perSqftEligibleRecords}`);
@@ -3072,7 +3085,7 @@ function DataQualitySection() {
         <div>
           <h1 className="font-display text-2xl font-semibold">Data quality</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            U09 validation pipeline over the full market tables (§19.5/§38): hard-invalid rows excluded from all statistics, soft-invalid rows excluded from per-sqft metrics only.
+            Validation exclusions and per-sqft coverage for the evaluated records below.
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Query-scoped governance — records are reported, never deleted. {data.openIssues > 0 && <>Open ingestion issues: <strong className="text-warning">{data.openIssues}</strong> (see Imports &amp; Quality).</>}
@@ -3082,6 +3095,12 @@ function DataQualitySection() {
           <Download className="h-4 w-4" aria-hidden /> Export DQ report (CSV)
         </Button>
       </header>
+
+      <section aria-label="Data quality scan coverage" className="rounded-xl border p-4 text-sm">
+        <p><strong>{data.status}</strong> · Measured {data.generatedAt}</p>
+        <p className="mt-2 text-muted-foreground">{data.note}</p>
+        {Object.entries(data.coverage).map(([domain, coverage]) => <p className="mt-2" key={domain}>{domain}: {coverage.evaluatedRows} evaluated / {coverage.storedRows} stored · {coverage.illustrativeRows} illustrative · latest observation {coverage.latestObservedDate ?? "unknown"} · latest stored {coverage.latestStoredAt ?? "unknown"}{coverage.truncated && " · PARTIAL"}</p>)}
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ValidationCard title="Rents validation (DLD contracts)" summary={data.rents} />

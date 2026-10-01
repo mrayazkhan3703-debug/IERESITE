@@ -101,3 +101,12 @@
 - External CRM routes reject synchronization while deferred; local lead operations remain available. Deferred jobs retain their payload and scheduling without spending retries. Historical delivery is preserved and reconciliation counts use database aggregates.
 - Local TypeScript, complete ESLint, optimized webpack build and 269 isolated unit/contract tests pass. Standard Turbopack cannot build this local junction to another checkout's node_modules; hosted CI uses ordinary in-project dependencies. PostgreSQL/browser integration, exact candidate CI and live provider/storage verification remain pending.
 - No live environment change, synthetic published data, queue drain or worker provisioning occurred. Original dirty `F:/IERE Website` remains untouched.
+
+
+## 2026-10-01 — Phases 14–15 candidate
+
+Source-backed findings: the main sitemap performed writes per anonymous visit, while the API sitemap read worker-maintained rows; only English content appeared. Analytics grouped exact event timestamps rather than UTC days and mixed 30-day events with lifetime leads/searches. Data quality claimed a full scan despite its 10,000-row cap.
+
+Candidate repairs use current canonical visibility in both sitemap endpoints, reciprocal EN/AR references only for public canonical peers, shared private crawler paths, bounded sitemap failure instead of silent truncation, transactional optional snapshots, and stricter public canonical paths. Analytics now uses one measured UTC window and organization-scoped lead aggregates. Quality reports stable scan coverage, complete stored totals, illustrative counts and observed/stored dates without treating those dates as source verification.
+
+Status: IN_PROGRESS. Local typecheck/full lint, 271 isolated tests (2,211 assertions), and the optimized webpack build pass. The first Windows build worker crashed during its TypeScript subprocess; a repeat with an 8 GB Node heap completed. Standard Linux/Docker CI remains the deployment gate. New PostgreSQL/HTTP regressions and full exact-commit CI/live verification are pending. CRM and the paid worker remain deferred. No production content was published by this candidate.

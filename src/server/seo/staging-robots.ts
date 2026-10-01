@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { robotsTxt } from "@/server/seo/sitemap";
+import { PRIVATE_CRAWLER_PATHS, robotsTxt } from "@/server/seo/sitemap";
 
 export function robotsForEnvironment(appEnv: string | undefined, baseUrl: string): MetadataRoute.Robots {
   if (appEnv === "staging") return { rules: { userAgent: "*", disallow: "/" } };
@@ -7,10 +7,7 @@ export function robotsForEnvironment(appEnv: string | undefined, baseUrl: string
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: [
-        "/api/", "/account/", "/admin/", "/compare",
-        "/ar/account/", "/ar/admin/", "/ar/compare",
-      ],
+      disallow: PRIVATE_CRAWLER_PATHS,
     },
     sitemap: new URL("/sitemap.xml", baseUrl).toString(),
   };

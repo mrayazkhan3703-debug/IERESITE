@@ -58,7 +58,9 @@ function validate(input: SeoMetadataInput): SeoValues {
       canonicalPath.length > 500 || !canonicalPath.startsWith("/") || canonicalPath.startsWith("//") ||
       !/^\/[A-Za-z0-9._~/-]*$/.test(canonicalPath) || canonicalPath.includes("//") ||
       (canonicalPath.endsWith("/") && canonicalPath !== "/") || segments.some((segment) => segment === "." || segment === "..") ||
-      ["api", "_next", "admin", "account"].includes((segments[0] ?? "").toLowerCase())
+      ["api", "_next", "admin", "account"].includes((segments[segments[0] === "ar" ? 1 : 0] ?? "").toLowerCase()) ||
+      !resolveSpaRoute(canonicalPath === "/ar" ? "/" : canonicalPath.replace(/^\/ar\//, "/")) ||
+      resolveSpaRoute(canonicalPath === "/ar" ? "/" : canonicalPath.replace(/^\/ar\//, "/"))?.noindex
     ) throw new HttpError(422, "Canonical path must be a normalized same-site public path.", "SEO_CANONICAL_PATH_INVALID");
   }
   if (input.priority !== undefined && input.priority !== null && (!Number.isFinite(input.priority) || input.priority < 0 || input.priority > 1)) {

@@ -16,8 +16,8 @@
 | 11 Search + map production upgrade | COMPLETE | `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` | CI 56 passes 79 browser checks including EN/AR singleton pins; Render `dep-dauj52gu01pc738jhml0` live; direct rebuild, default pins, selection/reload and price/pin switching verified |
 | 12 AI Advisor + RAG | IN_PROGRESS | candidate pending | Safe provider diagnostics, token accounting, bounded approved indexing; exact CI/live generation pending |
 | 13 Leads/CRM operations | IN_PROGRESS | candidate pending | Explicit external deferral, retained jobs, local capture/assignment; exact CI/live checks pending |
-| 14 SEO/routing/multilingual | NOT_STARTED | — | — |
-| 15 Analytics/data quality/observability | NOT_STARTED | — | — |
+| 14 SEO/routing/multilingual | IN_PROGRESS | candidate pending | Read-only canonical bilingual sitemaps, peer publication/SEO/redirect checks and crawler policy; exact CI/live pending |
+| 15 Analytics/data quality/observability | IN_PROGRESS | candidate pending | Consistent UTC analytics window, measured coverage/freshness/partial states; exact CI/live pending |
 | 16 Security/RBAC/privacy | NOT_STARTED | — | — |
 | 17 Public UX restoration | NOT_STARTED | — | — |
 | 18 Performance/accessibility/full QA | NOT_STARTED | — | — |
