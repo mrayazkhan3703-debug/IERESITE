@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: "list",
+  reporter: process.env.CI ? [["list"], ["github"]] : "list",
   outputDir: "test-results/accessibility",
   snapshotPathTemplate: "{testDir}/snapshots/{testFileName}/{arg}{ext}",
   timeout: 45_000,
