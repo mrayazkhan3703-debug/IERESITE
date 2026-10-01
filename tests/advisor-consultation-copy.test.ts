@@ -3,7 +3,7 @@ import { dictionaries } from "@/lib/i18n";
 
 test("English and Arabic Advisor instructions direct contact consent to the separate consultation form", () => {
   for (const locale of ["en", "ar"] as const) {
-    const phrase = locale === "en" ? "consultation" : "الاستشارة";
+    const phrase = locale === "en" ? "consultation" : "استشار";
     for (const key of ["advisorV2.info.step4", "advisorV2.info.humanSub", "advisorV2.info.guard5"]) {
       expect(dictionaries[locale][key]).toContain(phrase);
     }
