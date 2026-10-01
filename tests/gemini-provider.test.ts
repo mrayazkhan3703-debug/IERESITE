@@ -149,3 +149,15 @@ describe("Gemini provider adapter", () => {
   });
 
 });
+
+it("exposes only allowlisted provider diagnostics, never provider messages", async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({ error: { status: "INTERNAL", message: "private prompt and key", details: ["secret"] } }), { status: 500, headers: { "x-request-id": "request_abcdefgh" } });
+  try {
+    await generateWithGemini({ messages: [{ role: "user", content: "hello" }] }, { apiKey: "unit-secret", model: "gemini-test", timeoutMs: 1000, fetchImpl });
+    throw new Error("expected failure");
+  } catch (error) {
+    expect(error).toBeInstanceOf(GeminiProviderError);
+    expect((error as GeminiProviderError).diagnostics).toEqual({ httpStatus: 500, providerCode: "INTERNAL", requestId: "request_abcdefgh" });
+    expect(JSON.stringify(error)).not.toContain("private prompt"); expect(JSON.stringify(error)).not.toContain("secret");
+  }
+});

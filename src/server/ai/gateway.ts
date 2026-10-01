@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import { aiBudgetDecision, aiProviderGateCode, AiProviderBlockedError, estimateAiPromptCharacters, estimateAiReservationTokens } from "./controls";
 import { generateWithGemini, GeminiProviderError } from "./gemini-provider";
 import { aiRetryDelay } from "./retry-policy";
+import { requireTurnBudget } from "./turn-budget";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -20,6 +21,8 @@ export interface ChatRequest {
   messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
+  /** Internal shared processing deadline; never accepted from a public request. */
+  deadlineAt?: number;
   /** correlation for usage tracking */
   meta?: { kind: "CHAT" | "NL_SEARCH" | "RAG"; conversationId?: string };
 }
@@ -140,10 +143,11 @@ class GeminiChatProvider implements ChatProvider {
   readonly name = "gemini";
 
   async chat(req: ChatRequest): Promise<ChatResponse> {
-    return this.attempt(req, Date.now() + getConfig().AI_REQUEST_TIMEOUT_MS, false);
+    return this.attempt(req, Math.min(req.deadlineAt ?? Infinity, Date.now() + getConfig().AI_REQUEST_TIMEOUT_MS), false);
   }
 
   private async attempt(req: ChatRequest, deadline: number, alreadyRetried: boolean): Promise<ChatResponse> {
+    requireTurnBudget(deadline);
     const config = getConfig();
     await assertAiFeatureAvailable(this.name);
     const apiKey = config.GEMINI_API_KEY?.trim();
@@ -152,6 +156,7 @@ class GeminiChatProvider implements ChatProvider {
     const started = Date.now();
     const reservation = await reserveLiveAiUsage(this.name, config.GEMINI_MODEL, req);
     try {
+      requireTurnBudget(deadline);
       const result = await generateWithGemini({ ...req, maxTokens: config.AI_MAX_OUTPUT_TOKENS }, {
         apiKey,
         model: config.GEMINI_MODEL,
@@ -169,7 +174,7 @@ class GeminiChatProvider implements ChatProvider {
     } catch (error) {
       const errorCode = safeProviderFailureCode(error);
       await finishAiUsage(reservation, error instanceof GeminiProviderError ? error.usage : null, errorCode).catch(() => {});
-      logEvent("ai.chat_failed", { provider: this.name, kind: req.meta?.kind, latencyMs: Date.now() - started, errorCode });
+      logEvent("ai.chat_failed", { provider: this.name, kind: req.meta?.kind, latencyMs: Date.now() - started, errorCode, ...(error instanceof GeminiProviderError ? error.diagnostics ?? {} : {}) });
       const delay = aiRetryDelay(errorCode, alreadyRetried, deadline - Date.now());
       if (delay !== null) {
         await new Promise((resolve) => setTimeout(resolve, delay));

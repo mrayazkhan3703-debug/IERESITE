@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiHandler, jsonBody } from "@/server/api-handler";
 import { audit, HttpError, requirePermission } from "@/server/auth";
+import { advisorSystemPrompt } from "@/server/ai/advisor";
+import { GeminiProviderError } from "@/server/ai/gemini-provider";
+import { type ChatMessage } from "@/server/ai/gateway";
 import { aiReadiness } from "@/server/ai/readiness";
 import { getChatProvider, safeProviderFailureCode } from "@/server/ai/gateway";
 import { AiProviderBlockedError } from "@/server/ai/controls";
@@ -14,14 +17,20 @@ export const GET = apiHandler(async () => {
 export const POST = apiHandler(async (req) => {
   const actor = await requirePermission("content:update");
   if (!actor.roles.some((role) => ["OWNER", "ADMIN"].includes(role))) throw new HttpError(403, "Only owners or admins can run a provider check.", "FORBIDDEN");
-  z.object({ action: z.literal("VERIFY_PROVIDER") }).strict().parse(await jsonBody(req));
+  const { scenario } = z.object({ action: z.literal("VERIFY_PROVIDER"), scenario: z.enum(["MINIMAL", "ADVISOR", "TOOL_FOLLOWUP"]).default("MINIMAL") }).strict().parse(await jsonBody(req));
   const started = Date.now(); let succeeded = false, reason: string | null = null;
+  let diagnostics: { httpStatus: number; providerCode: string | null; requestId: string | null } | null = null;
+  const messages: ChatMessage[] = scenario === "MINIMAL"
+    ? [{ role: "system", content: "This is a service verification. Reply exactly READY. Do not call tools, create leads, or provide property advice." }, { role: "user", content: "Service verification" }]
+    : [{ role: "system", content: await advisorSystemPrompt("en") }, { role: "user", content: scenario === "ADVISOR" ? "Hello. Explain how you help without asserting any property facts." : "Find a property matching my criteria." }];
+  if (scenario === "TOOL_FOLLOWUP") messages.push({ role: "assistant", content: '{"tool":"search_properties","args":{}}' }, { role: "tool", content: '{"items":[],"total":0,"verification":"request-shape diagnostic only"}' }, { role: "user", content: "Explain that there are no results. Do not invent inventory." });
   try {
-    const result = await getChatProvider().chat({ messages: [{ role: "system", content: "This is a service verification. Reply exactly READY. Do not call tools, create leads, or provide property advice." }, { role: "user", content: "Service verification" }], temperature: 0, meta: { kind: "RAG" } });
-    succeeded = result.model !== "local-mock" && result.content.trim() === "READY";
+    const result = await getChatProvider().chat({ messages, deadlineAt: started + 60_000, temperature: 0, meta: { kind: "RAG" } });
+    diagnostics = { httpStatus: 200, providerCode: null, requestId: null };
+    succeeded = result.model !== "local-mock" && (scenario !== "MINIMAL" ? Boolean(result.content.trim()) : result.content.trim() === "READY");
     if (!succeeded) reason = result.model === "local-mock" ? "LOCAL_ONLY" : "PROVIDER_RESPONSE_INVALID";
-  } catch (error) { reason = error instanceof AiProviderBlockedError ? error.code : safeProviderFailureCode(error); }
+  } catch (error) { diagnostics = error instanceof GeminiProviderError ? error.diagnostics : null; reason = error instanceof AiProviderBlockedError ? error.code : safeProviderFailureCode(error); }
   const latencyMs = Date.now() - started;
-  await audit({ actorId: actor.id, action: "ai.provider.verify", resourceType: "AI_PROVIDER", resourceId: "selected", after: { succeeded, reason, latencyMs }, ip: clientIp(req) });
-  return NextResponse.json({ succeeded, reason, latencyMs, readiness: await aiReadiness() }, { headers: { "Cache-Control": "private, no-store" } });
+  await audit({ actorId: actor.id, action: "ai.provider.verify", resourceType: "AI_PROVIDER", resourceId: "selected", after: { scenario, succeeded, reason, latencyMs, diagnostics }, ip: clientIp(req) });
+  return NextResponse.json({ scenario, succeeded, reason, latencyMs, diagnostics, readiness: await aiReadiness() }, { headers: { "Cache-Control": "private, no-store" } });
 }, { rateLimit: { key: "ai-provider-verify", limit: 3, windowMs: 3600000 } });

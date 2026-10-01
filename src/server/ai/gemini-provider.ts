@@ -75,7 +75,8 @@ function usageCount(usage: Record<string, unknown> | null, field: string): numbe
 
 export class GeminiProviderError extends Error {
   constructor(readonly code: SafeAiErrorCode, message: string,
-    readonly usage: { promptTokens: number | null; completionTokens: number | null } | null = null) {
+    readonly usage: { promptTokens: number | null; completionTokens: number | null } | null = null,
+    readonly diagnostics: { httpStatus: number; providerCode: string | null; requestId: string | null } | null = null) {
     super(message); this.name = "GeminiProviderError";
   }
 }
@@ -126,7 +127,16 @@ export async function generateWithGemini(
       const code: SafeAiErrorCode = response.status === 401 || response.status === 403 ? "PROVIDER_AUTH_FAILED"
         : response.status === 429 ? "PROVIDER_RATE_LIMITED" : response.status === 404 ? "PROVIDER_MODEL_UNAVAILABLE"
         : response.status >= 500 ? "PROVIDER_UNAVAILABLE" : "PROVIDER_REQUEST_INVALID";
-      throw new GeminiProviderError(code, `Gemini API request failed (HTTP ${response.status})`);
+      // Allowlisted status and correlation only. Provider messages/details may contain sensitive input.
+      let providerCode: string | null = null;
+      try {
+        const error = record(record(await response.json())?.error);
+        const allowed = ["INVALID_ARGUMENT", "FAILED_PRECONDITION", "PERMISSION_DENIED", "UNAUTHENTICATED", "RESOURCE_EXHAUSTED", "NOT_FOUND", "INTERNAL", "UNAVAILABLE", "DEADLINE_EXCEEDED"];
+        if (typeof error?.status === "string" && allowed.includes(error.status)) providerCode = error.status;
+      } catch { /* no diagnostic body */ }
+      const header = response.headers.get("x-request-id") ?? response.headers.get("x-goog-request-id");
+      const requestId = header && /^[A-Za-z0-9_-]{8,128}$/.test(header) ? header : null;
+      throw new GeminiProviderError(code, `Gemini API request failed (HTTP ${response.status})`, null, { httpStatus: response.status, providerCode, requestId });
     }
 
     let payload: Record<string, unknown> | null;
