@@ -23,8 +23,8 @@ export function AdminShell({ user, activeSection, onSignOut, children }: {
         {sections.map((section) => <Link key={section.key} to={`/admin/${section.key}`} aria-current={activeSection === section.key ? "page" : undefined} className={navLinkClass(activeSection === section.key)}><section.icon className="h-4 w-4" aria-hidden />{section.label}</Link>)}
       </nav><div className="mt-6 border-t border-border/70 pt-4"><p className="px-3 text-xs text-muted-foreground">{user.email}</p><p className="mt-0.5 px-3 text-[10px] font-semibold uppercase tracking-wide text-brand-strong">{user.roles.join(" · ")}</p><Button variant="ghost" size="sm" className="mt-3 w-full justify-start gap-2 text-muted-foreground" onClick={async () => { await onSignOut(); navigate("/"); }}><LogOut className="h-4 w-4" aria-hidden />Sign out</Button></div></div>
     </aside>
-    <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8"><nav className="mb-4 flex gap-2 overflow-x-auto scroll-elegant pb-1 lg:hidden" aria-label="Admin sections">
+    <div className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8"><nav className="mb-4 flex gap-2 overflow-x-auto scroll-elegant pb-1 lg:hidden" aria-label="Admin sections">
       {sections.map((section) => <Link key={section.key} to={`/admin/${section.key}`} aria-current={activeSection === section.key ? "page" : undefined} className={cn("shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-ui", activeSection === section.key ? "border-brand bg-brand-soft text-brand-strong" : "border-border text-muted-foreground")}>{section.label}</Link>)}
-    </nav>{children}</main>
+    </nav>{children}</div>
   </div>;
 }
