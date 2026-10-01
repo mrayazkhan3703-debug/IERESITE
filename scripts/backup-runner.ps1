@@ -37,6 +37,11 @@ function Get-IereRunnerConfig {
     $rows = @(Get-Content -LiteralPath $config.recipientFile -Encoding UTF8 | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') })
     if ($rows.Count -lt 1 -or $rows.Count -gt 8 -or @($rows | Where-Object { $_ -notmatch '^age1[023456789acdefghjklmnpqrstuvwxyz]{58}$' }).Count -gt 0) { throw 'INVALID_PUBLIC_RECIPIENT' }
   }
+  if ($null -ne $config.sourceKind -and $config.sourceKind -notin @('local-docker-compose','hosted-postgres-r2')) { throw 'INVALID_RUNNER_CONFIG' }
+  if ($config.sourceKind -eq 'hosted-postgres-r2') {
+    $config.sourceConfigFile = Get-IereSafeRunnerPath -Path $config.sourceConfigFile -RepositoryRoot $RepositoryRoot -OutsideRepository -RequireFile
+    if ((Get-Item -LiteralPath $config.sourceConfigFile).Length -gt 16384) { throw 'INVALID_RUNNER_CONFIG' }
+  }
   return $config
 }
 
@@ -149,8 +154,13 @@ function Invoke-IereBackupRunner {
     New-IerePrivateRunnerDirectory -Path $config.captureDirectory
     $result.backupStarted=$true; $result.reason='CAPTURE_FAILED'
     if ($null -eq $CaptureRunner) {
-      $captured = & $ProcessRunner 'powershell.exe' @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',
-        (Join-Path $RepositoryRoot 'scripts/backup-local.ps1'),'-OutputDirectory',$config.captureDirectory) $RepositoryRoot
+      if ($config.sourceKind -eq 'hosted-postgres-r2') {
+        $captured = & $ProcessRunner 'powershell.exe' @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',
+          (Join-Path $RepositoryRoot 'scripts/backup-hosted.ps1'),'-SourceConfig',$config.sourceConfigFile,'-ToolImage',$config.toolImage,'-OutputDirectory',$config.captureDirectory) $RepositoryRoot
+      } else {
+        $captured = & $ProcessRunner 'powershell.exe' @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',
+          (Join-Path $RepositoryRoot 'scripts/backup-local.ps1'),'-OutputDirectory',$config.captureDirectory) $RepositoryRoot
+      }
     } else { $captured = & $CaptureRunner $config.captureDirectory }
     $match = [regex]::Match($captured, '(?m)^Backup created and archive-validated: (.+)\r?$')
     if (-not $match.Success) { throw 'CAPTURE_FAILED' }

@@ -24,7 +24,7 @@ jobs:
       - name: Parse backup and recovery scripts without executing them
         shell: powershell
         run: |
-          $policyFiles = @('scripts/recovery-targets.ps1', 'scripts/backup-local.ps1', 'scripts/restore-drill-local.ps1', 'tests/recovery-targets.policy.ps1', 'scripts/backup-operations-policy.ps1', 'scripts/prepare-backup-schedule.ps1', 'scripts/run-backup-operations.ps1', 'tests/backup-operations.policy.ps1', 'scripts/backup-runner.ps1', 'scripts/configure-backup-recipient.ps1', 'scripts/verify-backup-roundtrip.ps1', 'tests/backup-runner.policy.ps1')
+          $policyFiles = @('scripts/recovery-targets.ps1', 'scripts/backup-local.ps1', 'scripts/backup-hosted.ps1', 'scripts/new-live-backup-identity.ps1', 'scripts/enable-hosted-backup-schedule.ps1', 'scripts/restore-drill-local.ps1', 'tests/recovery-targets.policy.ps1', 'scripts/backup-operations-policy.ps1', 'scripts/prepare-backup-schedule.ps1', 'scripts/run-backup-operations.ps1', 'tests/backup-operations.policy.ps1', 'scripts/backup-runner.ps1', 'scripts/configure-backup-recipient.ps1', 'scripts/verify-backup-roundtrip.ps1', 'tests/backup-runner.policy.ps1')
           foreach ($policyFile in $policyFiles) {
             $parseTokens = $null
             $parseErrors = $null
@@ -116,7 +116,7 @@ jobs:
       - name: Isolated encrypted S3 backup adapter (synthetic only)
         run: |
           docker build -f docker/backup-tools.Dockerfile -t iere-local-backup-tools .
-          docker run --rm --network none --entrypoint bun iere-local-backup-tools --no-env-file test tests/backup-adapter.test.ts tests/r2-backup-verification.test.ts tests/backup-operations-report.test.ts
+          docker run --rm --network none --entrypoint bun iere-local-backup-tools --no-env-file test tests/backup-adapter.test.ts tests/backup-storage-cap.test.ts tests/hosted-backup.test.ts tests/r2-backup-verification.test.ts tests/backup-operations-report.test.ts
           node scripts/verify-backup-adapter.mjs
 
       - name: Seed deterministic browser fixtures

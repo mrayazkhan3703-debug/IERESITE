@@ -55,7 +55,7 @@ function Get-IereBackupRetentionPlan {
 }
 
 function New-IereBackupTaskXml {
-  param([object]$Policy, [string]$UserSid, [string]$RunnerPath, [string]$WorkingDirectory, [DateTime]$StartUtc)
+  param([object]$Policy, [string]$UserSid, [string]$RunnerPath, [string]$WorkingDirectory, [DateTime]$StartUtc, [string]$OperationsConfig)
   $approved = Get-IereBackupOperationsPolicy -Policy $Policy
   if ($UserSid -notmatch '^S-1-\d+(?:-\d+)+$' -or $StartUtc.Kind -ne [DateTimeKind]::Utc -or
       $RunnerPath -match '[\r\n"]' -or $WorkingDirectory -match '[\r\n"]' -or
@@ -65,6 +65,11 @@ function New-IereBackupTaskXml {
   $runner = [Security.SecurityElement]::Escape($RunnerPath)
   $working = [Security.SecurityElement]::Escape($WorkingDirectory)
   $start = $StartUtc.ToString("yyyy-MM-ddTHH:mm:ss'Z'")
+  $configurationArgument=''
+  if ($OperationsConfig) {
+    if (-not [IO.Path]::IsPathRooted($OperationsConfig) -or $OperationsConfig -match '[\r\n"]') { throw 'Invalid operations configuration path.' }
+    $configurationArgument=' -OperationsConfig &quot;'+[Security.SecurityElement]::Escape($OperationsConfig)+'&quot;'
+  }
   # Disabled at registration; no live transfer/cadence success is asserted.
   # No hard-kill time limit: killing a quiescing backup can prevent finally cleanup.
   return @"
@@ -73,7 +78,7 @@ function New-IereBackupTaskXml {
   <Triggers><TimeTrigger><Repetition><Interval>PT$($approved.intervalMinutes)M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition><StartBoundary>$start</StartBoundary><Enabled>true</Enabled></TimeTrigger></Triggers>
   <Principals><Principal id="CurrentUser"><UserId>$UserSid</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
   <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>false</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><Enabled>false</Enabled><ExecutionTimeLimit>PT0S</ExecutionTimeLimit></Settings>
-  <Actions Context="CurrentUser"><Exec><Command>powershell.exe</Command><Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$runner&quot; -Scheduled</Arguments><WorkingDirectory>$working</WorkingDirectory></Exec></Actions>
+  <Actions Context="CurrentUser"><Exec><Command>powershell.exe</Command><Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$runner&quot; -Scheduled$configurationArgument</Arguments><WorkingDirectory>$working</WorkingDirectory></Exec></Actions>
 </Task>
 "@
 }

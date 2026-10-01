@@ -27,6 +27,9 @@ Assert-BackupPolicy ($xml.Task.Settings.AllowHardTerminate -eq 'false' -and $xml
 Assert-BackupPolicy ($xml.Task.Principals.Principal.LogonType -eq 'InteractiveToken' -and $xml.Task.Principals.Principal.RunLevel -eq 'LeastPrivilege')
 Assert-BackupPolicy ($xml.Task.Actions.Exec.WorkingDirectory -eq 'C:\SYNTHETIC Project & Test')
 Assert-BackupPolicy ($xml.Task.Actions.Exec.Arguments -match ' -Scheduled$')
+$hostedXml=[xml](New-IereBackupTaskXml -Policy $policy -UserSid 'S-1-5-21-123-456-789-1001' -RunnerPath 'C:\SYNTHETIC\run.ps1' -WorkingDirectory 'C:\SYNTHETIC' -StartUtc $now -OperationsConfig 'C:\Private & Recovery\runner.json')
+Assert-BackupPolicy ($hostedXml.Task.Actions.Exec.Arguments -match ' -Scheduled -OperationsConfig "C:\\Private & Recovery\\runner.json"$')
+Assert-BackupPolicy ($hostedXml.Task.Settings.Enabled -eq 'false')
 foreach ($field in @('intervalMinutes', 'retentionDays', 'achievement', 'checkpointBeforeMajorChanges')) {
   $invalid = ($policy | ConvertTo-Json -Depth 5 | ConvertFrom-Json)
   if ($field -eq 'achievement') { $invalid.$field = 'VERIFIED' }
