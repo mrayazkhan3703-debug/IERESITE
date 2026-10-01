@@ -195,6 +195,10 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
       await editField.getByRole("button", { name: "Remove", exact: true }).click();
       await choose(page, editField, filename);
       if (["properties", "projects"].includes(entityModule.section)) {
+        // Detaching a cover removes its association-specific metadata; reattach
+        // and edit it here before verifying persistence and public rendering.
+        await page.getByRole("dialog").getByLabel("Caption for media 1", { exact: true }).fill("Synthetic editorial caption " + suffix);
+        await page.getByRole("dialog").getByLabel("Alt text for media 1", { exact: true }).fill("Synthetic descriptive alternative " + suffix);
         await rejectSaveOnce(page, page.getByRole("dialog"), "Save changes", "/api/admin/" + entityModule.section, "PATCH");
         await expect(editField.locator("img")).toHaveAttribute("src", asset.url);
       }

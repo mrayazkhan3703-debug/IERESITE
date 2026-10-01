@@ -1,6 +1,15 @@
 import { expect, test } from "bun:test";
 import { mediaCaption, mediaPreviewUrl } from "@/lib/media-preview";
 import { mediaDtoSchema } from "@/lib/contracts";
+import { withGalleryCover } from "@/lib/media-contract";
+
+test("choosing an attached cover preserves gallery order and attachment metadata", () => {
+  const rows = [{ mediaId: "one", caption: "First", isCover: true }, { mediaId: "two", altText: "Second", caption: "Second caption", isCover: false }];
+  expect(withGalleryCover(rows, "two")).toEqual([{ ...rows[0], isCover: false }, { ...rows[1], isCover: true }]);
+  expect(rows[0].isCover).toBe(true);
+  expect(withGalleryCover(rows, "new")).toEqual([{ ...rows[0], isCover: false }, rows[1], { mediaId: "new", kind: "IMAGE", isCover: true }]);
+  expect(withGalleryCover(rows, "")).toEqual([rows[1]]);
+});
 
 test("public media contracts retain video posters without replacing playback URLs", () => {
   const video = mediaDtoSchema.parse({ id: "fixture", url: "/api/media/fixture/content", kind: "VIDEO", mimeType: "video/mp4", posterUrl: "/poster.webp" });

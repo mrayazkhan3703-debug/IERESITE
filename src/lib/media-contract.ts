@@ -11,6 +11,12 @@ export interface MediaAttachment {
   mediaId: string; url?: string; kind?: string; mimeType?: string;
   isCover?: boolean; altText?: string | null; caption?: string | null; posterUrl?: string | null;
 }
+export function withGalleryCover(rows: MediaAttachment[], mediaId: string): MediaAttachment[] {
+  if (!mediaId) return rows.filter((row) => !row.isCover);
+  const existing = rows.some((row) => row.mediaId === mediaId);
+  const selected = rows.map((row) => ({ ...row, isCover: row.mediaId === mediaId }));
+  return existing ? selected : [...selected, { mediaId, kind: "IMAGE", isCover: true }];
+}
 export const galleryAttachmentSchema = z.object({
   mediaId: z.string().min(1).max(100), isCover: z.boolean().optional(),
   altText: z.string().max(300).nullable().optional(), caption: z.string().max(500).nullable().optional(),
