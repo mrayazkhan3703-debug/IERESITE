@@ -1038,7 +1038,9 @@ function CommunitiesSection({ canEdit }: { canEdit: boolean }) {
         return parsed;
       };
       const fields = {
-        ...form,
+        name: form.name, slug: form.slug, areaType: form.areaType,
+        locationPrecision: form.locationPrecision, publicationStatus: form.publicationStatus,
+        sourceType: form.sourceType, locationSourceType: form.locationSourceType,
         summary: form.summary || null, description: form.description || null,
         lat: Number(form.lat), lng: Number(form.lng), imageMediaId: form.imageMediaId || null,
         parentLocationId: form.parentLocationId || null,
