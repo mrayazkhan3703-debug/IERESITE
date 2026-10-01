@@ -18,6 +18,7 @@ export interface AgentCommandInput {
   yearsExperience?: number;
   active?: boolean;
   publicAdvisor?: boolean;
+  publicTeam?: boolean;
   photoMediaId?: string | null;
   phoneE164?: string | null;
   whatsappE164?: string | null;
@@ -28,7 +29,8 @@ export interface AgentCommandInput {
 }
 
 export interface AgentCreateCommandInput {
-  userId: string;
+  userId?: string | null;
+  publicTeam?: boolean;
   name: string;
   slug: string;
   jobTitle: string;
@@ -70,7 +72,7 @@ async function replaceAdvisorRelations(tx: Prisma.TransactionClient, actor: Sess
   }
 }
 
-/** Create an unpublished team profile only for a real, active AGENT account. */
+/** Create a staff profile; an optional login link never grants account permissions. */
 export async function createAgentProfileCommand(actor: SessionUser, input: AgentCreateCommandInput, ip: string | null) {
   if (!hasGrantedPermission(actor.permissions, "agent:create")) {
     throw new HttpError(403, "You do not have permission to create team profiles.", "FORBIDDEN");
@@ -89,7 +91,8 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
 
   try {
     return await db.$transaction(async (tx) => {
-      const linkedUser = await tx.user.findFirst({
+      if (!actor.roles.includes("OWNER") && !actor.organizationId) throw new HttpError(403, "A staff organization is required.", "RESOURCE_FORBIDDEN");
+      const linkedUser = input.userId ? await tx.user.findFirst({
         where: {
           id: input.userId,
           isActive: true,
@@ -99,14 +102,16 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
           ...(!actor.roles.includes("OWNER") ? { organizationId: actor.organizationId ?? "__no_organization__" } : {}),
         },
         select: { id: true, organizationId: true },
-      });
-      if (!linkedUser) {
+      }) : null;
+      if (input.userId && !linkedUser) {
         throw new HttpError(422, "Choose an active AGENT account in your permitted organization that has no team profile.", "INVALID_AGENT_ACCOUNT");
       }
       const photoMediaId = await requirePublicMedia(tx, input.photoMediaId, ["IMAGE"]);
       const agent = await tx.agent.create({
         data: {
-          userId: linkedUser.id,
+          userId: linkedUser?.id ?? null,
+          ownerOrganizationId: linkedUser?.organizationId ?? actor.organizationId,
+          publicTeam: input.publicTeam ?? false,
           name,
           slug,
           jobTitle,
@@ -116,26 +121,26 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
           photoMediaId,
           phoneE164: input.phoneE164 ?? null, whatsappE164: input.whatsappE164 ?? null, email: input.email?.trim().toLowerCase() || null,
           languagesJson: JSON.stringify(input.languages ?? []), specialtiesJson: JSON.stringify(input.specialties ?? []), communitiesJson: JSON.stringify(input.communityIds ?? []),
-          active: false,
+          active: input.publicTeam ?? false,
           publicAdvisor: false,
         },
       });
       await replaceAdvisorRelations(tx, actor, agent.id, { languages: input.languages ?? [], specialties: input.specialties ?? [], communityIds: input.communityIds ?? [] });
       const after = {
-        userId: linkedUser.id, name, slug, jobTitle, bio,
+        userId: linkedUser?.id ?? null, ownerOrganizationId: linkedUser?.organizationId ?? actor.organizationId, publicTeam: input.publicTeam ?? false, name, slug, jobTitle, bio,
         department: input.department?.trim() || null,
         yearsExperience: input.yearsExperience ?? 0,
         photoMediaId, phoneE164: input.phoneE164 ?? null, whatsappE164: input.whatsappE164 ?? null, email: input.email?.trim().toLowerCase() || null,
-        languages: input.languages ?? [], specialties: input.specialties ?? [], communityIds: input.communityIds ?? [], active: false, publicAdvisor: false,
+        languages: input.languages ?? [], specialties: input.specialties ?? [], communityIds: input.communityIds ?? [], active: input.publicTeam ?? false, publicAdvisor: false,
       };
       await audit({
-        actorId: actor.id, organizationId: linkedUser.organizationId,
+        actorId: actor.id, organizationId: linkedUser?.organizationId ?? actor.organizationId,
         action: "agent.create", resourceType: "agent", resourceId: agent.id,
         before: null, after, ip,
       }, tx);
       await emitEvent("agent", agent.id, "agent.created", { agentId: agent.id, by: actor.email }, tx);
       return { ok: true as const, agentId: agent.id, updatedAt: agent.updatedAt.toISOString() };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 60000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new HttpError(409, "That account already has a team profile or the profile slug is already in use.", "AGENT_PROFILE_CONFLICT");
@@ -158,7 +163,7 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
         include: { user: { select: { organizationId: true, emailVerified: true, isActive: true, roles: { select: { role: { select: { key: true } } } } } } },
       });
       if (!agent) throw new HttpError(404, "Team profile not found", "NOT_FOUND");
-      if (!canManageAgentProfile(actor, agent.user?.organizationId ?? null)) throw new HttpError(403, "You cannot manage this team profile.", "RESOURCE_FORBIDDEN");
+      if (!canManageAgentProfile(actor, agent.ownerOrganizationId ?? agent.user?.organizationId ?? null)) throw new HttpError(403, "You cannot manage this team profile.", "RESOURCE_FORBIDDEN");
       if (agent.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
         throw new HttpError(409, "This team profile changed since it was loaded. Refresh and review the latest values.", "VERSION_CONFLICT");
       }
@@ -169,6 +174,8 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       const bio = input.bio?.trim() ?? agent.bio;
       const active = input.active ?? agent.active;
       const publicAdvisor = input.publicAdvisor ?? agent.publicAdvisor;
+      const publicTeam = input.publicTeam ?? agent.publicTeam;
+      if (publicTeam && !active) throw new HttpError(422, "A published team profile must be active.", "PUBLICATION_VALIDATION");
       if (!name || !jobTitle || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
         throw new HttpError(422, "Name, job title, and a URL-safe slug are required.", "AGENT_VALIDATION");
       }
@@ -185,7 +192,7 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
 
       const before = {
         name: agent.name, slug: agent.slug, jobTitle: agent.jobTitle, bio: agent.bio,
-        department: agent.department, yearsExperience: agent.yearsExperience, active: agent.active, publicAdvisor: agent.publicAdvisor,
+        department: agent.department, yearsExperience: agent.yearsExperience, active: agent.active, publicAdvisor: agent.publicAdvisor, publicTeam: agent.publicTeam,
         photoMediaId: agent.photoMediaId, phoneE164: agent.phoneE164, whatsappE164: agent.whatsappE164, email: agent.email,
         languages: input.languages === undefined ? safeArray(agent.languagesJson) : input.languages,
         specialties: input.specialties === undefined ? safeArray(agent.specialtiesJson) : input.specialties,
@@ -200,6 +207,7 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       if (input.yearsExperience !== undefined) data.yearsExperience = input.yearsExperience;
       if (input.active !== undefined) data.active = active;
       if (input.publicAdvisor !== undefined) data.publicAdvisor = publicAdvisor;
+      if (input.publicTeam !== undefined) data.publicTeam = publicTeam;
       if (input.photoMediaId !== undefined) data.photoMediaId = photoMediaId;
       if (input.phoneE164 !== undefined) data.phoneE164 = input.phoneE164?.trim() || null;
       if (input.whatsappE164 !== undefined) data.whatsappE164 = input.whatsappE164?.trim() || null;
@@ -224,7 +232,7 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       const after = {
         name, slug, jobTitle, bio,
         department: input.department === undefined ? agent.department : input.department?.trim() || null,
-        yearsExperience: input.yearsExperience ?? agent.yearsExperience, active, publicAdvisor,
+        yearsExperience: input.yearsExperience ?? agent.yearsExperience, active, publicAdvisor, publicTeam,
         photoMediaId,
         phoneE164: input.phoneE164 === undefined ? agent.phoneE164 : input.phoneE164?.trim() || null,
         whatsappE164: input.whatsappE164 === undefined ? agent.whatsappE164 : input.whatsappE164?.trim() || null,
@@ -236,7 +244,7 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       await emitEvent("agent", agent.id, "agent.updated", { agentId: agent.id, by: actor.email }, tx);
       const updated = await tx.agent.findUniqueOrThrow({ where: { id: agent.id }, select: { updatedAt: true } });
       return { ok: true as const, updatedAt: updated.updatedAt.toISOString() };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 60000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new HttpError(409, "That team profile slug is already in use.", "SLUG_CONFLICT");

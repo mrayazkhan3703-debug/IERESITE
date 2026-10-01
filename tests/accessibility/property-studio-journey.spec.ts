@@ -85,7 +85,7 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   expect(uploadedCover.status()).toBe(201); mediaIds.push(String((await uploadedCover.json()).id));
   await expect(coverField.getByText(/property-gallery.jpg · done/)).toBeVisible();
   const createResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/admin/properties" && response.request().method() === "POST");
-  await dialog.getByRole("button", { name: "Create draft property" }).click();
+  await dialog.getByRole("button", { name: "Save draft" }).click();
   const created = await createResponse;
   expect(created.status()).toBe(201);
   const createdProperty = await created.json() as { id: string };

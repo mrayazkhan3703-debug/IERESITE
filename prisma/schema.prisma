@@ -38,6 +38,7 @@ model Organization {
   ownedProjects   Project[]    @relation("ProjectOwner")
   ownedDevelopers Developer[] @relation("DeveloperOwner")
   ownedCommunities Community[] @relation("CommunityOwner")
+  ownedAgents      Agent[] @relation("AgentOwner")
   invitations      UserInvitation[]
 }
 
@@ -188,6 +189,10 @@ model AccountToken {
 // ============================================================
 
 model Agent {
+  ownerOrganizationId String?
+  publicTeam Boolean @default(false)
+  ownerOrganization Organization? @relation("AgentOwner", fields: [ownerOrganizationId], references: [id], onDelete: Restrict)
+  @@index([ownerOrganizationId])
   id                String   @id @default(cuid())
   userId            String?  @unique
   name              String

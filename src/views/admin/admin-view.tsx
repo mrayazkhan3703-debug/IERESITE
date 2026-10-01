@@ -1,4 +1,5 @@
 "use client";
+import { propertyPublicationChecks } from "@/lib/property-publication";
 import { csvCell } from "@/lib/csv-cell";
 
 import * as React from "react";
@@ -576,20 +577,22 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   const linkedCommunity = communities.find((community) => String(community.id) === form.communityId);
   const linkedProject = propertyOptions.projects.find((project) => String(project.id) === form.projectId);
   const linkedProjectCommunity = linkedProject?.community as { publicationStatus?: string } | undefined;
-  const propertyReadiness = [
-    { label: "Title and property type are present", ready: Boolean(form.title.trim() && form.type.trim()) },
-    { label: "Latitude and longitude are valid", ready: Number.isFinite(Number(form.lat)) && Number(form.lat) >= -90 && Number(form.lat) <= 90 && Number.isFinite(Number(form.lng)) && Number(form.lng) >= -180 && Number(form.lng) <= 180 && Boolean(form.lat.trim() && form.lng.trim()) },
-    { label: "A published community is linked", ready: linkedCommunity?.publicationStatus === "PUBLISHED" },
-    { label: "The linked project is public when selected", ready: !form.projectId || (linkedProject?.publicationStatus === "PUBLISHED" && linkedProjectCommunity?.publicationStatus === "PUBLISHED") },
-    { label: "A positive price and public listing status are set", ready: Number(form.priceAed) > 0 && form.availability !== "WITHDRAWN" },
-    { label: "Rental frequency is set when applicable", ready: form.listingType !== "RENT" || Boolean(form.rentFrequency) },
-    { label: "Listing expiry is still in the future", ready: !form.expiresAt || new Date(form.expiresAt).getTime() > Date.now() },
-  ];
+  const readinessNow = new Date();
+  const propertyReadiness = propertyPublicationChecks({
+    title: form.title, propertyType: form.type, bedrooms: Number(form.bedrooms), bathrooms: Number(form.bathrooms),
+    lat: form.lat.trim() ? Number(form.lat) : NaN, lng: form.lng.trim() ? Number(form.lng) : NaN,
+    communityStatus: String(linkedCommunity?.publicationStatus ?? ""), projectSelected: Boolean(form.projectId),
+    projectPublic: linkedProject?.publicationStatus === "PUBLISHED" && linkedProjectCommunity?.publicationStatus === "PUBLISHED",
+    listingType: form.listingType, rentFrequency: form.rentFrequency,
+    listings: [{ pricePositive: Number(form.priceAed) > 0, availability: form.availability, publishedAt: readinessNow, expiresAt: form.expiresAt ? new Date(form.expiresAt) : null }],
+  }, readinessNow);
   const sourceAgeDays = editing?.retrievedAt ? Math.floor((Date.now() - new Date(String(editing.retrievedAt)).getTime()) / 86_400_000) : null;
 
   const saveEditor = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editing && !creating) return;
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const publicationStatus = submitter?.value || (creating ? "DRAFT" : form.status);
     if (!form.lat.trim() || !form.lng.trim()) { toast.error("Enter or pick both latitude and longitude before saving."); return; }
     if (!form.listingType || !form.availability) { toast.error("Choose a listing type and availability before saving."); return; }
     setSaveError(null);
@@ -597,7 +600,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
     try {
       if (creating) {
         await api.post("/api/admin/properties", {
-          communityId: form.communityId, title: form.title, slug: form.slug,
+          publicationStatus, communityId: form.communityId, title: form.title, slug: form.slug,
           description: form.description || null, propertyType: form.type,
           bedrooms: Number(form.bedrooms), bathrooms: Number(form.bathrooms),
           lat: Number(form.lat), lng: Number(form.lng), locationPrecision: form.locationPrecision,
@@ -617,7 +620,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           offPlan: form.offPlan, isExclusive: form.exclusive, agentId: form.agentId || null, amenityIds: form.amenityIds,
           expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
         });
-        toast.success("Property created as a draft");
+        toast.success(publicationStatus === "PUBLISHED" ? "Property published" : "Property saved as a draft");
         setCreating(false);
         load();
       } else if (editing) {
@@ -627,7 +630,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           propertyType: form.type,
           bedrooms: Number(form.bedrooms),
           bathrooms: Number(form.bathrooms),
-          publicationStatus: form.status,
+          publicationStatus,
           ...(form.priceAed.trim() ? { priceAed: Number(form.priceAed) } : {}),
           availabilityStatus: form.availability,
           isFeatured: form.featured,
@@ -742,14 +745,14 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{creating ? "Create property" : "Edit property"}</DialogTitle>
-            <DialogDescription>{creating ? "New properties are internal drafts. Enter known listing and location facts only; coordinates are attributed to manual Admin input and are not externally verified." : "Changes are version checked and recorded with an audit entry. Publishing validates the linked public listing, community and project."}</DialogDescription>
+            <DialogDescription>{creating ? "Save a private draft or publish directly when the checklist passes. Enter known listing and location facts; manual coordinates are not independently verified." : "Changes are version checked and recorded with an audit entry. Publishing validates the linked public listing, community and project."}</DialogDescription>
           </DialogHeader>
           <MediaForm className="space-y-4" onSubmit={saveEditor}>
               {saveError && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{saveError} Your form and uploaded media are retained. Review the error and try saving again.</p>}
-            {!creating && editing && <section className="space-y-2 rounded-lg border border-border/70 bg-secondary/20 p-3" aria-label="Property publish readiness">
-              <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">Publish readiness</h3><p className="text-xs text-muted-foreground">The API rechecks these requirements when you save. A blocked publish leaves the property unchanged.</p></div><div className="flex flex-wrap gap-2"><a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/admin/properties/${encodeURIComponent(String(editing.slug))}/preview`} target="_blank" rel="noopener noreferrer">Preview saved record</a>{editing.publicationStatus === "PUBLISHED" && <a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/properties/${encodeURIComponent(String(editing.slug))}`} target="_blank" rel="noopener noreferrer">Open public page</a>}<a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/admin/seo-metadata?q=${encodeURIComponent(`properties/${String(editing.slug)}`)}`}>SEO metadata</a></div></div>
-              <ul className="grid gap-1 text-xs sm:grid-cols-2">{propertyReadiness.map((item) => <li key={item.label} className={item.ready ? "text-success" : "text-muted-foreground"}>{item.ready ? "✓" : "○"} {item.label}</li>)}</ul>
-              {editing.sourceType === "IMPORT" && sourceAgeDays !== null && Number.isFinite(sourceAgeDays) && sourceAgeDays > 90 && <p className="text-xs font-medium text-warning">Imported source is {sourceAgeDays} days old. Verify current listing facts before publishing.</p>}
+            {<section className="space-y-2 rounded-lg border border-border/70 bg-secondary/20 p-3" aria-label="Property publish readiness">
+              <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">Publish readiness</h3><p className="text-xs text-muted-foreground">The API rechecks these requirements when you save. A blocked publish leaves the property unchanged.</p></div><div className="flex flex-wrap gap-2">{editing && <><a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/admin/properties/${encodeURIComponent(String(editing.slug))}/preview`} target="_blank" rel="noopener noreferrer">Preview saved record</a>{editing.publicationStatus === "PUBLISHED" && <a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/properties/${encodeURIComponent(String(editing.slug))}`} target="_blank" rel="noopener noreferrer">Open public page</a>}<a className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-secondary" href={`/admin/seo-metadata?q=${encodeURIComponent(`properties/${String(editing.slug)}`)}`}>SEO metadata</a></>}</div></div>
+              <ul className="grid gap-1 text-xs sm:grid-cols-2">{propertyReadiness.map((item) => <li key={item.message} className={item.ready ? "text-success" : "text-muted-foreground"}>{item.ready ? "✓" : "○"} {item.message}</li>)}</ul>
+              {editing?.sourceType === "IMPORT" && sourceAgeDays !== null && Number.isFinite(sourceAgeDays) && sourceAgeDays > 90 && <p className="text-xs font-medium text-warning">Imported source is {sourceAgeDays} days old. Verify current listing facts before publishing.</p>}
             </section>}
             <div className="space-y-1.5"><label className="block text-sm font-medium">Title<Input value={form.title} maxLength={200} required onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>{sourceControl("title")}</div>
             {creating && <label className="block space-y-1.5 text-sm font-medium">URL slug<Input value={form.slug} maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" required onChange={(e) => setForm({ ...form, slug: e.target.value })} /></label>}
@@ -1284,8 +1287,9 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [selectedUserId, setSelectedUserId] = React.useState("");
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, photoMediaId: "", email: "", phoneE164: "", whatsappE164: "", languagesText: "", specialties: [] as string[], communityIds: [] as string[] });
+  const [form, setForm] = React.useState({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, publicTeam: false, photoMediaId: "", email: "", phoneE164: "", whatsappE164: "", languagesText: "", specialties: [] as string[], communityIds: [] as string[] });
 
   const load = React.useCallback(() => {
     api.get<{ agents: Record<string, unknown>[]; total: number; communities?: { id: string; name: string; slug: string }[]; linkableUsers?: { id: string; name: string | null; email: string }[] }>(`/api/admin/agents${q ? `?q=${encodeURIComponent(q)}` : ""}`)
@@ -1296,17 +1300,19 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
 
   const openCreate = () => {
     setEditing(null);
-    setSelectedUserId(linkableUsers[0]?.id ?? "");
-    setForm({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, photoMediaId: "", email: "", phoneE164: "", whatsappE164: "", languagesText: "", specialties: [], communityIds: [] });
+    setSaveError(null);
+    setSelectedUserId("");
+    setForm({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, publicTeam: false, photoMediaId: "", email: "", phoneE164: "", whatsappE164: "", languagesText: "", specialties: [], communityIds: [] });
     setCreating(true);
   };
 
   const openEditor = (agent: Record<string, unknown>) => {
+    setSaveError(null);
     setEditing(agent);
     setForm({
       name: String(agent.name ?? ""), slug: String(agent.slug ?? ""), jobTitle: String(agent.jobTitle ?? ""),
       bio: String(agent.bio ?? ""), department: String(agent.department ?? "other"),
-      yearsExperience: String(agent.yearsExperience ?? 0), active: Boolean(agent.active), publicAdvisor: Boolean(agent.publicAdvisor),
+      yearsExperience: String(agent.yearsExperience ?? 0), active: Boolean(agent.active), publicAdvisor: Boolean(agent.publicAdvisor), publicTeam: Boolean(agent.publicTeam),
       photoMediaId: String(agent.photoMediaId ?? ""),
       email: String(agent.email ?? ""), phoneE164: String(agent.phoneE164 ?? ""), whatsappE164: String(agent.whatsappE164 ?? ""),
       languagesText: Array.isArray(agent.languages) ? (agent.languages as { code: string; name: string; fluency: string }[]).map((language) => `${language.code}|${language.name}|${language.fluency}`).join("\n") : "",
@@ -1318,10 +1324,13 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
   const saveEditor = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editing && !creating) return;
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const publicTeam = submitter?.value === "PUBLISH" ? true : submitter?.value === "DRAFT" ? false : form.publicTeam;
+    setSaveError(null);
     setSaving(true);
     try {
       const values = {
-        ...form,
+        ...form, publicTeam, active: publicTeam ? true : form.active,
         yearsExperience: Number(form.yearsExperience), department: form.department || null, photoMediaId: form.photoMediaId || null,
         email: form.email || null, phoneE164: form.phoneE164 || null, whatsappE164: form.whatsappE164 || null,
         languages: form.languagesText.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -1332,12 +1341,12 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
       };
       if (creating) {
         await api.post("/api/admin/agents", {
-          userId: selectedUserId, name: values.name, slug: values.slug, jobTitle: values.jobTitle,
+          publicTeam, userId: selectedUserId || null, name: values.name, slug: values.slug, jobTitle: values.jobTitle,
           bio: values.bio, department: values.department, yearsExperience: values.yearsExperience, photoMediaId: values.photoMediaId,
           email: values.email, phoneE164: values.phoneE164, whatsappE164: values.whatsappE164,
           languages: values.languages, specialties: values.specialties, communityIds: values.communityIds,
         });
-        toast.success("Inactive team profile created; review it before making it public");
+        toast.success(publicTeam ? "Team member published on the website" : "Team profile saved as a draft");
       } else if (editing) {
         const { languagesText: _languagesText, ...patchValues } = values;
         await api.patch("/api/admin/agents", { agentId: editing.id, expectedUpdatedAt: editing.updatedAt, ...patchValues });
@@ -1347,6 +1356,7 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
       setCreating(false);
       load();
     } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Team profile update failed");
       toast.error(error instanceof Error ? error.message : "Team profile update failed");
       if (error instanceof Error && error.message.toLowerCase().includes("changed since")) load();
     } finally {
@@ -1357,18 +1367,18 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="font-display text-2xl font-semibold">Team profiles</h1><p className="mt-1 text-sm text-muted-foreground">Invite a person as AGENT, wait for account activation and email verification, then create their private profile. Public advisors require a verified linked account, bio, and active status.</p></div>
+        <div><h1 className="font-display text-2xl font-semibold">Team profiles</h1><p className="mt-1 text-sm text-muted-foreground">Add and publish website team members directly. A login account and email verification are not required for the Team page. Advisor eligibility is managed separately.</p></div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto"><div className="w-full sm:w-64"><Input placeholder="Search team profiles…" value={q} onChange={(event) => setQ(event.target.value)} aria-label="Search team profiles" /></div>{canEdit && <><Link className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm" to="/admin/users" query={{ inviteRole: "AGENT" }}>Invite AGENT</Link><Button onClick={openCreate}>New team profile</Button></>}</div>
       </header>
       {data === null ? <LoadingState rows={4} /> : data.agents.length === 0 ? <EmptyState title="No team profiles found" description="No profiles are visible in this account’s permitted scope." /> : (
         <div className="overflow-x-safe rounded-xl border border-border/70">
           <table className="w-full min-w-[800px] text-sm">
-            <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Team member</th><th className="p-3">Department</th><th className="p-3">Experience</th><th className="p-3">Account status</th><th className="p-3">Public advisor</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
+            <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Team member</th><th className="p-3">Department</th><th className="p-3">Experience</th><th className="p-3">Account status</th><th className="p-3">Team page</th><th className="p-3">Public advisor</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
             <tbody>{data.agents.map((agent) => <tr key={String(agent.id)} className="border-b border-border/50">
               <td className="p-3"><p className="font-medium">{String(agent.name)}</p><p className="text-xs text-muted-foreground">{String(agent.jobTitle)} · /{String(agent.slug)}</p><p className="text-xs text-muted-foreground">{String(agent.linkedAccountEmail ?? "No linked account")}{agent.linkedAccountVerified ? " · verified" : " · not verified"}</p></td>
               <td className="p-3">{String(agent.department ?? "—")}</td><td className="p-3">{String(agent.yearsExperience)} years</td>
               <td className="p-3"><Badge variant={agent.active ? "default" : "outline"}>{agent.active ? "Active" : "Inactive"}</Badge></td>
-              <td className="p-3">{agent.publicAdvisor ? "Public" : "Internal"}</td>
+              <td className="p-3">{agent.publicTeam && agent.active ? "Published" : "Draft"}</td><td className="p-3">{agent.publicAdvisor ? "Public" : "Internal"}</td>
               {canEdit && <td className="p-3"><Button size="sm" variant="outline" onClick={() => openEditor(agent)}>Edit</Button></td>}
             </tr>)}</tbody>
           </table>
@@ -1377,9 +1387,10 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
       <p className="text-xs text-muted-foreground">Showing {String(data?.agents.length ?? 0)} of {String(data?.total ?? 0)} visible profiles (maximum 50).</p>
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader><DialogTitle>{creating ? "Create advisor profile" : "Edit advisor profile"}</DialogTitle><DialogDescription>{creating ? "Link an active, email-verified AGENT account. New profiles start inactive and private; no account, role, or real profile facts are invented." : "Changes are audited and scoped by linked account organization. Related projects below are derived from assigned listings."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{creating ? "Create team profile" : "Edit team profile"}</DialogTitle><DialogDescription>{creating ? "Enter the member’s actual profile details. Save a draft or publish to the Team page without inviting a login account." : "Changes are audited and scoped by profile organization. Related projects below are derived from assigned listings."}</DialogDescription></DialogHeader>
           <MediaForm className="space-y-4" onSubmit={saveEditor}>
-            {creating && <label className="block space-y-1.5 text-sm font-medium">Active, verified AGENT account<Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={linkableUsers.length === 0}><SelectTrigger><SelectValue placeholder="Choose an account" /></SelectTrigger><SelectContent>{linkableUsers.map((user) => <SelectItem key={user.id} value={user.id}>{user.name ? `${user.name} — ${user.email}` : user.email}</SelectItem>)}</SelectContent></Select>{linkableUsers.length === 0 && <span className="text-xs text-muted-foreground">No eligible account is available. <Link className="underline" to="/admin/users">Open Users &amp; Access to invite an AGENT account</Link>. The invitee must accept and verify their email first.</span>}</label>}
+            {saveError && <p role="alert" className="rounded-lg border border-destructive/40 p-3 text-sm text-destructive">{saveError} Your form and uploaded photo are retained.</p>}
+            {creating && <label className="block space-y-1.5 text-sm font-medium">Optional AGENT login account<Select value={selectedUserId || "none"} onValueChange={value => setSelectedUserId(value === "none" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No login account needed</SelectItem>{linkableUsers.map(user => <SelectItem key={user.id} value={user.id}>{user.name ? `${user.name} — ${user.email}` : user.email}</SelectItem>)}</SelectContent></Select></label>}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
@@ -1397,7 +1408,8 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
             <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Communities served</legend><div className="grid gap-2 sm:grid-cols-2">{(data?.communities ?? []).map((community) => <label key={community.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.communityIds.includes(community.id)} onChange={(event) => setForm({ ...form, communityIds: event.target.checked ? [...form.communityIds, community.id] : form.communityIds.filter((id) => id !== community.id) })} />{community.name}</label>)}{(data?.communities ?? []).length === 0 && <p className="text-xs text-muted-foreground">No manageable communities are available.</p>}</div></fieldset>
             {!creating && Array.isArray(editing?.assignedProjects) && <section className="space-y-1 rounded-lg border border-border/70 p-3"><h3 className="text-sm font-semibold">Projects linked through assigned listings</h3>{(editing.assignedProjects as { id: string; name: string; slug: string }[]).length ? (editing.assignedProjects as { id: string; name: string; slug: string }[]).map((project) => <p key={project.id} className="text-xs">{project.name} · /projects/{project.slug}</p>) : <p className="text-xs text-muted-foreground">No assigned listing currently links this advisor to a project.</p>}</section>}
             {!creating && <div className="space-y-3 rounded-lg border border-border/70 p-3">
-              <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Active team profile</span><span className="text-xs text-muted-foreground">Inactive profiles are excluded from public advisor listings.</span></span><Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active, publicAdvisor: active ? form.publicAdvisor : false })} /></label>
+              <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Active team profile</span><span className="text-xs text-muted-foreground">Inactive profiles are excluded from public advisor listings.</span></span><Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active, publicAdvisor: active ? form.publicAdvisor : false, publicTeam: active ? form.publicTeam : false })} /></label>
+              <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Published on Team page</span><span className="text-xs text-muted-foreground">No account or email verification required.</span></span><Switch checked={form.publicTeam} disabled={!form.active} onCheckedChange={publicTeam => setForm({ ...form, publicTeam })} /></label>
               <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Public advisor directory</span><span className="text-xs text-muted-foreground">A bio and active status are required.</span></span><Switch checked={form.publicAdvisor} disabled={!form.active} onCheckedChange={(publicAdvisor) => setForm({ ...form, publicAdvisor })} /></label>
             </div>}
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" disabled={saving || (creating && !selectedUserId)}>{saving ? "Saving…" : creating ? "Create inactive profile" : "Save changes"}</Button></DialogFooter>

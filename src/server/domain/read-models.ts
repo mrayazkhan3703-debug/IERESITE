@@ -6,7 +6,7 @@ import { db, parseJson } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import type { MediaDTO, ProjectCardDTO, CommunityCardDTO, AgentDTO, ListingCardDTO } from "@/lib/types";
 import {
-  PUBLIC_AGENT_WHERE,
+  PUBLIC_AGENT_WHERE, PUBLIC_TEAM_WHERE, PUBLIC_PROFILE_WHERE,
   PUBLIC_COMMUNITY_WHERE,
   PUBLIC_DEVELOPER_WHERE,
   PUBLIC_PROJECT_WHERE,
@@ -623,13 +623,16 @@ export async function getDeveloperDetail(slug: string) {
   };
 }
 
-export async function listAgents(): Promise<AgentDTO[]> {
+export async function listAgents(): Promise<AgentDTO[]> { return listRoster(PUBLIC_AGENT_WHERE); }
+export async function listTeam(): Promise<AgentDTO[]> { return listRoster(PUBLIC_TEAM_WHERE); }
+
+async function listRoster(where: Prisma.AgentWhereInput): Promise<AgentDTO[]> {
   const agents = await db.agent.findMany({
-    where: PUBLIC_AGENT_WHERE,
+    where,
     orderBy: [{ sortWeight: "desc" }, { name: "asc" }],
     include: { user: { select: { id: true } } },
   });
-  const listingCounts = await db.listing.groupBy({ by: ["agentId"], where: { agentId: { not: null } }, _count: true });
+  const listingCounts = await db.listing.groupBy({ by: ["agentId"], where: { ...publicListingWindowWhere(), agentId: { not: null }, property: { is: PUBLIC_PROPERTY_WHERE } }, _count: true });
   const countMap = new Map(listingCounts.map((c) => [c.agentId!, c._count]));
   const photoMap = await resolveAgentPhotos(agents.map((agent) => agent.id));
   return agents.map((a) => ({
@@ -651,17 +654,18 @@ export async function listAgents(): Promise<AgentDTO[]> {
     listingCount: countMap.get(a.id) ?? 0,
     /* V3-02 verified-team fields (additive) */
     department: a.department,
-    publicAdvisor: a.publicAdvisor,
+    publicAdvisor: a.publicAdvisor, publicTeam: a.publicTeam,
     phoneDisplay: a.phoneDisplay,
     photoUrl: a.photoUrl,
   }));
 }
 
 export async function getAgentDetail(slug: string): Promise<(AgentDTO & { listings: ListingCardDTO[] }) | null> {
-  const agents = await listAgents();
+  const agents = await listRoster({ slug, ...PUBLIC_PROFILE_WHERE });
   const agent = agents.find((a) => a.slug === slug);
   if (!agent) return null;
-  const listings = await db.listing.findMany({
+  const eligibleAdvisor = await db.agent.findFirst({ where: { id: agent.id, ...PUBLIC_AGENT_WHERE }, select: { id: true } });
+  const listings = eligibleAdvisor ? await db.listing.findMany({
     where: { ...publicListingWindowWhere(), agentId: agent.id, property: { is: PUBLIC_PROPERTY_WHERE } },
     include: {
       property: {
@@ -673,9 +677,9 @@ export async function getAgentDetail(slug: string): Promise<(AgentDTO & { listin
       },
     },
     take: 9,
-  });
+  }) : [];
   return {
-    ...agent,
+    ...agent, publicAdvisor: Boolean(eligibleAdvisor),
     listings: listings.map((l) => ({
       id: l.id,
       slug: l.property.slug,

@@ -91,6 +91,7 @@ export interface AgentDTO {
   department?: string | null;
   /** Appears in the public /agents advisory directory. */
   publicAdvisor?: boolean;
+  publicTeam?: boolean;
   /** Human-readable phone form (display only; tel: uses phoneE164). */
   phoneDisplay?: string | null;
   /** Direct static photo asset path (e.g. /images/team/member-01.jpg). */

@@ -181,6 +181,7 @@ const patchSchema = z.object({
 });
 
 const createSchema = z.object({
+  publicationStatus: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT"),
   ...entityMediaSchema,
   floorPlans: z.array(floorPlanAttachmentSchema).max(30).optional(),
   communityId: z.string().min(1),

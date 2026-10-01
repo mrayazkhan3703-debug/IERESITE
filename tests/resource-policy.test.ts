@@ -33,9 +33,9 @@ describe("lead resource policy", () => {
 });
 
 describe("agent profile resource policy", () => {
-  test("owners are global; organization staff are scoped through linked users", () => {
+  test("owners are global; staff use explicit ownership with a legacy account fallback", () => {
     expect(agentProfileScope(user(["OWNER"], null))).toEqual({});
-    expect(agentProfileScope(user(["MANAGER"]))).toEqual({ user: { is: { organizationId: "org-1" } } });
+    expect(agentProfileScope(user(["MANAGER"]))).toEqual({ OR: [{ ownerOrganizationId: "org-1" }, { ownerOrganizationId: null, user: { is: { organizationId: "org-1" } } }] });
     expect(agentProfileScope(user(["ADMIN"], null))).toEqual({ id: { in: [] } });
   });
 

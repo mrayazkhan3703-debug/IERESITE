@@ -10,6 +10,7 @@ import { reindexProperty } from "@/server/search/service";
 import type { EntityMediaInput } from "@/lib/media-contract";
 import { saveEntityMedia } from "./entity-media";
 import { PUBLIC_PROJECT_WHERE } from "./visibility";
+import { propertyPublicationChecks, type PropertyPublicationInput } from "@/lib/property-publication";
 
 export interface PropertyCommandInput extends EntityMediaInput {
   propertyId: string;
@@ -57,6 +58,7 @@ export interface PropertyCommandInput extends EntityMediaInput {
 }
 
 export interface NewPropertyCommandInput extends EntityMediaInput {
+  publicationStatus?: "DRAFT" | "PUBLISHED";
   communityId: string;
   title: string;
   slug: string;
@@ -134,9 +136,9 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
   validatePropertyFacts(input);
 
   try {
-    return await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
       const relatedCatalogScope = actor.roles.includes("OWNER") ? {} : { OR: [{ ownerOrganizationId: null }, { ownerOrganizationId: actor.organizationId ?? "" }] };
-      const community = await tx.community.findFirst({ where: { id: input.communityId, ...relatedCatalogScope }, select: { id: true } });
+      const community = await tx.community.findFirst({ where: { id: input.communityId, ...relatedCatalogScope }, select: { id: true, publicationStatus: true } });
       if (!community) throw new HttpError(422, "Select an existing community.", "PROPERTY_RELATION_REQUIRED");
       if (input.projectId) {
         const project = await tx.project.findFirst({ where: { id: input.projectId, communityId: community.id, deletedAt: null, ...relatedCatalogScope }, select: { id: true, developerId: true } });
@@ -148,6 +150,12 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
       if (input.agentId && !await tx.agent.findFirst({ where: { id: input.agentId, active: true, ...agentScope }, select: { id: true } })) throw new HttpError(422, "Select an active advisor in your organization.", "PROPERTY_RELATION_REQUIRED");
       const amenityIds = [...new Set(input.amenityIds ?? [])];
       if (amenityIds.length && await tx.amenity.count({ where: { id: { in: amenityIds } } }) !== amenityIds.length) throw new HttpError(422, "One or more selected amenities are unavailable.", "PROPERTY_RELATION_REQUIRED");
+      const publishAt = input.publicationStatus === "PUBLISHED" ? new Date() : null;
+      if (publishAt) {
+        const projectPublic = !input.projectId || Boolean(await tx.project.findFirst({ where: { id: input.projectId, ...PUBLIC_PROJECT_WHERE }, select: { id: true } }));
+        requirePublication({ ...input, communityStatus: community.publicationStatus, projectSelected: Boolean(input.projectId), projectPublic,
+          listings: [{ pricePositive: priceMinor > 0n, availability: input.availabilityStatus, publishedAt: publishAt, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null }] }, publishAt);
+      }
       const coverMediaId = await requirePublicMedia(tx, input.coverMediaId, ["IMAGE"]);
       const property = await tx.property.create({
         data: {
@@ -179,7 +187,7 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
           locationPrecision: input.locationPrecision,
           locationSourceType: "MANUAL_ADMIN",
           sourceType: "INTERNAL",
-          publicationStatus: "DRAFT",
+          publicationStatus: input.publicationStatus ?? "DRAFT",
           createdBy: actor.id,
           isDemoData: false,
           listings: {
@@ -195,8 +203,8 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
               isExclusive: input.isExclusive ?? false,
               agentId: input.agentId ?? null,
               expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
-              publishedAt: null,
-              statusHistory: { create: { fromStatus: null, toStatus: input.availabilityStatus, changedBy: actor.id, reason: "Initial Admin draft creation" } },
+              publishedAt: publishAt,
+              statusHistory: { create: { fromStatus: null, toStatus: input.availabilityStatus, changedBy: actor.id, reason: publishAt ? "Initial Admin publication" : "Initial Admin draft creation" } },
             },
           },
         },
@@ -223,10 +231,12 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
         tenure: listing.tenure, priceQualifier: listing.priceQualifier, serviceChargePerSqft: listing.serviceChargePerSqft,
         offPlan: listing.offPlan, isExclusive: listing.isExclusive, agentId: listing.agentId, amenityIds,
       };
-      await audit({ actorId: actor.id, organizationId: actor.organizationId, action: "property.create", resourceType: "property", resourceId: property.id, before: null, after, ip }, tx);
+      await audit({ actorId: actor.id, organizationId: actor.organizationId, action: publishAt ? "property.create_publish" : "property.create", resourceType: "property", resourceId: property.id, before: null, after, ip }, tx);
       await emitEvent("property", property.id, "property.updated", { propertyId: property.id, by: actor.email }, tx);
       return { id: property.id, updatedAt: property.updatedAt.toISOString(), publicationStatus: property.publicationStatus };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 60000 });
+    await reindexProperty(result.id).catch(() => {}); // Durable outbox retries a failed synchronous index.
+    return result;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new HttpError(409, "That property slug is already in use.", "SLUG_CONFLICT");
@@ -238,34 +248,9 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
   }
 }
 
-function publicReadiness(property: {
-  title: string;
-  propertyType: string;
-  bedrooms: number;
-  bathrooms: number;
-  lat: number;
-  lng: number;
-  community: { publicationStatus: string };
-  listings: { priceMinor: bigint; availabilityStatus: string; publishedAt: Date | null; expiresAt: Date | null }[];
-}): string[] {
-  const issues: string[] = [];
-  if (!property.title.trim()) issues.push("A title is required.");
-  if (!property.propertyType.trim()) issues.push("A property type is required.");
-  if (!Number.isFinite(property.bedrooms) || property.bedrooms < 0) issues.push("Bedrooms must be zero or greater.");
-  if (!Number.isFinite(property.bathrooms) || property.bathrooms < 0) issues.push("Bathrooms must be zero or greater.");
-  if (!Number.isFinite(property.lat) || property.lat < -90 || property.lat > 90 || !Number.isFinite(property.lng) || property.lng < -180 || property.lng > 180) {
-    issues.push("Valid coordinates are required.");
-  }
-  if (property.community.publicationStatus !== "PUBLISHED") issues.push("The linked community must be published.");
-  const now = new Date();
-  const publicListing = property.listings.some((listing) =>
-    listing.priceMinor > 0n &&
-    listing.availabilityStatus !== "WITHDRAWN" &&
-    listing.publishedAt !== null && listing.publishedAt <= now &&
-    (listing.expiresAt === null || listing.expiresAt > now)
-  );
-  if (!publicListing) issues.push("At least one current, published, priced listing is required.");
-  return issues;
+function requirePublication(input: PropertyPublicationInput, now = new Date()) {
+  const issues = propertyPublicationChecks(input, now).filter(check => !check.ready);
+  if (issues.length) throw new HttpError(422, `Cannot publish: ${issues.map(issue => issue.message).join(" ")}`, "PUBLICATION_VALIDATION", issues.map(({ path, message }) => ({ path, message })));
 }
 
 /** Property writes are owner-organization scoped; all history, audit, and invalidation remain atomic. */
@@ -470,25 +455,19 @@ export async function updatePropertyCommand(
 
     const publishAt = input.publicationStatus === "PUBLISHED" ? new Date() : null;
     if (input.publicationStatus === "PUBLISHED") {
-      if (nextProjectId && !await tx.project.findFirst({ where: { id: nextProjectId, ...PUBLIC_PROJECT_WHERE }, select: { id: true } })) {
-        throw new HttpError(422, "Cannot publish: the linked project and its community must be published.", "PUBLICATION_VALIDATION");
-      }
-      const readiness = publicReadiness({
-        ...property,
-        community: { publicationStatus: nextCommunityStatus },
-        title: nextTitle ?? property.title,
-        propertyType: nextPropertyType ?? property.propertyType,
-        bedrooms: nextBedrooms ?? property.bedrooms,
-        bathrooms: nextBathrooms ?? property.bathrooms,
-        listings: property.listings.map((candidate) => candidate.id === listing?.id ? {
-          ...candidate,
-          priceMinor: nextPriceAed === undefined ? candidate.priceMinor : BigInt(Math.round(nextPriceAed * 100)),
-          availabilityStatus: nextAvailability ?? candidate.availabilityStatus,
-          publishedAt: candidate.publishedAt ?? publishAt,
-          expiresAt: input.expiresAt === undefined ? candidate.expiresAt : input.expiresAt ? new Date(input.expiresAt) : null,
-        } : candidate),
-      });
-      if (readiness.length) throw new HttpError(422, `Cannot publish: ${readiness.join(" ")}`, "PUBLICATION_VALIDATION");
+      const projectPublic = !nextProjectId || Boolean(await tx.project.findFirst({ where: { id: nextProjectId, ...PUBLIC_PROJECT_WHERE }, select: { id: true } }));
+      requirePublication({ title: nextTitle ?? property.title, propertyType: nextPropertyType ?? property.propertyType,
+        bedrooms: nextBedrooms ?? property.bedrooms, bathrooms: nextBathrooms ?? property.bathrooms,
+        lat: input.lat ?? property.lat, lng: input.lng ?? property.lng, communityStatus: nextCommunityStatus,
+        projectSelected: Boolean(nextProjectId), projectPublic,
+        listingType: input.listingType ?? listing?.listingType ?? "", rentFrequency: input.rentFrequency === undefined ? listing?.rentFrequency : input.rentFrequency,
+        listings: property.listings.map(candidate => ({
+          pricePositive: candidate.id === listing?.id && nextPriceAed !== undefined ? nextPriceAed > 0 : candidate.priceMinor > 0n,
+          availability: candidate.id === listing?.id ? nextAvailability ?? candidate.availabilityStatus : candidate.availabilityStatus,
+          publishedAt: candidate.id === listing?.id ? candidate.publishedAt ?? publishAt : candidate.publishedAt,
+          expiresAt: candidate.id === listing?.id && input.expiresAt !== undefined ? input.expiresAt ? new Date(input.expiresAt) : null : candidate.expiresAt,
+        })),
+      }, publishAt!);
     }
 
     const changed = await tx.property.updateMany({
