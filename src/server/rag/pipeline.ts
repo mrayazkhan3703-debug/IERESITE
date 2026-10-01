@@ -247,6 +247,8 @@ export async function retrieve(query: string, k = 4, localeInput = "en"): Promis
         source: {
           isActive: true,
           isApproved: true,
+          approvedById: { not: null },
+          approvedAt: { not: null, lte: now },
           trustTier: { not: "UNVERIFIED" },
           verifiedAt: { not: null },
           freshnessReviewDueAt: { gt: now },

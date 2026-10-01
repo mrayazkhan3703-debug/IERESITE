@@ -6,6 +6,8 @@ const now = new Date("2026-09-24T12:00:00.000Z");
 const reviewedSource = {
   isActive: true,
   isApproved: true,
+  approvedById: "reviewer",
+  approvedAt: new Date("2026-09-02T00:00:00.000Z"),
   trustTier: "OFFICIAL",
   verifiedAt: new Date("2026-09-01T00:00:00.000Z"),
   freshnessReviewDueAt: new Date("2026-12-01T00:00:00.000Z"),
@@ -14,6 +16,9 @@ const reviewedSource = {
 describe("RAG source access policy", () => {
   it("requires active, approved, verified, trust-tiered sources within review freshness", () => {
     expect(isRagSourceRetrievable(reviewedSource, now)).toBe(true);
+    expect(isRagSourceRetrievable({ ...reviewedSource, approvedById: null }, now)).toBe(false);
+    expect(isRagSourceRetrievable({ ...reviewedSource, approvedAt: null }, now)).toBe(false);
+    expect(isRagSourceRetrievable({ ...reviewedSource, approvedAt: new Date("2026-10-01T00:00:00Z") }, now)).toBe(false);
     expect(isRagSourceRetrievable({ ...reviewedSource, isActive: false }, now)).toBe(false);
     expect(isRagSourceRetrievable({ ...reviewedSource, isApproved: false }, now)).toBe(false);
     expect(isRagSourceRetrievable({ ...reviewedSource, trustTier: "UNVERIFIED" }, now)).toBe(false);

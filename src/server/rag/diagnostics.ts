@@ -6,7 +6,7 @@ export async function ragDiagnostics(cursor?: string) {
   const rows = await db.ragDocument.findMany({
     where: cursor ? { id: { gt: cursor } } : {}, orderBy: { id: "asc" }, take: 26,
     select: { id: true, title: true, locale: true, status: true, version: true, approvedById: true, approvedAt: true,
-      source: { select: { isActive: true, isApproved: true, trustTier: true, verifiedAt: true, freshnessReviewDueAt: true } },
+      source: { select: { isActive: true, isApproved: true, approvedById: true, approvedAt: true, trustTier: true, verifiedAt: true, freshnessReviewDueAt: true } },
       chunks: { where: { isActive: true, embeddingVersion: LOCAL_EMBEDDING_VERSION }, select: { documentVersion: true }, take: 501 } },
   });
   return { checkedAt: now.toISOString(), embedding: LOCAL_EMBEDDING_VERSION, limit: 25, nextCursor: rows.length > 25 ? rows[24].id : null,

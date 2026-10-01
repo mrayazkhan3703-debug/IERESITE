@@ -195,7 +195,7 @@ export async function reviewRagSource(
     if (source.updatedAt.getTime() !== expectedUpdatedAt.getTime()) throw new HttpError(409, "This source changed since it was loaded.", "VERSION_CONFLICT");
     if (decision === "APPROVE") {
       if ((source.updatedById ?? source.createdById) === actor.id) throw new HttpError(409, "A different owner/admin must review this source.", "RAG_DISTINCT_REVIEWER_REQUIRED");
-      if (!isRagSourceRetrievable({ ...source, isApproved: true })) {
+      if (!isRagSourceRetrievable({ ...source, isApproved: true, approvedById: actor.id, approvedAt: new Date() })) {
         throw new HttpError(422, "Source must be active, verified, trust-tiered, and within its review window before approval.", "RAG_SOURCE_PROVENANCE_REQUIRED");
       }
     }
