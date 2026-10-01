@@ -178,6 +178,8 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
       const asset = await upload(page, field, filename);
       if (entityModule.section === "projects") await choose(page, editor.getByRole("region", { name: "Gallery", exact: true }), filename);
       if (["properties", "projects"].includes(entityModule.section)) {
+        await editor.getByLabel("Caption for media 1", { exact: true }).fill("Synthetic editorial caption " + suffix);
+        await editor.getByLabel("Alt text for media 1", { exact: true }).fill("Synthetic descriptive alternative " + suffix);
         await rejectSaveOnce(page, editor, entityModule.submit, "/api/admin/" + entityModule.section, "POST");
         await expect(field.locator("img")).toHaveAttribute("src", asset.url);
       }
@@ -200,7 +202,16 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
       await page.reload();
       await page.getByRole("row").filter({ hasText: name }).getByRole("button", { name: "Edit", exact: true }).click();
       await expect(page.getByRole("dialog").getByRole("group", { name: entityModule.label, exact: true }).locator("img")).toHaveAttribute("src", asset.url);
-      await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+      if (["properties", "projects"].includes(entityModule.section)) await expect(page.getByRole("dialog").getByLabel("Caption for media 1", { exact: true })).toHaveValue("Synthetic editorial caption " + suffix);
+      if (entityModule.section === "properties") {
+        const preview = await page.getByRole("dialog").getByRole("link", { name: "Preview saved record", exact: true }).getAttribute("href");
+        expect(preview).toBeTruthy();
+        await page.goto(preview!);
+        await expect(page.getByText("Private draft preview.", { exact: true })).toBeVisible();
+        await page.getByRole("button", { name: /View all photos|عرض كل الصور/ }).click();
+        await expect(page.getByRole("dialog").getByText("Synthetic editorial caption " + suffix, { exact: true })).toBeVisible();
+        await expect(page.getByRole("dialog").locator("img")).toHaveAttribute("alt", "Synthetic descriptive alternative " + suffix);
+      } else await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
       expect(await db.mediaAsset.count({ where: { id: asset.id } })).toBe(1);
     }
     expect(developerId && communityId).toBeTruthy();

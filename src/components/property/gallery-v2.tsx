@@ -24,6 +24,7 @@ import { Layers, Images, Play, ChevronLeft, ChevronRight, Ruler } from "lucide-r
 import { cn } from "@/lib/utils";
 import type { MediaDTO } from "@/lib/types";
 import { t, type Locale } from "@/lib/i18n";
+import { mediaCaption } from "@/lib/media-preview";
 
 export function GalleryV2({
   media,
@@ -293,7 +294,7 @@ export function GalleryV2({
 
               {/* Caption */}
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 bg-gradient-to-t from-ink/90 to-transparent px-4 pb-4 pt-10">
-                <p className="min-w-0 truncate text-sm text-white/90">{captionFor(media[index])}</p>
+                <p className="min-w-0 truncate text-sm text-white/90">{mediaCaption(media[index], title)}</p>
                 <span className="hidden shrink-0 text-xs text-white/60 sm:block" aria-hidden>
                   ← → {t("property.gallery.keyboardHint", locale)}
                 </span>
