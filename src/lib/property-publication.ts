@@ -10,7 +10,7 @@ export function propertyPublicationChecks(input: PropertyPublicationInput, now =
     && row.publishedAt !== null && row.publishedAt <= now && (row.expiresAt === null || row.expiresAt > now));
   return [
     { path: "title", message: "A title and property type are required.", ready: Boolean(input.title.trim() && input.propertyType.trim()) },
-    { path: "bedrooms", message: "Bedroom and bathroom counts must be whole numbers between 0 and 30.", ready: [input.bedrooms, input.bathrooms].every(n => Number.isInteger(n) && n >= 0 && n <= 30) },
+    { path: "bedrooms", message: "Bedroom and bathroom counts must be finite numbers between 0 and 30.", ready: [input.bedrooms, input.bathrooms].every(n => Number.isFinite(n) && n >= 0 && n <= 30) },
     { path: "lat", message: "Valid latitude and longitude are required.", ready: Number.isFinite(input.lat) && input.lat >= -90 && input.lat <= 90 && Number.isFinite(input.lng) && input.lng >= -180 && input.lng <= 180 },
     { path: "communityId", message: "The linked community must be published.", ready: input.communityStatus === "PUBLISHED" },
     { path: "projectId", message: "The linked project and its community must be published.", ready: !input.projectSelected || input.projectPublic },
