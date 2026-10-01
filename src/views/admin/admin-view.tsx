@@ -581,6 +581,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
     event.preventDefault();
     if (!editing && !creating) return;
     if (!form.lat.trim() || !form.lng.trim()) { toast.error("Enter or pick both latitude and longitude before saving."); return; }
+    if (!form.listingType || !form.availability) { toast.error("Choose a listing type and availability before saving."); return; }
     setSaving(true);
     try {
       if (creating) {

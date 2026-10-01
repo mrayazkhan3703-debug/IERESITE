@@ -150,7 +150,11 @@ for (const locale of ["en", "ar"] as const) for (const [size, viewport] of [["de
       if (["projects", "properties"].includes(entityModule.section)) {
         await select(page, editor, "Community", new RegExp(`Synthetic media ${suffix} communities`));
         if (entityModule.section === "projects") await select(page, editor, "Developer", new RegExp(`Synthetic media ${suffix} developers`));
-        else { await editor.getByLabel("Price (AED)").fill("100"); await select(page, editor, "Listing type", "SALE"); }
+        else {
+          await editor.getByLabel("Price (AED)").fill("100");
+          await select(page, editor, "Listing type", "SALE");
+          await select(page, editor, "Listing availability", "AVAILABLE");
+        }
       }
       if (entityModule.section === "agents") {
         await select(page, editor, "Active, verified AGENT account", new RegExp(name));
