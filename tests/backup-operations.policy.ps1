@@ -26,10 +26,17 @@ Assert-BackupPolicy ($xml.Task.Settings.MultipleInstancesPolicy -eq 'IgnoreNew')
 Assert-BackupPolicy ($xml.Task.Settings.AllowHardTerminate -eq 'false' -and $xml.Task.Settings.ExecutionTimeLimit -eq 'PT0S')
 Assert-BackupPolicy ($xml.Task.Principals.Principal.LogonType -eq 'InteractiveToken' -and $xml.Task.Principals.Principal.RunLevel -eq 'LeastPrivilege')
 Assert-BackupPolicy ($xml.Task.Actions.Exec.WorkingDirectory -eq 'C:\SYNTHETIC Project & Test')
-Assert-BackupPolicy ($xml.Task.Actions.Exec.Arguments -match ' -Scheduled$')
+Assert-BackupPolicy ($xml.Task.Actions.Exec.Command -eq 'wscript.exe')
+Assert-BackupPolicy ($xml.Task.Actions.Exec.Arguments -eq '//B //NoLogo "C:\SYNTHETIC Project & Test\scripts\run-backup-scheduled.vbs" "C:\SYNTHETIC Project & Test\scripts\run.ps1"')
 $hostedXml=[xml](New-IereBackupTaskXml -Policy $policy -UserSid 'S-1-5-21-123-456-789-1001' -RunnerPath 'C:\SYNTHETIC\run.ps1' -WorkingDirectory 'C:\SYNTHETIC' -StartUtc $now -OperationsConfig 'C:\Private & Recovery\runner.json')
-Assert-BackupPolicy ($hostedXml.Task.Actions.Exec.Arguments -match ' -Scheduled -OperationsConfig "C:\\Private & Recovery\\runner.json"$')
+Assert-BackupPolicy ($hostedXml.Task.Actions.Exec.Arguments -eq '//B //NoLogo "C:\SYNTHETIC\run-backup-scheduled.vbs" "C:\SYNTHETIC\run.ps1" "C:\Private & Recovery\runner.json"')
 Assert-BackupPolicy ($hostedXml.Task.Settings.Enabled -eq 'false')
+Assert-BackupPolicy ($hostedXml.Task.Actions.Exec.Command -eq 'wscript.exe')
+$launcherPath=Join-Path $PSScriptRoot '../scripts/run-backup-scheduled.vbs'
+& cscript.exe //B //NoLogo $launcherPath
+Assert-BackupPolicy ($LASTEXITCODE -eq 64)
+& cscript.exe //B //NoLogo $launcherPath 'C:\nonexistent\runner.ps1' 'C:\nonexistent\config.json'
+Assert-BackupPolicy ($LASTEXITCODE -eq 64)
 foreach ($field in @('intervalMinutes', 'retentionDays', 'achievement', 'checkpointBeforeMajorChanges')) {
   $invalid = ($policy | ConvertTo-Json -Depth 5 | ConvertFrom-Json)
   if ($field -eq 'achievement') { $invalid.$field = 'VERIFIED' }

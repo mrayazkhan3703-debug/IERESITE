@@ -63,12 +63,13 @@ function New-IereBackupTaskXml {
     throw 'Invalid local task identity/path/time.'
   }
   $runner = [Security.SecurityElement]::Escape($RunnerPath)
+  $launcher = [Security.SecurityElement]::Escape((Join-Path ([IO.Path]::GetDirectoryName($RunnerPath)) 'run-backup-scheduled.vbs'))
   $working = [Security.SecurityElement]::Escape($WorkingDirectory)
   $start = $StartUtc.ToString("yyyy-MM-ddTHH:mm:ss'Z'")
   $configurationArgument=''
   if ($OperationsConfig) {
     if (-not [IO.Path]::IsPathRooted($OperationsConfig) -or $OperationsConfig -match '[\r\n"]') { throw 'Invalid operations configuration path.' }
-    $configurationArgument=' -OperationsConfig &quot;'+[Security.SecurityElement]::Escape($OperationsConfig)+'&quot;'
+    $configurationArgument=' &quot;'+[Security.SecurityElement]::Escape($OperationsConfig)+'&quot;'
   }
   # Disabled at registration; no live transfer/cadence success is asserted.
   # No hard-kill time limit: killing a quiescing backup can prevent finally cleanup.
@@ -78,7 +79,7 @@ function New-IereBackupTaskXml {
   <Triggers><TimeTrigger><Repetition><Interval>PT$($approved.intervalMinutes)M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition><StartBoundary>$start</StartBoundary><Enabled>true</Enabled></TimeTrigger></Triggers>
   <Principals><Principal id="CurrentUser"><UserId>$UserSid</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
   <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>false</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><Enabled>false</Enabled><ExecutionTimeLimit>PT0S</ExecutionTimeLimit></Settings>
-  <Actions Context="CurrentUser"><Exec><Command>powershell.exe</Command><Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$runner&quot; -Scheduled$configurationArgument</Arguments><WorkingDirectory>$working</WorkingDirectory></Exec></Actions>
+  <Actions Context="CurrentUser"><Exec><Command>wscript.exe</Command><Arguments>//B //NoLogo &quot;$launcher&quot; &quot;$runner&quot;$configurationArgument</Arguments><WorkingDirectory>$working</WorkingDirectory></Exec></Actions>
 </Task>
 "@
 }

@@ -11,7 +11,7 @@ import { aiBudgetDecision, aiProviderGateCode, AiProviderBlockedError, estimateA
 import { generateWithGemini, GeminiProviderError } from "./gemini-provider";
 import { aiRetryDelay } from "./retry-policy";
 import { requireTurnBudget } from "./turn-budget";
-import { aiReservationTransactionOptions } from "./reservation-budget";
+import { aiReservationFailureCode, aiReservationTransactionOptions } from "./reservation-budget";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -104,9 +104,12 @@ async function reserveLiveAiUsage(provider: string, model: string, req: ChatRequ
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, ...aiReservationTransactionOptions(deadlineAt) });
   } catch (error) {
     if (error instanceof AiProviderBlockedError) throw error;
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-      logEvent("ai.request_blocked", { provider, code: "AI_BUDGET_BUSY" });
-      throw new AiProviderBlockedError("AI_BUDGET_BUSY");
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      const code = aiReservationFailureCode(error.code);
+      if (code) {
+        logEvent("ai.request_blocked", { provider, code });
+        throw new AiProviderBlockedError(code);
+      }
     }
     throw error;
   }
