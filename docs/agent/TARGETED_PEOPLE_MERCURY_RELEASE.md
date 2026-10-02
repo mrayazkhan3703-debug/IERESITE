@@ -54,9 +54,9 @@ Execution evidence is appended to `EXECUTION_STATE.md`. No migration files chang
 
 ## Verification status
 
-Checkpoint A commits: `6ac5022f2bee0ae66f5bef607ce17d31c4b9028e`, canonical-test correction `f757a98e32e41d6e4dc7d9e1f7d6ea631c2078`, and relation-audit correction `1326920` (final CI will include its added regression test).
+Checkpoint A commits: `6ac5022f2bee0ae66f5bef607ce17d31c4b9028e`, canonical-test correction `f757a98e32e41d6e4dc7d9e1f7d6ea63161c2078`, and relation-audit correction `1326920` (final CI will include its added regression test). Checkpoint B implementation: `ab5fd91`.
 
-First exact CI 36992106263 passed Docker build, lint, typecheck, 320 unit/contract tests and all five new assignment/profile/lead integration cases. The complete integration run had 145 passing tests and one stale canonical assertion failure, corrected in the second commit. CI 36992902090 is the subsequent gate; its final status must be recorded before release.
+First exact CI 36992106263 passed Docker build, lint, typecheck, 320 unit/contract tests and all five new assignment/profile/lead integration cases. The complete integration run had 145 passing tests and one stale canonical assertion failure, corrected in the second commit. CI 36992902090 passed build, lint, typecheck and the complete integration gate. Its browser suite passed 108 journeys, including all four new bilingual/responsive profile-assignment journeys; one older Property Studio journey still targeted the replaced dropdown and seeded an ineligible private advisor. That fixture and locator are updated to the public advisor policy and visual picker. The final combined exact commit requires a fresh complete gate before release.
 
 Mercury local checks: typecheck and lint pass; an optimized webpack production build passes. The adapter's 19 network-mocked tests and gateway's 16 isolated database/network-mocked tests exercise configuration, headers, message mapping, usage, timeout, response validation, safe errors, retries, provider selection, feature gates, prompt/request/token caps, NL search and RAG routing. No paid API request is used in automated tests. The offline combined suite passed 346 tests. Full hosted generation acceptance is pending.
 
