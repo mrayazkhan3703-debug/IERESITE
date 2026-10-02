@@ -21,6 +21,7 @@ import { HttpError } from "@/server/auth";
 import { aiConversationOwnerWhere } from "./session";
 import { isDisabledAdvisorAction } from "./action-policy";
 import { getChatProvider, type ChatMessage } from "./gateway";
+import { NL_INTERPRETATION_SCOPE } from "./nl-interpretation-scope";
 import { ADVISOR_PROCESSING_MS, requireTurnBudget, withinTurnBudget } from "./turn-budget";
 import { advisorFailureReply } from "./failure-reply";
 import { AiProviderBlockedError } from "./controls";
@@ -620,7 +621,7 @@ const NL_SCHEMA = z.object({
 });
 
 export async function parseNlQuery(query: string, knownCommunities: string[], locale = "en"): Promise<NlParseResult> {
-  const system = `You translate a natural-language Dubai property search into structured filters.
+  const system = `${NL_INTERPRETATION_SCOPE}\nYou translate a natural-language Dubai property search into structured filters.
 Community names should match this list when possible (exact list values preferred): ${knownCommunities.slice(0, 40).join(", ")}.
 Rules:
 - If the user names an area that closely resembles a list entry (e.g. "Marina" → "Dubai Marina"), map it to that entry.

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Link, navigate, useRoute } from "@/lib/router";
 import { clientRequestId } from "@/lib/client-request-id";
+import { looksLikeSearchIntent } from "@/lib/advisor-search-intent";
 import { api, ApiError } from "@/lib/api-client";
 import { usePageMeta } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -102,30 +103,6 @@ const SUGGESTIONS_AR = [
   "اشرح خطة الدفع إذا كانت بيانات المشروع متاحة",
   "ما المعلومات الموثقة المتاحة عن الإيجار والعائد؟",
 ];
-
-/**
- * Cheap client-side gate for the NL intent parse (§22.2): only messages that
- * look like a search request get POSTed to /api/search/nl. Questions about a
- * scoped listing ("What is the yield here?") skip the parse — no chip noise.
- */
-function looksLikeSearchIntent(s: string, locale: Locale): boolean {
-  const text = s.toLowerCase();
-  if (locale === "ar") {
-    const hasSearchVerb = /(?:ابحث|أبحث|اعرض|قارن|اقترح|أرغب في البحث|أريد البحث)/u.test(text);
-    const hasCriteria = /(?:غرف|شقة|فيلا|استوديو|مليون|ألف|ميزانية|للبيع|للإيجار|إيجار|تحت|أقل من|إطلالة بحرية)/u.test(text);
-    const startsQuestion = /^(?:ما|كيف|لماذا|متى|أي|هل|اشرح|أخبرني)/u.test(text.trim());
-    if (startsQuestion) return hasSearchVerb;
-    return hasSearchVerb || hasCriteria;
-  }
-  const hasSearchVerb = /\b(find|search|look(ing)? for|show me|suggest|list|browse|compare)\b/.test(text);
-  const hasCriteria =
-    /\b(bed|bedroom|villa|apartment|studio|penthouse|townhouse|duplex)\b/.test(text) ||
-    /\d\s*(m|k|million|aed)\b/.test(text) ||
-    /\b(under|up to|above|budget|off-?plan|handover|yield)\b/.test(text);
-  const startsQuestion = /^(what|how|why|when|which|whose|is|are|do|does|can|could|would|should|explain|tell me about|who)\b/.test(text);
-  if (startsQuestion) return hasSearchVerb;
-  return hasSearchVerb || hasCriteria;
-}
 
 /**
  * Contextual quick replies after the latest assistant answer.
