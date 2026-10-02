@@ -2,6 +2,24 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "./fixtures";
 
 for (const locale of ["en", "ar"] as const) for (const mobile of [false, true]) {
+  test(`Standalone calculation skips optional search ${locale} ${mobile ? "mobile" : "desktop"}`, async ({ page }) => {
+    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    const id = `synthetic-calculation-${locale}-${mobile}`;
+    let nlCalls = 0;
+    await page.route("**/api/ai/conversations", route => route.fulfill({ status: 201, json: { conversationId: id } }));
+    await page.route("**/api/search/nl", route => { nlCalls++; return route.fulfill({ json: { filters: { listingType: "SALE" }, explanation: "Unexpected filter extraction" } }); });
+    const reply = locale === "ar" ? "العائد الإجمالي لهذا السيناريو 6٪" : "The scenario gross yield is 6%.";
+    await page.route("**/api/ai/chat", route => route.fulfill({ json: { conversationId: id, reply, citations: [], toolCalls: [{ name: "calculate_yield", status: "SUCCEEDED" }], handoff: false, fallback: false } }));
+    await page.goto(locale === "ar" ? "/ar/advisor" : "/advisor");
+    await page.getByRole("textbox").fill(locale === "ar" ? "احسب العائد لسعر مليوني درهم وإيجار سنوي 120 ألف" : "For an illustrative price of AED 2,000,000 and rent of AED 120,000, calculate gross yield.");
+    await page.getByRole("textbox").press("Enter");
+    await expect(page.getByText(reply, { exact: true })).toBeVisible();
+    expect(nlCalls).toBe(0);
+    await expect(page.getByText("Unexpected filter extraction", { exact: true })).toHaveCount(0);
+  });
+}
+
+for (const locale of ["en", "ar"] as const) for (const mobile of [false, true]) {
   test(`Advisor answer survives stalled search and reload ${locale} ${mobile ? "mobile" : "desktop"}`, async ({ page }) => {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
     const id = `synthetic-browser-${locale}-${mobile}`;
