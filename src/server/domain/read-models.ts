@@ -106,6 +106,7 @@ export async function getPropertyDetail(
 
   const listing = property.listings[0] ?? null;
   const agent = listing?.agentId ? await db.agent.findFirst({ where: { id: listing.agentId, ...PUBLIC_AGENT_WHERE } }) : null;
+  const agentPhotos = await resolveAgentPhotos(agent ? [agent.id] : []);
 
   const plan = property.project?.paymentPlans[0] ?? null;
 
@@ -243,7 +244,7 @@ export async function getPropertyDetail(
           phoneE164: agent.phoneE164,
           whatsappE164: agent.whatsappE164,
           email: agent.email,
-          photo: null,
+          photo: agentPhotos.get(agent.id) ?? null,
           languages: parseJson<{ code: string; name: string; fluency: string }[]>(agent.languagesJson, []),
           specialties: parseJson<string[]>(agent.specialtiesJson, []),
           communities: [],

@@ -10,6 +10,7 @@ import { submitLead, leadSubmitSchema } from "@/server/domain/lead-service";
 const prefix = `people-assignment-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const org = prefix + "-org", otherOrg = prefix + "-other", user = prefix + "-user", community = prefix + "-community";
 const linkedUser = prefix + "-linked-user";
+const portrait = prefix + "-portrait";
 const agents: string[] = [], properties: string[] = [], leads: string[] = [];
 const actor: SessionUser = { id: user, sessionId: prefix, email: prefix + "@example.invalid", name: "Test", organizationId: org, roles: ["ADMIN"], permissions: ["agent:create", "agent:update", "property:create", "property:update"], mfaVerified: true };
 let advisor = "", alternate = "", privateAgent = "", outside = "", property = "";
@@ -33,6 +34,7 @@ afterAll(async () => {
   await db.outboxEvent.deleteMany({ where: { aggregateId: { in: [...resources, ...leads] } } });
   await db.property.deleteMany({ where: { id: { in: properties } } });
   await db.agent.deleteMany({ where: { id: { in: agents } } });
+  await db.mediaAsset.deleteMany({ where: { id: portrait } });
   await db.community.delete({ where: { id: community } });
   await db.user.deleteMany({ where: { id: { in: [user, linkedUser] } } });
   await db.organization.deleteMany({ where: { id: { in: [org, otherOrg] } } });
@@ -50,7 +52,14 @@ describe("canonical profiles and property advisor assignment", () => {
     const created = await createPropertyCommand(actor, { ...propertyInput(prefix + "-property"), agentId: advisor }, null);
     property = created.id; properties.push(property);
     const listing = await db.listing.findFirstOrThrow({ where: { propertyId: property } }); expect(listing.agentId).toBe(advisor);
-    expect(JSON.stringify(await getPropertyDetailV2(prefix + "-property"))).toContain(advisor);
+    await db.mediaAsset.create({ data: { id: portrait, storageKey: portrait + ".jpg", url: "/api/media/" + portrait + "/content", mimeType: "image/jpeg", sizeBytes: 10, uploadedBy: user } });
+    await db.agent.update({ where: { id: advisor }, data: { photoMediaId: portrait, photoUrl: "/images/legacy-portrait.jpg", phoneE164: "+971501234567", whatsappE164: "+971501234567" } });
+    const publicDetail = await getPropertyDetailV2(prefix + "-property");
+    expect(publicDetail?.agent).toMatchObject({ id: advisor, name: "Synthetic advisor", jobTitle: "Property Consultant", phoneE164: "+971501234567", whatsappE164: "+971501234567", photo: { id: portrait } });
+    // A private image must never appear through a public profile/property DTO.
+    await db.mediaAsset.update({ where: { id: portrait }, data: { isPrivate: true } });
+    expect((await getPropertyDetailV2(prefix + "-property"))?.agent?.photo).toBeNull();
+    await db.mediaAsset.update({ where: { id: portrait }, data: { isPrivate: false } });
     const current = await db.property.findUniqueOrThrow({ where: { id: property } });
     await updatePropertyCommand(actor, { propertyId: property, expectedUpdatedAt: current.updatedAt.toISOString(), agentId: alternate }, null);
     expect((await db.listing.findUniqueOrThrow({ where: { id: listing.id } })).agentId).toBe(alternate);
