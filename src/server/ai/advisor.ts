@@ -24,6 +24,7 @@ import { getChatProvider, type ChatMessage } from "./gateway";
 import { NL_INTERPRETATION_SCOPE } from "./nl-interpretation-scope";
 import { ADVISOR_PROCESSING_MS, requireTurnBudget, withinTurnBudget } from "./turn-budget";
 import { advisorFailureReply } from "./failure-reply";
+import { containsAdvisorToolEnvelope } from "./tool-output";
 import { AiProviderBlockedError } from "./controls";
 import { advisorLocaleInstruction, extractArabicSearchCriteria } from "./locale";
 import { TOOLS, toolByName } from "./tools";
@@ -347,6 +348,13 @@ export async function advisorTurn(opts: {
       const parsed = parseToolCall(res.content);
 
       if (!parsed) {
+        if (containsAdvisorToolEnvelope(res.content)) {
+          // Invalid JSON can occur even after a successful provider HTTP response.
+          // Ask for a correction within the existing turn and token budgets.
+          messages.push({ role: "assistant", content: res.content });
+          messages.push({ role: "user", content: "Your last response was a malformed tool request. Return one valid JSON tool object using only the listed tools, or a plain-language answer without tool JSON. Do not guess a missing tool name." });
+          continue;
+        }
         finalContent = res.content;
         break;
       }
@@ -523,8 +531,8 @@ export async function advisorTurn(opts: {
     }
 
     if (!finalContent) {
-      finalContent =
-        "I've gathered the details — let me summarize. Use the results above, or ask me to refine the search further.";
+      fallback = true;
+      finalContent = advisorFailureReply(null, opts.locale ?? "en");
     }
 
     // Community comparison upgrade (§22.4): ≥2 distinct community snapshots in one
