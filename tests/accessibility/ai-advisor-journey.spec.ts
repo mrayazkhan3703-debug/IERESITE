@@ -79,7 +79,7 @@ test("AI advisor persists an anonymous local-mock conversation with optional con
   };
   expect(chatResponse.status(), JSON.stringify(responseBody)).toBe(200);
   const result = responseBody;
-  expect(result.reply).toContain("Local AI mock is enabled. No Gemini or OpenAI model was called");
+  expect(result.reply).toContain("Local AI mock is enabled. No external model was called");
   expect(result.citations).toEqual([]);
   expect(result.toolCalls).toEqual([]);
   expect(result.handoff).toBe(false);

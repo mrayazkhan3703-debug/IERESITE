@@ -59,13 +59,15 @@ describe("online staging Blueprint", () => {
     for (const service of [web, worker]) {
       for (const key of [
         "DATABASE_URL", "S3_ENDPOINT", "S3_PUBLIC_ENDPOINT", "S3_ACCESS_KEY_ID",
-        "S3_SECRET_ACCESS_KEY", "GEMINI_API_KEY", "IP_PSEUDONYM_KEY",
+        "S3_SECRET_ACCESS_KEY", service.type === "web" ? "INCEPTION_API_KEY" : "GEMINI_API_KEY", "IP_PSEUDONYM_KEY",
       ]) {
         expect(env(service, key)?.sync).toBe(false);
         expect(env(service, key)?.value).toBeUndefined();
       }
     }
     expect(env(web, "APP_URL")?.sync).toBe(false);
+    expect(env(web, "AI_PROVIDER")?.value).toBe("inception");
+    expect(env(web, "INCEPTION_MODEL")?.value).toBe("mercury-2.5");
   });
 
   test("web and worker startup fail closed and migrate before serving work", async () => {
