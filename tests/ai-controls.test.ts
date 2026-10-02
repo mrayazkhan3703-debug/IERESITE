@@ -2,12 +2,14 @@ import { describe, expect, it } from "bun:test";
 import { aiBudgetDecision, aiProviderGateCode, estimateAiPromptCharacters, estimateAiReservationTokens } from "@/server/ai/controls";
 
 describe("AI live-provider safety controls", () => {
-  it("fails closed for external providers unless both operator gates permit Gemini", () => {
-    expect(aiProviderGateCode("gemini", false, { isEnabled: true, rolloutPercent: 100 })).toBe("AI_LIVE_DISABLED");
-    expect(aiProviderGateCode("gemini", true, null)).toBe("AI_KILL_SWITCH");
-    expect(aiProviderGateCode("gemini", true, { isEnabled: false, rolloutPercent: 100 })).toBe("AI_KILL_SWITCH");
-    expect(aiProviderGateCode("gemini", true, { isEnabled: true, rolloutPercent: 99 })).toBe("AI_KILL_SWITCH");
+  it("fails closed for external providers unless both operator gates permit Inception", () => {
+    expect(aiProviderGateCode("inception", false, { isEnabled: true, rolloutPercent: 100 })).toBe("AI_LIVE_DISABLED");
+    expect(aiProviderGateCode("inception", true, null)).toBe("AI_KILL_SWITCH");
+    expect(aiProviderGateCode("inception", true, { isEnabled: false, rolloutPercent: 100 })).toBe("AI_KILL_SWITCH");
+    expect(aiProviderGateCode("inception", true, { isEnabled: true, rolloutPercent: 99 })).toBe("AI_KILL_SWITCH");
     expect(aiProviderGateCode("zai", true, { isEnabled: true, rolloutPercent: 100 })).toBe("AI_PROVIDER_NOT_APPROVED");
+    expect(aiProviderGateCode("inception", true, { isEnabled: true, rolloutPercent: 100 })).toBeNull();
+    for (const legacy of ["gemini", "openai", "unknown"]) expect(aiProviderGateCode(legacy, true, { isEnabled: true, rolloutPercent: 100 })).toBe("AI_PROVIDER_NOT_APPROVED");
     expect(aiProviderGateCode("mock", false, { isEnabled: true, rolloutPercent: 100 })).toBeNull();
   });
 

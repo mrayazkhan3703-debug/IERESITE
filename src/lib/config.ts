@@ -54,8 +54,12 @@ const schema = z.object({
   TYPESENSE_API_KEY: z.string().optional(),
   MAP_PROVIDER: z.enum(["osm", "mapbox"]).default("osm"),
   MAPBOX_TOKEN: z.string().optional(),
-  AI_PROVIDER: z.enum(["mock", "zai", "gemini", "openai"]).default("mock"),
+  AI_PROVIDER: z.enum(["mock", "inception", "zai", "gemini", "openai"]).default("mock"),
   AI_MODEL: z.string().default("default"),
+  INCEPTION_API_KEY: z.string().optional(),
+  INCEPTION_MODEL: z.string().default("mercury-2.5"),
+  INCEPTION_BASE_URL: z.string().default("https://api.inceptionlabs.ai/v1"),
+  // Legacy configuration parses for migration, but the provider gate rejects it.
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-3.8-flash"),
   AI_LIVE_ENABLED: bool(false),

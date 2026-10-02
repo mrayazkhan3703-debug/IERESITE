@@ -44,7 +44,7 @@ export async function canonicalSitemapEntries(now = new Date()): Promise<Canonic
   const bilingual = (section: string, path: string, priority: number, changefreq: string, lastmod?: Date) => {
     for (const locale of ["en", "ar"]) add(section, path, locale, priority, changefreq, lastmod, section + ":" + path);
   };
-  for (const path of publicStaticRoutePaths()) bilingual("static", path, path === "/" ? 1 : 0.7, "weekly");
+  for (const path of publicStaticRoutePaths().filter(path => path !== "/about/team")) bilingual("static", path, path === "/" ? 1 : 0.7, "weekly");
   for (const [section, entities] of [["properties", properties], ["projects", projects], ["communities", communities], ["developers", developers], ["agents", agents]] as const)
     for (const entity of entities) bilingual(section, `/${section}/${entity.slug}`, section === "projects" ? 0.8 : 0.7, "weekly", entity.updatedAt);
   for (const opening of careers) add("careers", `/careers/${opening.slug}`, opening.locale, 0.5, "weekly", opening.updatedAt, "careers:" + opening.slug);

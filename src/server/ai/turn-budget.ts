@@ -1,9 +1,9 @@
-import { GeminiProviderError } from "./gemini-provider";
+import { AiProviderError } from "./provider-error";
 
 export const ADVISOR_PROCESSING_MS = 60_000;
 export function requireTurnBudget(deadlineAt: number) {
   const remaining = deadlineAt - Date.now();
-  if (remaining <= 0) throw new GeminiProviderError("PROVIDER_TIMEOUT", "Advisor processing budget expired");
+  if (remaining <= 0) throw new AiProviderError("PROVIDER_TIMEOUT", "Advisor processing budget expired");
   return remaining;
 }
 
@@ -15,7 +15,7 @@ export async function withinTurnBudget<T>(operation: () => Promise<T>, deadlineA
     return await Promise.race([
       operation(),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new GeminiProviderError("PROVIDER_TIMEOUT", "Advisor processing budget expired")), remaining);
+        timer = setTimeout(() => reject(new AiProviderError("PROVIDER_TIMEOUT", "Advisor processing budget expired")), remaining);
       }),
     ]);
   } finally {

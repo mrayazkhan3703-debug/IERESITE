@@ -3,6 +3,8 @@ import { propertyPublicationChecks } from "@/lib/property-publication";
 import { csvCell } from "@/lib/csv-cell";
 
 import * as React from "react";
+import { AssignedAdvisorField } from "@/components/media/assigned-advisor-field";
+import { AgentAvatar } from "@/components/entity/agent-avatar";
 import Image from "next/image";
 import { Link, navigate, useRoute } from "@/lib/router";
 import { usePageMeta } from "@/components/layout/app-shell";
@@ -787,7 +789,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
               <label className="block space-y-1.5 text-sm font-medium">Location precision<Select value={form.locationPrecision} onValueChange={(locationPrecision) => setForm({ ...form, locationPrecision })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["BUILDING", "PROJECT", "COMMUNITY_CENTROID", "APPROXIMATE", "EXACT"].map((precision) => <SelectItem key={precision} value={precision}>{precision.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></label>
               <label className="block space-y-1.5 text-sm font-medium">Project<Select value={form.projectId || "none"} onValueChange={(projectId) => { const project = propertyOptions.projects.find((item) => item.id === projectId); setForm({ ...form, projectId: projectId === "none" ? "" : projectId, ...(project?.developerId ? { developerId: String(project.developerId) } : {}) }); }}><SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger><SelectContent><SelectItem value="none">No project</SelectItem>{propertyOptions.projects.filter((project) => !form.communityId || project.communityId === form.communityId).map((project) => <SelectItem key={String(project.id)} value={String(project.id)}>{String(project.name)}</SelectItem>)}</SelectContent></Select></label>
               <label className="block space-y-1.5 text-sm font-medium">Developer<Select value={form.developerId || "none"} onValueChange={(developerId) => setForm({ ...form, developerId: developerId === "none" ? "" : developerId })}><SelectTrigger><SelectValue placeholder="Not specified" /></SelectTrigger><SelectContent><SelectItem value="none">Not specified</SelectItem>{propertyOptions.developers.map((developer) => <SelectItem key={String(developer.id)} value={String(developer.id)}>{String(developer.name)}</SelectItem>)}</SelectContent></Select></label>
-              <label className="block space-y-1.5 text-sm font-medium">Listing advisor<Select value={form.agentId || "none"} onValueChange={(agentId) => setForm({ ...form, agentId: agentId === "none" ? "" : agentId })}><SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger><SelectContent><SelectItem value="none">Unassigned</SelectItem>{propertyOptions.agents.map((agent) => <SelectItem key={String(agent.id)} value={String(agent.id)}>{String(agent.name)}</SelectItem>)}</SelectContent></Select></label>
+              <AssignedAdvisorField value={form.agentId} onChange={agentId => setForm({ ...form, agentId })} advisors={propertyOptions.agents} />
             </div>
             <label className="block space-y-1.5 text-sm font-medium">Highlights<Textarea value={form.highlights} maxLength={7500} rows={4} onChange={(e) => setForm({ ...form, highlights: e.target.value })} placeholder="One highlight per line" /></label>
             <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Amenities</legend><div className="grid gap-2 sm:grid-cols-2">{propertyOptions.amenities.map((amenity) => <label key={String(amenity.id)} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.amenityIds.includes(String(amenity.id))} onChange={(event) => setForm({ ...form, amenityIds: event.target.checked ? [...form.amenityIds, String(amenity.id)] : form.amenityIds.filter((id) => id !== amenity.id) })} />{String(amenity.name)}</label>)}</div></fieldset>
@@ -1283,6 +1285,8 @@ function DevelopersSection({ canEdit }: { canEdit: boolean }) {
 }
 
 function AgentsSection({ canEdit }: { canEdit: boolean }) {
+  const [filter, setFilter] = React.useState("all");
+  const [page, setPage] = React.useState(1);
   const [data, setData] = React.useState<{ agents: Record<string, unknown>[]; total: number; communities?: { id: string; name: string; slug: string }[] } | null>(null);
   const [linkableUsers, setLinkableUsers] = React.useState<{ id: string; name: string | null; email: string }[]>([]);
   const [q, setQ] = React.useState("");
@@ -1294,10 +1298,10 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
   const [form, setForm] = React.useState({ name: "", slug: "", jobTitle: "", bio: "", department: "other", yearsExperience: "0", active: false, publicAdvisor: false, publicTeam: false, photoMediaId: "", email: "", phoneE164: "", whatsappE164: "", languagesText: "", specialties: [] as string[], communityIds: [] as string[] });
 
   const load = React.useCallback(() => {
-    api.get<{ agents: Record<string, unknown>[]; total: number; communities?: { id: string; name: string; slug: string }[]; linkableUsers?: { id: string; name: string | null; email: string }[] }>(`/api/admin/agents${q ? `?q=${encodeURIComponent(q)}` : ""}`)
+    api.get<{ agents: Record<string, unknown>[]; total: number; communities?: { id: string; name: string; slug: string }[]; linkableUsers?: { id: string; name: string | null; email: string }[] }>(`/api/admin/agents?q=${encodeURIComponent(q)}&filter=${encodeURIComponent(filter)}&page=${page}`)
       .then((result) => { setData(result); setLinkableUsers(result.linkableUsers ?? []); })
       .catch(() => { setData({ agents: [], total: 0, communities: [] }); setLinkableUsers([]); });
-  }, [q]);
+  }, [q, filter, page]);
   React.useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
@@ -1311,6 +1315,7 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
   const openEditor = (agent: Record<string, unknown>) => {
     setSaveError(null);
     setEditing(agent);
+    setSelectedUserId(String(agent.userId ?? ""));
     setForm({
       name: String(agent.name ?? ""), slug: String(agent.slug ?? ""), jobTitle: String(agent.jobTitle ?? ""),
       bio: String(agent.bio ?? ""), department: String(agent.department ?? "other"),
@@ -1332,7 +1337,7 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
     setSaving(true);
     try {
       const values = {
-        ...form, publicTeam, active: publicTeam ? true : form.active,
+        ...form, publicTeam, publicAdvisor: submitter?.value === "DRAFT" ? false : form.publicAdvisor, active: publicTeam ? true : form.active,
         yearsExperience: Number(form.yearsExperience), department: form.department || null, photoMediaId: form.photoMediaId || null,
         email: form.email || null, phoneE164: form.phoneE164 || null, whatsappE164: form.whatsappE164 || null,
         languages: form.languagesText.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -1343,7 +1348,7 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
       };
       if (creating) {
         await api.post("/api/admin/agents", {
-          publicTeam, userId: selectedUserId || null, name: values.name, slug: values.slug, jobTitle: values.jobTitle,
+          publicTeam, active: values.active, publicAdvisor: values.publicAdvisor, userId: selectedUserId || null, name: values.name, slug: values.slug, jobTitle: values.jobTitle,
           bio: values.bio, department: values.department, yearsExperience: values.yearsExperience, photoMediaId: values.photoMediaId,
           email: values.email, phoneE164: values.phoneE164, whatsappE164: values.whatsappE164,
           languages: values.languages, specialties: values.specialties, communityIds: values.communityIds,
@@ -1351,7 +1356,7 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
         toast.success(publicTeam ? "Team member published on the website" : "Team profile saved as a draft");
       } else if (editing) {
         const { languagesText: _languagesText, ...patchValues } = values;
-        await api.patch("/api/admin/agents", { agentId: editing.id, expectedUpdatedAt: editing.updatedAt, ...patchValues });
+        await api.patch("/api/admin/agents", { agentId: editing.id, expectedUpdatedAt: editing.updatedAt, userId: selectedUserId || null, ...patchValues });
         toast.success("Team profile updated; public directory and sitemap will refresh");
       }
       setEditing(null);
@@ -1369,30 +1374,31 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="font-display text-2xl font-semibold">Team profiles</h1><p className="mt-1 text-sm text-muted-foreground">Add and publish website team members directly. A login account and email verification are not required for the Team page. Advisor eligibility is managed separately.</p></div>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto"><div className="w-full sm:w-64"><Input placeholder="Search team profiles…" value={q} onChange={(event) => setQ(event.target.value)} aria-label="Search team profiles" /></div>{canEdit && <><Link className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm" to="/admin/users" query={{ inviteRole: "AGENT" }}>Invite AGENT</Link><Button onClick={openCreate}>New team profile</Button></>}</div>
+        <div><h1 className="font-display text-2xl font-semibold">Team & Advisors</h1><p className="mt-1 text-sm text-muted-foreground">Manage website profiles and property advisors in one place. Linking a login account is optional and does not grant permissions.</p></div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto"><div className="w-full sm:w-64"><Input placeholder="Search name, title, email, department…" value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }} aria-label="Search team profiles" /></div>{canEdit && <><Link className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm" to="/admin/users" query={{ inviteRole: "AGENT" }}>Invite AGENT</Link><Button onClick={openCreate}>New team profile</Button></>}</div>
       </header>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter Team & Advisors">{[["all", "All"], ["advisors", "Advisors"], ["team", "Team only"], ["leadership", "Leadership"], ["sales", "Sales"], ["marketing", "Marketing"], ["hr", "HR"], ["admin", "Administration"], ["inactive", "Inactive"]].map(([value, label]) => <Button key={value} size="sm" variant={filter === value ? "default" : "outline"} aria-pressed={filter === value} onClick={() => { setFilter(value); setPage(1); }}>{label}</Button>)}</div>
       {data === null ? <LoadingState rows={4} /> : data.agents.length === 0 ? <EmptyState title="No team profiles found" description="No profiles are visible in this account’s permitted scope." /> : (
         <div className="overflow-x-safe rounded-xl border border-border/70">
           <table className="w-full min-w-[800px] text-sm">
-            <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Team member</th><th className="p-3">Department</th><th className="p-3">Experience</th><th className="p-3">Account status</th><th className="p-3">Team page</th><th className="p-3">Public advisor</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
+            <thead><tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="p-3">Team member</th><th className="p-3">Department</th><th className="p-3">Public contacts</th><th className="p-3">Experience</th><th className="p-3">Account status</th><th className="p-3">Team page</th><th className="p-3">Public advisor</th><th className="p-3">Assigned properties</th>{canEdit && <th className="p-3">Action</th>}</tr></thead>
             <tbody>{data.agents.map((agent) => <tr key={String(agent.id)} className="border-b border-border/50">
-              <td className="p-3"><p className="font-medium">{String(agent.name)}</p><p className="text-xs text-muted-foreground">{String(agent.jobTitle)} · /{String(agent.slug)}</p><p className="text-xs text-muted-foreground">{String(agent.linkedAccountEmail ?? "No linked account")}{agent.linkedAccountVerified ? " · verified" : " · not verified"}</p></td>
-              <td className="p-3">{String(agent.department ?? "—")}</td><td className="p-3">{String(agent.yearsExperience)} years</td>
+              <td className="p-3"><AgentAvatar name={String(agent.name)} photoUrl={agent.photoUrl ? String(agent.photoUrl) : null} className="mb-2 h-10 w-10" /><p className="font-medium">{String(agent.name)}</p><p className="text-xs text-muted-foreground">{String(agent.jobTitle)} · /{String(agent.slug)}</p><p className="text-xs text-muted-foreground">{String(agent.linkedAccountEmail ?? "No linked account")}{agent.linkedAccountVerified ? " · verified" : " · not verified"}</p></td>
+              <td className="p-3">{String(agent.department ?? "—")}</td><td className="p-3"><p>{String(agent.email ?? "—")}</p><p>{String(agent.phoneE164 ?? "—")}</p><p>WhatsApp: {String(agent.whatsappE164 ?? "—")}</p></td><td className="p-3">{String(agent.yearsExperience)} years</td>
               <td className="p-3"><Badge variant={agent.active ? "default" : "outline"}>{agent.active ? "Active" : "Inactive"}</Badge></td>
-              <td className="p-3">{agent.publicTeam && agent.active ? "Published" : "Draft"}</td><td className="p-3">{agent.publicAdvisor ? "Public" : "Internal"}</td>
+              <td className="p-3">{agent.publicVisible ? "Public" : "Private"}</td><td className="p-3">{agent.advisorEligible ? "Eligible" : agent.publicAdvisor ? "Unavailable" : "Team only"}</td><td className="p-3">{String(agent.assignedPropertyCount ?? 0)}</td>
               {canEdit && <td className="p-3"><Button size="sm" variant="outline" onClick={() => openEditor(agent)}>Edit</Button></td>}
             </tr>)}</tbody>
           </table>
         </div>
       )}
-      <p className="text-xs text-muted-foreground">Showing {String(data?.agents.length ?? 0)} of {String(data?.total ?? 0)} visible profiles (maximum 50).</p>
+      <p className="text-xs text-muted-foreground">Showing {String(data?.agents.length ?? 0)} of {String(data?.total ?? 0)} visible profiles · page {page}.</p><div className="flex gap-2"><Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={page * 50 >= (data?.total ?? 0)} onClick={() => setPage(page + 1)}>Next</Button></div>
       {canEdit && <Dialog open={editing !== null || creating} onOpenChange={(open) => { if (!open) { setEditing(null); setCreating(false); } }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>{creating ? "Create team profile" : "Edit team profile"}</DialogTitle><DialogDescription>{creating ? "Enter the member’s actual profile details. Save a draft or publish to the Team page without inviting a login account." : "Changes are audited and scoped by profile organization. Related projects below are derived from assigned listings."}</DialogDescription></DialogHeader>
           <MediaForm className="space-y-4" onSubmit={saveEditor}>
             {saveError && <p role="alert" className="rounded-lg border border-destructive/40 p-3 text-sm text-destructive">{saveError} Your form and uploaded photo are retained.</p>}
-            {creating && <label className="block space-y-1.5 text-sm font-medium">Optional AGENT login account<Select value={selectedUserId || "none"} onValueChange={value => setSelectedUserId(value === "none" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No login account needed</SelectItem>{linkableUsers.map(user => <SelectItem key={user.id} value={user.id}>{user.name ? `${user.name} — ${user.email}` : user.email}</SelectItem>)}</SelectContent></Select></label>}
+            {<label className="block space-y-1.5 text-sm font-medium">Optional AGENT login account<Select value={selectedUserId || "none"} onValueChange={value => setSelectedUserId(value === "none" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No login account needed</SelectItem>{editing && typeof editing.userId === "string" && !linkableUsers.some(user => user.id === editing.userId) && <SelectItem value={String(editing.userId)}>{String(editing.linkedAccountEmail ?? "Current linked account")}</SelectItem>}{linkableUsers.map(user => <SelectItem key={user.id} value={user.id}>{user.name ? `${user.name} — ${user.email}` : user.email}</SelectItem>)}</SelectContent></Select></label>}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5 text-sm font-medium">Name<Input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="block space-y-1.5 text-sm font-medium">URL slug<Input required maxLength={160} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
@@ -1409,10 +1415,10 @@ function AgentsSection({ canEdit }: { canEdit: boolean }) {
             <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Specialties</legend><div className="grid gap-2 sm:grid-cols-2">{["OFF_PLAN", "LUXURY", "INVESTMENT", "SECONDARY", "COMMERCIAL", "RELOCATION", "RESIDENTIAL", "RENTALS", "PROPERTY_MANAGEMENT"].map((specialty) => <label key={specialty} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.specialties.includes(specialty)} onChange={(event) => setForm({ ...form, specialties: event.target.checked ? [...form.specialties, specialty] : form.specialties.filter((item) => item !== specialty) })} />{specialty.replaceAll("_", " ")}</label>)}</div></fieldset>
             <fieldset className="space-y-2 rounded-lg border border-border/70 p-3"><legend className="px-1 text-sm font-medium">Communities served</legend><div className="grid gap-2 sm:grid-cols-2">{(data?.communities ?? []).map((community) => <label key={community.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.communityIds.includes(community.id)} onChange={(event) => setForm({ ...form, communityIds: event.target.checked ? [...form.communityIds, community.id] : form.communityIds.filter((id) => id !== community.id) })} />{community.name}</label>)}{(data?.communities ?? []).length === 0 && <p className="text-xs text-muted-foreground">No manageable communities are available.</p>}</div></fieldset>
             {!creating && Array.isArray(editing?.assignedProjects) && <section className="space-y-1 rounded-lg border border-border/70 p-3"><h3 className="text-sm font-semibold">Projects linked through assigned listings</h3>{(editing.assignedProjects as { id: string; name: string; slug: string }[]).length ? (editing.assignedProjects as { id: string; name: string; slug: string }[]).map((project) => <p key={project.id} className="text-xs">{project.name} · /projects/{project.slug}</p>) : <p className="text-xs text-muted-foreground">No assigned listing currently links this advisor to a project.</p>}</section>}
-            {!creating && <div className="space-y-3 rounded-lg border border-border/70 p-3">
+            {<div className="space-y-3 rounded-lg border border-border/70 p-3">
               <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Active team profile</span><span className="text-xs text-muted-foreground">Inactive profiles are excluded from public advisor listings.</span></span><Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active, publicAdvisor: active ? form.publicAdvisor : false, publicTeam: active ? form.publicTeam : false })} /></label>
               <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Published on Team page</span><span className="text-xs text-muted-foreground">No account or email verification required.</span></span><Switch checked={form.publicTeam} disabled={!form.active} onCheckedChange={publicTeam => setForm({ ...form, publicTeam })} /></label>
-              <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Public advisor directory</span><span className="text-xs text-muted-foreground">A bio and active status are required.</span></span><Switch checked={form.publicAdvisor} disabled={!form.active} onCheckedChange={(publicAdvisor) => setForm({ ...form, publicAdvisor })} /></label>
+              <label className="flex items-center justify-between gap-4 text-sm"><span><span className="block font-medium">Can act as property advisor</span><span className="text-xs text-muted-foreground">Appears in Advisors and property assignment when active with a bio. A linked account must remain active and verified.</span></span><Switch checked={form.publicAdvisor} disabled={!form.active} onCheckedChange={(publicAdvisor) => setForm({ ...form, publicAdvisor })} /></label>
             </div>}
             <DialogFooter><Button type="button" variant="outline" onClick={() => { setEditing(null); setCreating(false); }}>Cancel</Button><Button type="submit" value="DRAFT" variant="outline" disabled={saving}>{saving ? "Saving…" : "Save draft"}</Button>{!creating && <Button type="submit" disabled={saving}>Save changes</Button>}<Button type="submit" value="PUBLISH" disabled={saving}>Publish to Team</Button></DialogFooter>
           </MediaForm>

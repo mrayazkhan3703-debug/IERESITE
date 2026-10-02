@@ -4,7 +4,8 @@ import { apiHandler, jsonBody } from "@/server/api-handler";
 import { requirePermission } from "@/server/auth";
 import { db } from "@/lib/db";
 import { clientIp } from "@/server/rate-limit";
-import { agentProfileScope } from "@/server/domain/resource-policy";
+import { peopleAdminWhere, peopleFilter } from "@/server/domain/agent-directory";
+import { PUBLIC_AGENT_WHERE, PUBLIC_PROFILE_WHERE } from "@/server/domain/visibility";
 import { hasGrantedPermission } from "@/server/authz-policy";
 import { createAgentProfileCommand, updateAgentCommand } from "@/server/domain/agent-command";
 import { catalogReadFilter } from "@/server/domain/resource-policy";
@@ -17,15 +18,17 @@ export const GET = apiHandler(async (req) => {
   const actor = await requirePermission("agent:read");
   const canCreate = hasGrantedPermission(actor.permissions, "agent:create");
   const url = new URL(req.url);
-  const q = url.searchParams.get("q")?.trim();
-  const search = q ? { OR: [{ name: { contains: q, mode: "insensitive" as const } }, { slug: { contains: q, mode: "insensitive" as const } }] } : {};
-  const where = { AND: [agentProfileScope(actor), search] };
+  const q = url.searchParams.get("q")?.trim() ?? "";
+  const filter = peopleFilter(url.searchParams.get("filter"));
+  const pageValue = Number(url.searchParams.get("page") ?? 1);
+  const page = Number.isSafeInteger(pageValue) && pageValue > 0 ? Math.min(pageValue, 10000) : 1;
+  const where = peopleAdminWhere(actor, q, filter);
   const [agents, total, linkableUsers] = await Promise.all([
-    db.agent.findMany({ where, orderBy: [{ sortWeight: "desc" }, { name: "asc" }], take: 50, include: {
+    db.agent.findMany({ where, orderBy: [{ sortWeight: "desc" }, { name: "asc" }, { id: "asc" }], take: 50, skip: (page - 1) * 50, include: {
       user: { select: { email: true, emailVerified: true, isActive: true, roles: { select: { role: { select: { key: true } } } } } },
       languageRecords: { orderBy: { name: "asc" } }, specialtyRecords: { orderBy: { specialty: "asc" } },
       communities: { include: { community: { select: { id: true, name: true, slug: true } } } },
-      listings: { where: { property: { deletedAt: null } }, select: { property: { select: { project: { select: { id: true, name: true, slug: true } } } } } },
+      listings: { where: { property: { deletedAt: null } }, select: { propertyId: true, property: { select: { project: { select: { id: true, name: true, slug: true } } } } } },
     } }),
     db.agent.count({ where }),
     canCreate ? db.user.findMany({
@@ -42,15 +45,24 @@ export const GET = apiHandler(async (req) => {
     }) : Promise.resolve([]),
   ]);
   const communities = canCreate ? await db.community.findMany({ where: { AND: [catalogReadFilter(actor), { publicationStatus: { not: "ARCHIVED" } }] }, select: { id: true, name: true, slug: true }, orderBy: { name: "asc" }, take: 100 }) : [];
+  const ids = agents.map(agent => agent.id);
+  const [eligible, visible] = await Promise.all([
+    db.agent.findMany({ where: { AND: [{ id: { in: ids } }, PUBLIC_AGENT_WHERE] }, select: { id: true } }),
+    db.agent.findMany({ where: { AND: [{ id: { in: ids } }, PUBLIC_PROFILE_WHERE] }, select: { id: true } }),
+  ]);
+  const eligibleIds = new Set(eligible.map(agent => agent.id));
+  const visibleIds = new Set(visible.map(agent => agent.id));
   return NextResponse.json({
-    total,
+    total, page, pageSize: 50, filter,
     ...(canCreate ? { linkableUsers } : {}),
     communities,
     agents: agents.map((agent) => ({
       id: agent.id, name: agent.name, slug: agent.slug, jobTitle: agent.jobTitle, bio: agent.bio,
       department: agent.department, yearsExperience: agent.yearsExperience, active: agent.active,
       publicAdvisor: agent.publicAdvisor, publicTeam: agent.publicTeam, updatedAt: agent.updatedAt.toISOString(),
-      photoMediaId: agent.photoMediaId,
+      photoMediaId: agent.photoMediaId, photoUrl: agent.photoMediaId ? `/api/media/${agent.photoMediaId}/content` : agent.photoUrl,
+      userId: agent.userId, advisorEligible: eligibleIds.has(agent.id), publicVisible: visibleIds.has(agent.id),
+      assignedPropertyCount: new Set(agent.listings.map(listing => listing.propertyId)).size,
       phoneE164: agent.phoneE164, whatsappE164: agent.whatsappE164, email: agent.email,
       linkedAccountEmail: agent.user?.email ?? null, linkedAccountVerified: Boolean(agent.user?.emailVerified),
       linkedAccountActive: Boolean(agent.user?.isActive), linkedAccountRoles: agent.user?.roles.map(({ role }) => role.key) ?? [],
@@ -63,6 +75,8 @@ export const GET = apiHandler(async (req) => {
 });
 
 const createSchema = z.object({
+  active: z.boolean().optional(),
+  publicAdvisor: z.boolean().optional(),
   userId: z.string().min(1).max(100).nullable().optional(),
   publicTeam: z.boolean().optional(),
   name: z.string().trim().min(1).max(200),
@@ -87,6 +101,7 @@ export const POST = apiHandler(async (req) => {
 });
 
 const patchSchema = z.object({
+  userId: z.string().min(1).max(100).nullable().optional(),
   agentId: z.string().min(1),
   expectedUpdatedAt: z.string().datetime(),
   name: z.string().trim().min(1).max(200).optional(),

@@ -34,6 +34,7 @@ export function AdvisorOperations({ canManage }: { canManage: boolean }) {
   }
   return <section aria-label="Advisor readiness and knowledge indexing" className="space-y-3 rounded-xl border p-4">
     <h2 className="text-lg font-semibold">Advisor readiness</h2>
+    <p className="text-sm text-muted-foreground">Live conversations use Inception Mercury. The server requires INCEPTION_API_KEY; this screen never displays credentials. Verification sends a real provider request and consumes the configured budget.</p>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {readiness ? <><p>{readiness.provider} · {readiness.model} · <strong>{readiness.status}</strong>{readiness.reason ? ` · ${readiness.reason}` : ""}</p><p className="text-sm">{readiness.limits.requestsToday}/{readiness.limits.dailyRequests} requests today · {readiness.limits.reservedTokensToday}/{readiness.limits.dailyTokens} reserved budget tokens · {readiness.limits.timeoutMs} ms timeout</p><p className="text-xs text-muted-foreground">{readiness.note}</p></> : <p>Loading provider diagnostics…</p>}
     {canManage && <label className="block text-sm">Provider check <select aria-label="Provider check" value={scenario} onChange={event => setScenario(event.target.value)} className="ml-2 rounded border p-2"><option value="MINIMAL">Minimal generation</option><option value="ADVISOR">Actual Advisor prompt</option><option value="TOOL_FOLLOWUP">Tool result and follow-up</option></select></label>}

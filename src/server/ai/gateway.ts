@@ -8,7 +8,8 @@ import { getConfig } from "@/lib/config";
 import { logEvent } from "@/server/rate-limit";
 import { Prisma } from "@prisma/client";
 import { aiBudgetDecision, aiProviderGateCode, AiProviderBlockedError, estimateAiPromptCharacters, estimateAiReservationTokens } from "./controls";
-import { generateWithGemini, GeminiProviderError } from "./gemini-provider";
+import { generateWithInception, inceptionConfigCode } from "./inception-provider";
+import { AiProviderError } from "./provider-error";
 import { aiRetryDelay } from "./retry-policy";
 import { requireTurnBudget } from "./turn-budget";
 import { aiReservationFailureCode, aiReservationTransactionOptions } from "./reservation-budget";
@@ -116,7 +117,7 @@ async function reserveLiveAiUsage(provider: string, model: string, req: ChatRequ
 }
 
 export function safeProviderFailureCode(error: unknown): string {
-  if (error instanceof GeminiProviderError) return error.code;
+  if (error instanceof AiProviderError) return error.code;
   const message = error instanceof Error ? error.message : "";
   if (message.includes("timed out")) return "PROVIDER_TIMEOUT";
   const status = message.match(/HTTP (\d{3})/)?.[1];
@@ -143,8 +144,8 @@ async function finishAiUsage(
   });
 }
 
-class GeminiChatProvider implements ChatProvider {
-  readonly name = "gemini";
+class InceptionChatProvider implements ChatProvider {
+  readonly name = "inception";
 
   async chat(req: ChatRequest): Promise<ChatResponse> {
     return this.attempt(req, Math.min(req.deadlineAt ?? Infinity, Date.now() + getConfig().AI_REQUEST_TIMEOUT_MS), false);
@@ -154,16 +155,17 @@ class GeminiChatProvider implements ChatProvider {
     requireTurnBudget(deadline);
     const config = getConfig();
     await assertAiFeatureAvailable(this.name);
-    const apiKey = config.GEMINI_API_KEY?.trim();
-    if (!apiKey) throw new GeminiProviderError("PROVIDER_CONFIG_MISSING", "GEMINI_API_KEY is required when AI_PROVIDER=gemini");
+    const apiKey = config.INCEPTION_API_KEY?.trim();
+    if (inceptionConfigCode(apiKey, config.INCEPTION_MODEL, config.INCEPTION_BASE_URL)) throw new AiProviderError("PROVIDER_CONFIG_MISSING", "Inception server configuration is incomplete or invalid.");
 
     const started = Date.now();
-    const reservation = await reserveLiveAiUsage(this.name, config.GEMINI_MODEL, req, deadline);
+    const reservation = await reserveLiveAiUsage(this.name, config.INCEPTION_MODEL, req, deadline);
     try {
       requireTurnBudget(deadline);
-      const result = await generateWithGemini({ ...req, maxTokens: config.AI_MAX_OUTPUT_TOKENS }, {
-        apiKey,
-        model: config.GEMINI_MODEL,
+      const result = await generateWithInception({ ...req, maxTokens: Math.min(req.maxTokens ?? config.AI_MAX_OUTPUT_TOKENS, config.AI_MAX_OUTPUT_TOKENS) }, {
+        apiKey: apiKey!,
+        model: config.INCEPTION_MODEL,
+        baseUrl: config.INCEPTION_BASE_URL,
         timeoutMs: Math.max(1, deadline - Date.now()),
       });
       await finishAiUsage(reservation, result, null);
@@ -177,8 +179,8 @@ class GeminiChatProvider implements ChatProvider {
       return { ...result, costMicros: null };
     } catch (error) {
       const errorCode = safeProviderFailureCode(error);
-      await finishAiUsage(reservation, error instanceof GeminiProviderError ? error.usage : null, errorCode).catch(() => {});
-      logEvent("ai.chat_failed", { provider: this.name, kind: req.meta?.kind, latencyMs: Date.now() - started, errorCode, ...(error instanceof GeminiProviderError ? error.diagnostics ?? {} : {}) });
+      await finishAiUsage(reservation, error instanceof AiProviderError ? error.usage : null, errorCode).catch(() => {});
+      logEvent("ai.chat_failed", { provider: this.name, kind: req.meta?.kind, latencyMs: Date.now() - started, errorCode, ...(error instanceof AiProviderError ? error.diagnostics ?? {} : {}) });
       const delay = aiRetryDelay(errorCode, alreadyRetried, deadline - Date.now());
       if (delay !== null) {
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -198,7 +200,7 @@ class MockChatProvider implements ChatProvider {
   async chat(): Promise<ChatResponse> {
     await assertAiFeatureAvailable(this.name);
     return {
-      content: "Local AI mock is enabled. No Gemini or OpenAI model was called; this is not investment advice.",
+      content: "Local AI mock is enabled. No external model was called; this is not investment advice.",
       promptTokens: null,
       completionTokens: null,
       costMicros: null,
@@ -208,23 +210,16 @@ class MockChatProvider implements ChatProvider {
 }
 
 let provider: ChatProvider | null = null;
-
-export function getChatProvider(): ChatProvider {
-  if (!provider) {
-    const selected = getConfig().AI_PROVIDER;
-    switch (selected) {
-      case "mock":
-        provider = new MockChatProvider();
-        break;
-      case "zai":
-        throw new AiProviderBlockedError("AI_PROVIDER_NOT_APPROVED");
-      case "gemini":
-        provider = new GeminiChatProvider();
-        break;
-      case "openai":
-        throw new Error("AI_PROVIDER=openai is not implemented yet; configure it only after the OpenAI adapter is added");
-    }
+export function createChatProvider(selected: string): ChatProvider {
+  switch (selected) {
+    case "mock": return new MockChatProvider();
+    case "inception": return new InceptionChatProvider();
+    default: throw new AiProviderBlockedError("AI_PROVIDER_NOT_APPROVED");
   }
+}
+export function getChatProvider(): ChatProvider {
+  const selected = getConfig().AI_PROVIDER;
+  if (!provider || provider.name !== selected) provider = createChatProvider(selected);
   return provider;
 }
 

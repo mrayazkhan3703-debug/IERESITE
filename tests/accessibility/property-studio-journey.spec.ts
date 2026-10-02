@@ -45,7 +45,7 @@ test.beforeAll(async () => {
   await db.developer.create({ data: { id: developerId, name: "Synthetic Property Studio Developer", slug: `${slug}-developer` } });
   await db.community.create({ data: { id: communityId, name: "Synthetic Property Studio Community", slug: `${slug}-community`, areaType: "RESIDENTIAL", lat: 25.1, lng: 55.1, publicationStatus: "PUBLISHED" } });
   await db.amenity.create({ data: { id: amenityId, key: `${slug}-POOL`, name: "Synthetic Pool", category: "BUILDING" } });
-  await db.agent.create({ data: { id: agentId, name: "Synthetic Property Studio Advisor", slug: `${slug}-advisor`, active: true, publicAdvisor: false } });
+  await db.agent.create({ data: { id: agentId, name: "Synthetic Property Studio Advisor", slug: `${slug}-advisor`, active: true, publicAdvisor: true, bio: "Synthetic browser verification fixture only." } });
 });
 
 test.afterAll(async () => { await cleanup(); await db.$disconnect(); });
@@ -74,8 +74,9 @@ test("owner creates a property draft, edits rich facts, then publishes a ready l
   await page.getByRole("option", { name: "AVAILABLE", exact: true }).click();
   await dialog.getByRole("combobox", { name: "Community", exact: true }).click();
   await page.getByRole("option", { name: /Synthetic Property Studio Community/ }).click();
-  await dialog.getByRole("combobox", { name: "Listing advisor", exact: true }).click();
-  await page.getByRole("option", { name: "Synthetic Property Studio Advisor", exact: true }).click();
+  await dialog.getByLabel("Search available advisors", { exact: true }).fill("Synthetic Property Studio Advisor");
+  await dialog.getByRole("combobox", { name: "Assigned advisor", exact: true }).click();
+  await page.getByRole("option", { name: /Synthetic Property Studio Advisor/ }).click();
   await dialog.getByRole("group", { name: "Amenities" }).getByText("Synthetic Pool", { exact: true }).click();
   const coverField = dialog.getByRole("group", { name: "Cover image", exact: true });
   await coverField.getByRole("button", { name: "Upload New", exact: true }).click();

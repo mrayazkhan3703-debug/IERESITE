@@ -15,7 +15,7 @@ export function aiProviderGateCode(
   if (!advisorFlag?.isEnabled || advisorFlag.rolloutPercent < 100) return "AI_KILL_SWITCH";
   if (provider === "mock") return null;
   if (!liveEnabled) return "AI_LIVE_DISABLED";
-  if (provider !== "gemini") return "AI_PROVIDER_NOT_APPROVED";
+  if (provider !== "inception") return "AI_PROVIDER_NOT_APPROVED";
   return null;
 }
 

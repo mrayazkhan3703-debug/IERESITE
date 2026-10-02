@@ -30,6 +30,7 @@ test("all concrete static EN/AR modules retain server locale and canonical/priva
   const section = contract.split("const EXACT_ROUTES:")[1].split("const DYNAMIC_ROUTES:")[0];
   for (const match of section.matchAll(/^  "([^"]+)": \{([^\n]+)\}/gm)) {
     const path = match[1];
+    const canonicalPath = match[2].match(/canonicalPath: "([^"]+)"/)?.[1] ?? path;
     const noindex = match[2].includes("noindex: true");
     for (const prefix of locales) {
       const requested = `${prefix}${path === "/" ? "" : path}` || "/";
@@ -37,10 +38,11 @@ test("all concrete static EN/AR modules retain server locale and canonical/priva
       const html = await response.text();
       expect(response.status).toBe(200);
       expect(html.includes(`<html lang="${prefix ? "ar" : "en"}" dir="${prefix ? "rtl" : "ltr"}"`)).toBe(true);
-      const expectedCanonical = `rel="canonical" href="http://localhost:3000${requested === "/" ? "" : requested}"`;
+      const canonical = `${prefix}${canonicalPath === "/" ? "" : canonicalPath}`;
+      const expectedCanonical = `rel="canonical" href="http://localhost:3000${canonical}"`;
       if (!html.includes(expectedCanonical)) {
         const actualCanonical = html.match(/<link rel="canonical" href="([^"]+)"/i)?.[1] ?? "missing";
-        throw new Error(`Canonical mismatch for ${requested}: expected http://localhost:3000${requested === "/" ? "" : requested}, received ${actualCanonical}`);
+        throw new Error(`Canonical mismatch for ${requested}: expected http://localhost:3000${canonical}, received ${actualCanonical}`);
       }
       expect(html.includes(`name="robots" content="${noindex ? "noindex, nofollow" : "index, follow"}"`)).toBe(true);
     }

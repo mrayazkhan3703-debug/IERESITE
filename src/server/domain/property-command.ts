@@ -9,6 +9,7 @@ import { parseCatalogJson } from "@/server/domain/catalog-source";
 import { reindexProperty } from "@/server/search/service";
 import type { EntityMediaInput } from "@/lib/media-contract";
 import { saveEntityMedia } from "./entity-media";
+import { assignableAdvisorWhere } from "./agent-directory";
 import { PUBLIC_PROJECT_WHERE } from "./visibility";
 import { propertyPublicationChecks, type PropertyPublicationInput } from "@/lib/property-publication";
 
@@ -146,8 +147,7 @@ export async function createPropertyCommand(actor: SessionUser, input: NewProper
         if (input.developerId && input.developerId !== project.developerId) throw new HttpError(422, "The developer must match the selected project.", "PROPERTY_RELATION_REQUIRED");
       }
       if (input.developerId && !await tx.developer.findFirst({ where: { id: input.developerId, ...relatedCatalogScope }, select: { id: true } })) throw new HttpError(422, "Select an existing developer.", "PROPERTY_RELATION_REQUIRED");
-      const agentScope = actor.roles.includes("OWNER") ? {} : { user: { is: { organizationId: actor.organizationId ?? "" } } };
-      if (input.agentId && !await tx.agent.findFirst({ where: { id: input.agentId, active: true, ...agentScope }, select: { id: true } })) throw new HttpError(422, "Select an active advisor in your organization.", "PROPERTY_RELATION_REQUIRED");
+      if (input.agentId && !await tx.agent.findFirst({ where: assignableAdvisorWhere(actor, input.agentId), select: { id: true } })) throw new HttpError(422, "Choose an active public advisor in your permitted organization.", "PROPERTY_RELATION_REQUIRED");
       const amenityIds = [...new Set(input.amenityIds ?? [])];
       if (amenityIds.length && await tx.amenity.count({ where: { id: { in: amenityIds } } }) !== amenityIds.length) throw new HttpError(422, "One or more selected amenities are unavailable.", "PROPERTY_RELATION_REQUIRED");
       const publishAt = input.publicationStatus === "PUBLISHED" ? new Date() : null;
@@ -301,7 +301,7 @@ export async function updatePropertyCommand(
     if (resetSourceFields.size > 0 && property.sourceType !== "IMPORT") {
       throw new HttpError(422, "Source values are available only for imported properties.", "SOURCE_VALUE_UNAVAILABLE");
     }
-    if ((input.priceAed !== undefined || input.availabilityStatus !== undefined || input.isFeatured !== undefined || input.listingType !== undefined || input.rentFrequency !== undefined || resetSourceFields.has("priceAed") || resetSourceFields.has("availabilityStatus")) && !listing) {
+    if ((input.agentId !== undefined || input.priceAed !== undefined || input.availabilityStatus !== undefined || input.isFeatured !== undefined || input.listingType !== undefined || input.rentFrequency !== undefined || resetSourceFields.has("priceAed") || resetSourceFields.has("availabilityStatus")) && !listing) {
       throw new HttpError(409, "This property has no listing to update.", "LISTING_REQUIRED");
     }
     const nextProjectId = input.projectId === undefined ? property.projectId : input.projectId;
@@ -317,8 +317,7 @@ export async function updatePropertyCommand(
       nextCommunityStatus = community.publicationStatus;
     }
     if (input.developerId && !await tx.developer.findFirst({ where: { id: input.developerId, ...relatedCatalogScope }, select: { id: true } })) throw new HttpError(422, "Select an existing developer.", "PROPERTY_RELATION_REQUIRED");
-    const agentScope = actor.roles.includes("OWNER") ? {} : { user: { is: { organizationId: actor.organizationId ?? "" } } };
-    if (input.agentId && !await tx.agent.findFirst({ where: { id: input.agentId, active: true, ...agentScope }, select: { id: true } })) throw new HttpError(422, "Select an active advisor in your organization.", "PROPERTY_RELATION_REQUIRED");
+    if (input.agentId && !await tx.agent.findFirst({ where: assignableAdvisorWhere(actor, input.agentId), select: { id: true } })) throw new HttpError(422, "Choose an active public advisor in your permitted organization.", "PROPERTY_RELATION_REQUIRED");
     const amenityIds = input.amenityIds === undefined ? undefined : [...new Set(input.amenityIds)];
     if (amenityIds && amenityIds.length && await tx.amenity.count({ where: { id: { in: amenityIds } } }) !== amenityIds.length) throw new HttpError(422, "One or more selected amenities are unavailable.", "PROPERTY_RELATION_REQUIRED");
     const propertySource = parseCatalogJson(property.sourceSnapshotJson);

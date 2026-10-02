@@ -46,10 +46,14 @@ services:
       - key: SEARCH_PROVIDER
         value: postgres
       - key: AI_PROVIDER
-        value: gemini
+        value: inception
+      - key: INCEPTION_MODEL
+        value: mercury-2.5
+      - key: INCEPTION_BASE_URL
+        value: https://api.inceptionlabs.ai/v1
       - key: AI_LIVE_ENABLED
         value: "true"
-      - key: GEMINI_API_KEY
+      - key: INCEPTION_API_KEY
         sync: false
       - key: IP_PSEUDONYM_KEY
         sync: false

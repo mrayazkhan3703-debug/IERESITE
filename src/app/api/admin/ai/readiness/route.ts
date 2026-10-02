@@ -3,7 +3,7 @@ import { z } from "zod";
 import { apiHandler, jsonBody } from "@/server/api-handler";
 import { audit, HttpError, requirePermission } from "@/server/auth";
 import { advisorSystemPrompt } from "@/server/ai/advisor";
-import { GeminiProviderError } from "@/server/ai/gemini-provider";
+import { AiProviderError } from "@/server/ai/provider-error";
 import { type ChatMessage } from "@/server/ai/gateway";
 import { aiReadiness } from "@/server/ai/readiness";
 import { getChatProvider, safeProviderFailureCode } from "@/server/ai/gateway";
@@ -29,7 +29,7 @@ export const POST = apiHandler(async (req) => {
     diagnostics = { httpStatus: 200, providerCode: null, requestId: null };
     succeeded = result.model !== "local-mock" && (scenario !== "MINIMAL" ? Boolean(result.content.trim()) : result.content.trim() === "READY");
     if (!succeeded) reason = result.model === "local-mock" ? "LOCAL_ONLY" : "PROVIDER_RESPONSE_INVALID";
-  } catch (error) { diagnostics = error instanceof GeminiProviderError ? error.diagnostics : null; reason = error instanceof AiProviderBlockedError ? error.code : safeProviderFailureCode(error); }
+  } catch (error) { diagnostics = error instanceof AiProviderError ? error.diagnostics : null; reason = error instanceof AiProviderBlockedError ? error.code : safeProviderFailureCode(error); }
   const latencyMs = Date.now() - started;
   await audit({ actorId: actor.id, action: "ai.provider.verify", resourceType: "AI_PROVIDER", resourceId: "selected", after: { scenario, succeeded, reason, latencyMs, diagnostics }, ip: clientIp(req) });
   return NextResponse.json({ scenario, succeeded, reason, latencyMs, diagnostics, readiness: await aiReadiness() }, { headers: { "Cache-Control": "private, no-store" } });

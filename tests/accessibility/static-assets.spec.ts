@@ -2,7 +2,7 @@ import { expect, test } from "./fixtures";
 
 test("large original static portraits use small responsive same-origin delivery", async ({ page }) => {
   // UI-only placeholder roster; supplied image is reused only to test its delivery.
-  await page.route("**/api/team", (route) => route.fulfill({ json: { agents: [{
+  await page.route("**/api/agents?directory=people", (route) => route.fulfill({ json: { agents: [{
     id: "synthetic-image", slug: "synthetic-image", name: "SYNTHETIC image delivery fixture", jobTitle: "",
     department: "other", photoUrl: "/images/team/member-25.jpg", photo: null, phoneE164: null, whatsappE164: null,
   }] } }));
