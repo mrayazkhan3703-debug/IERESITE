@@ -17,7 +17,7 @@ export const ADMIN_SECTIONS: { key: AdminSection; label: string; icon: ElementTy
   { key: "projects", label: "Projects", icon: FolderKanban, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
   { key: "communities", label: "Communities", icon: MapPin, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
   { key: "developers", label: "Developers", icon: Landmark, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
-  { key: "agents", label: "Team", icon: BriefcaseBusiness, roles: ["OWNER", "ADMIN", "MANAGER", "CONTENT_EDITOR"] },
+  { key: "agents", label: "Team & Advisors", icon: BriefcaseBusiness, roles: ["OWNER", "ADMIN", "MANAGER", "CONTENT_EDITOR"] },
   { key: "users", label: "Users & access", icon: ShieldCheck, roles: ["OWNER", "ADMIN"] },
   { key: "content", label: "Content", icon: Newspaper, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },
   { key: "careers", label: "Careers", icon: BriefcaseBusiness, roles: ["OWNER", "ADMIN", "CONTENT_EDITOR"] },

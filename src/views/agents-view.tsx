@@ -8,46 +8,39 @@ import { Breadcrumbs, SectionHeading, LoadingState } from "@/components/common";
 import { AgentAvatar } from "@/components/entity/agent-avatar";
 import { events } from "@/lib/analytics-tracker";
 import { memberWhatsappHref, WHATSAPP_MESSAGES } from "@/lib/config";
-import { realEstateAgentJsonLd } from "@/lib/seo-schema";
+import { realEstateAgentJsonLd, personJsonLd } from "@/lib/seo-schema";
 import { localeOf, t } from "@/lib/i18n";
 import type { AgentDTO } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Phone, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/**
- * Advisors directory V3 (V3 §13): PUBLIC ADVISORS ONLY (publicAdvisor=true).
- * Safe default filters — All advisors / Sales Managers / Leadership — until
- * CRM-verified language/area/specialty data exists (V3-B03). Cards carry
- * only verified facts: photo, name, designation, call/WhatsApp on the
- * member's own supplied number. No capacity, years, languages or
- * specialties (unverified), no fabricated direct contact for members
- * without a phone (central company enquiry instead).
- */
-
-const FILTERS: { key: "all" | "sales" | "leadership"; labelKey: string }[] = [
-  { key: "all", labelKey: "advisorV3.filter.all" },
-  { key: "sales", labelKey: "advisorV3.filter.sales" },
-  { key: "leadership", labelKey: "advisorV3.filter.leadership" },
+/** One canonical directory, retaining the established premium cards. */
+type DirectoryFilter = "all" | "advisors" | "team" | "sales" | "leadership" | "marketing" | "hr" | "admin";
+const FILTERS: { key: DirectoryFilter; labelKey: string }[] = [
+  { key: "all", labelKey: "people.filter.all" },
+  { key: "advisors", labelKey: "people.filter.advisors" },
+  { key: "team", labelKey: "people.filter.team" },
+  ...(["leadership", "sales", "marketing", "hr", "admin"] as const).map(key => ({ key, labelKey: `people.filter.${key}` })),
 ];
 
 export default function AgentsView() {
   const [agents, setAgents] = React.useState<AgentDTO[] | null>(null);
-  const [filter, setFilter] = React.useState<"all" | "sales" | "leadership">("all");
+  const [filter, setFilter] = React.useState<DirectoryFilter>("all");
   const loc = useRoute();
   const locale = localeOf(loc.locale);
 
   React.useEffect(() => {
     api
-      .get<{ agents: AgentDTO[] }>("/api/agents?public=1")
+      .get<{ agents: AgentDTO[] }>("/api/agents?directory=people")
       .then((r) => setAgents(r.agents))
       .catch(() => setAgents([]));
   }, []);
 
   usePageMeta(
     {
-      title: t("advisorV3.meta.title", locale),
-      description: t("advisorV3.meta.description", locale),
+      title: t("people.meta.title", locale),
+      description: t("people.description", locale),
       /* V3-19: directory aggregate — ItemList over the PUBLIC advisors the
        * page actually shows (verified fields only: name/jobTitle/telephone
        * where supplied; no ratings, no invented attributes). */
@@ -59,7 +52,7 @@ export default function AgentsView() {
             itemListElement: agents.map((a, i) => ({
               "@type": "ListItem",
               position: i + 1,
-              item: realEstateAgentJsonLd(a),
+              item: a.publicAdvisor ? realEstateAgentJsonLd(a) : personJsonLd(a),
             })),
           }
         : undefined,
@@ -70,10 +63,12 @@ export default function AgentsView() {
   const filtered = React.useMemo(() => {
     if (!agents) return null;
     if (filter === "all") return agents;
+    if (filter === "advisors") return agents.filter(a => a.publicAdvisor);
+    if (filter === "team") return agents.filter(a => !a.publicAdvisor);
     return agents.filter((a) => (a.department ?? "other") === filter);
   }, [agents, filter]);
 
-  const applyFilter = (key: "all" | "sales" | "leadership") => {
+  const applyFilter = (key: DirectoryFilter) => {
     setFilter(key);
     events.teamFilter(`advisors:${key}`);
   };
@@ -85,18 +80,18 @@ export default function AgentsView() {
 
   return (
     <div className="container-page py-8">
-      <Breadcrumbs items={[{ label: t("teamV3.breadcrumb.home", locale), to: "/" }, { label: t("advisorV3.breadcrumb.advisors", locale) }]} />
+      <Breadcrumbs items={[{ label: t("teamV3.breadcrumb.home", locale), to: "/" }, { label: t("people.title", locale) }]} />
       <div className="mt-4">
         <SectionHeading
-          kicker={t("advisorV3.kicker", locale)}
-          title={t("advisorV3.title", locale)}
+          kicker={t("people.kicker", locale)}
+          title={t("people.title", locale)}
           as="h1"
-          description={t("advisorV3.description", locale)}
+          description={t("people.description", locale)}
         />
       </div>
 
-      {/* Safe default filters (V3 §13) — richer filters return with CRM data */}
-      <div className="mb-8 flex flex-wrap items-center gap-2" role="group" aria-label={t("advisorV3.filter.aria", locale)}>
+      {/* Filters use canonical profile fields and current advisor eligibility. */}
+      <div className="mb-8 flex flex-wrap items-center gap-2" role="group" aria-label={t("people.filter.aria", locale)}>
         {FILTERS.map((f) => (
           <button
             key={f.key}

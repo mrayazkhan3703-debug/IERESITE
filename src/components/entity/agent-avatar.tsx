@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Agent photo rendering with initials fallback (V3-02, V3 §35).
- * - prefers the direct photoUrl asset (verified team photos / advisory-desk logo);
- * - falls back to the media-registry photo (MediaDTO) when present;
+ * - prefers the selected Media Library photo, including inline replacements;
+ * - falls back to the existing direct photoUrl asset;
  * - elegant initials fallback on load error or when no photo exists —
  *   never a broken-image UI, never a generated fake portrait.
  */
@@ -41,7 +41,7 @@ export function AgentAvatar({
   rounded?: string;
 }) {
   const [failedSrc, setFailedSrc] = React.useState<string | null>(null);
-  const src = agentPhotoSrc(photoUrl) ?? photo?.url ?? null;
+  const src = photo?.url ?? agentPhotoSrc(photoUrl) ?? null;
   const initials = name
     .split(" ")
     .map((n) => n[0])

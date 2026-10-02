@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listAgents, getAgentDetailV2 } from "@/server/domain/read-models";
+import { listAgents, listPeople, getAgentDetailV2 } from "@/server/domain/read-models";
 import { apiHandler } from "@/server/api-handler";
 import { db } from "@/lib/db";
 import { PUBLIC_COMMUNITY_WHERE } from "@/server/domain/visibility";
@@ -19,7 +19,7 @@ export const GET = apiHandler(async (req) => {
    * community slug; agents match via the AgentCommunity join table OR the
    * communitiesJson mirror (union, no behavior change when omitted). */
   const community = url.searchParams.get("community");
-  const agents = await listAgents();
+  const agents = url.searchParams.get("directory") === "people" ? await listPeople() : await listAgents();
 
   // This unauthenticated endpoint always returns the explicit public roster.
   const roster = agents;

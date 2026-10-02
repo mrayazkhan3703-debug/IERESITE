@@ -624,6 +624,7 @@ export async function getDeveloperDetail(slug: string) {
 }
 
 export async function listAgents(): Promise<AgentDTO[]> { return listRoster(PUBLIC_AGENT_WHERE); }
+export async function listPeople(): Promise<AgentDTO[]> { return listRoster(PUBLIC_PROFILE_WHERE); }
 export async function listTeam(): Promise<AgentDTO[]> { return listRoster(PUBLIC_TEAM_WHERE); }
 
 async function listRoster(where: Prisma.AgentWhereInput): Promise<AgentDTO[]> {
@@ -635,6 +636,8 @@ async function listRoster(where: Prisma.AgentWhereInput): Promise<AgentDTO[]> {
   const listingCounts = await db.listing.groupBy({ by: ["agentId"], where: { ...publicListingWindowWhere(), agentId: { not: null }, property: { is: PUBLIC_PROPERTY_WHERE } }, _count: true });
   const countMap = new Map(listingCounts.map((c) => [c.agentId!, c._count]));
   const photoMap = await resolveAgentPhotos(agents.map((agent) => agent.id));
+  const eligible = await db.agent.findMany({ where: { AND: [{ id: { in: agents.map(agent => agent.id) } }, PUBLIC_AGENT_WHERE] }, select: { id: true } });
+  const eligibleIds = new Set(eligible.map(agent => agent.id));
   return agents.map((a) => ({
     id: a.id,
     slug: a.slug,
@@ -654,7 +657,7 @@ async function listRoster(where: Prisma.AgentWhereInput): Promise<AgentDTO[]> {
     listingCount: countMap.get(a.id) ?? 0,
     /* V3-02 verified-team fields (additive) */
     department: a.department,
-    publicAdvisor: a.publicAdvisor, publicTeam: a.publicTeam,
+    publicAdvisor: eligibleIds.has(a.id), publicTeam: a.publicTeam,
     phoneDisplay: a.phoneDisplay,
     photoUrl: a.photoUrl,
   }));

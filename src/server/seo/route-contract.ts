@@ -33,7 +33,7 @@ const EXACT_ROUTES: Record<string, RouteContract> = {
   "/projects": { title: "New Projects" },
   "/developers": { title: "Developers" },
   "/communities": { title: "Communities" },
-  "/agents": { title: "Advisors" },
+  "/agents": { title: "Team & Advisors" },
   "/invest": { title: "Investment Hub" },
   "/invest/opportunities": { title: "Investment Opportunities" },
   "/calculators": { title: "Investor Tools" },
@@ -47,7 +47,7 @@ const EXACT_ROUTES: Record<string, RouteContract> = {
   "/sell/list": { title: "List Property" },
   "/sell/valuation": { title: "Valuation" },
   "/about": { title: "About" },
-  "/about/team": { title: "Team" },
+  "/about/team": { title: "Team & Advisors", canonicalPath: "/agents" },
   "/careers": { title: "Careers" },
   "/contact": { title: "Contact" },
   "/insights": { title: "Insights" },
@@ -106,6 +106,7 @@ async function resolveSpaRoutePageBase(path: string, locale: "en" | "ar"): Promi
   const contract = resolveSpaRoute(path);
   if (!contract) return null;
   const normalizedPath = path.length > 1 ? path.replace(/\/$/, "") : path;
+  if (normalizedPath === "/about/team") return { ...contract, canonicalPath: locale === "ar" ? "/ar/agents" : "/agents", localeAlternates: null };
   const isExactRoute = Object.hasOwn(EXACT_ROUTES, normalizedPath);
 
   const parts = path.split("/").filter(Boolean);
@@ -215,7 +216,7 @@ export const resolveSpaRoutePage = cache(async (path: string, locale: "en" | "ar
     title: seo?.title?.trim() || copyTitle || contract.title,
     description: seo?.description?.trim() || copyDescription || contract.description,
     noindex: Boolean(contract.noindex || seo?.noindex),
-    canonicalPath: seo?.canonicalPath,
+    canonicalPath: contract.canonicalPath ?? seo?.canonicalPath,
     ogImageUrl: image ? `/api/media/${encodeURIComponent(image.id)}/content` : contract.ogImageUrl ?? null,
   };
 });

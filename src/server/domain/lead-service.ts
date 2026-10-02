@@ -10,6 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { randomBytes } from "crypto";
 import { emitEvent } from "@/server/jobs/outbox";
 import { logEvent } from "@/server/rate-limit";
+import { PUBLIC_AGENT_WHERE, PUBLIC_PROPERTY_WHERE, publicListingWindowWhere } from "./visibility";
 import { safeAttributionPath, safeAttributionReferrer, safeAttributionUtm } from "@/server/privacy/analytics-attribution";
 
 export const preferredBookingTimeSchema = z.string().datetime().refine((value) => {
@@ -198,8 +199,10 @@ async function submitLeadTransaction(
   const email = normalizeEmail(input.email);
   const phone = normalizePhone(input.phone);
   const dedupeKey = dedupeKeyFor(email, phone);
+  const propertyOwner = input.entityType === "PROPERTY" && (input.entityId || input.entitySlug)
+    ? await tx.property.findFirst({ where: { AND: [PUBLIC_PROPERTY_WHERE, input.entityId ? { id: input.entityId } : { slug: input.entitySlug }] }, select: { ownerOrganizationId: true } }) : null;
   const organization = await tx.organization.findFirst({
-    where: { isDefault: true },
+    where: propertyOwner?.ownerOrganizationId ? { id: propertyOwner.ownerOrganizationId } : { isDefault: true },
     orderBy: { createdAt: "asc" },
     select: { id: true },
   });
@@ -250,6 +253,8 @@ async function submitLeadTransaction(
    * null`, so two enquiries about the same property submitted by slug never
    * matched and produced duplicate leads.) */
   let entityId = input.entityId ?? null;
+  let propertyAdvisorId: string | null = null;
+  let propertyListingId: string | null = null;
   let isExclusive = false;
   if (!entityId && input.entitySlug && input.entityType === "PROPERTY") {
     const prop = await tx.property.findUnique({ where: { slug: input.entitySlug }, select: { id: true, listings: { select: { isExclusive: true } } } });
@@ -260,6 +265,17 @@ async function submitLeadTransaction(
   } else if (entityId && input.entityType === "PROPERTY") {
     const listing = await tx.listing.findFirst({ where: { propertyId: entityId }, select: { isExclusive: true } });
     isExclusive = !!listing?.isExclusive;
+  }
+  if (entityId && input.entityType === "PROPERTY") {
+    const listing = await tx.listing.findFirst({
+      where: { AND: [publicListingWindowWhere(), { propertyId: entityId, property: { is: PUBLIC_PROPERTY_WHERE } }] },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }], select: { id: true, agentId: true },
+    });
+    propertyListingId = listing?.id ?? null;
+    if (listing?.agentId) {
+      const advisor = await tx.agent.findFirst({ where: { AND: [{ id: listing.agentId }, PUBLIC_AGENT_WHERE, { OR: [{ ownerOrganizationId: organization.id }, { ownerOrganizationId: null, OR: [{ userId: null }, { user: { is: { organizationId: organization.id } } }] }] }] }, select: { id: true } });
+      propertyAdvisorId = advisor?.id ?? null;
+    }
   }
 
   // Soft duplicate detection: same contact + same entity within 24h → same lead, add event
@@ -292,10 +308,11 @@ async function submitLeadTransaction(
   }
 
   /* Agent assignment: explicit agent > round-robin available --------------- */
-  let ownerAgentId: string | null = null;
-  let assignmentReason: string | null = null;
-  if (input.agentSlug) {
-    const agent = await tx.agent.findUnique({ where: { slug: input.agentSlug }, select: { id: true, active: true } });
+  let ownerAgentId: string | null = propertyAdvisorId;
+  let assignmentReason: string | null = propertyAdvisorId ? "PROPERTY_ADVISOR" : null;
+  const advisorOrganization: Prisma.AgentWhereInput = { OR: [{ ownerOrganizationId: organization.id }, { ownerOrganizationId: null, OR: [{ userId: null }, { user: { is: { organizationId: organization.id } } }] }] };
+  if (!ownerAgentId && input.agentSlug) {
+    const agent = await tx.agent.findFirst({ where: { AND: [{ slug: input.agentSlug }, PUBLIC_AGENT_WHERE, advisorOrganization] }, select: { id: true, active: true } });
     if (agent?.active) {
       ownerAgentId = agent.id;
       assignmentReason = "AGENT_PROFILE";
@@ -303,7 +320,7 @@ async function submitLeadTransaction(
   }
   if (!ownerAgentId) {
     const agent = await tx.agent.findFirst({
-      where: { active: true, leadCapacityState: { not: "HIGH" } },
+      where: { AND: [PUBLIC_AGENT_WHERE, advisorOrganization, { leadCapacityState: { not: "HIGH" } }] },
       orderBy: [{ leadCapacityState: "asc" }, { sortWeight: "desc" }],
       select: { id: true },
     });
@@ -394,7 +411,7 @@ async function submitLeadTransaction(
   }
 
   await tx.leadEvent.create({
-    data: { leadId: lead.id, eventType: "CREATED", payloadJson: JSON.stringify({ intent: input.intent, score: scoring.score, band: scoring.band, assigned: !!ownerAgentId }), actorType: "USER" },
+      data: { leadId: lead.id, eventType: "CREATED", payloadJson: JSON.stringify({ intent: input.intent, score: scoring.score, band: scoring.band, assigned: !!ownerAgentId, propertyId: input.entityType === "PROPERTY" ? entityId : null, listingId: propertyListingId, agentId: ownerAgentId }), actorType: "USER" },
   });
 
   await recordFormTouchpoint(tx, options.attributionSessionId, lead.id, input.pagePath ?? input.landingUrl);

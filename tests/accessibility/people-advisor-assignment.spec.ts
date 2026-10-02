@@ -1,0 +1,64 @@
+import { createHash, randomBytes } from "node:crypto";
+import { PrismaClient } from "@prisma/client";
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test } from "./fixtures";
+const db = new PrismaClient(), prefix = "people-ui-" + crypto.randomUUID();
+const userId = prefix + "-owner", communityId = prefix + "-community", token = randomBytes(32).toString("hex");
+test.beforeAll(async () => {
+  if (!["db", "postgres", "localhost", "127.0.0.1"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Disposable database required");
+  const role = await db.role.findUniqueOrThrow({ where: { key: "OWNER" } });
+  await db.user.create({ data: { id: userId, email: userId + "@example.invalid", emailVerified: new Date(), roles: { create: { roleId: role.id } } } });
+  await db.session.create({ data: { userId, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + 3600000), mfaVerifiedAt: new Date() } });
+  await db.community.create({ data: { id: communityId, name: prefix, slug: communityId, lat: 25, lng: 55, publicationStatus: "PUBLISHED" } });
+});
+test.afterAll(async () => {
+  const entities = [...await db.property.findMany({ where: { slug: { startsWith: prefix } }, select: { id: true } }), ...await db.agent.findMany({ where: { slug: { startsWith: prefix } }, select: { id: true } })];
+  await db.auditLog.deleteMany({ where: { actorId: userId } });
+  await db.outboxEvent.deleteMany({ where: { aggregateId: { in: entities.map(row => row.id) } } });
+  await db.property.deleteMany({ where: { slug: { startsWith: prefix } } });
+  await db.agent.deleteMany({ where: { slug: { startsWith: prefix } } });
+  await db.community.delete({ where: { id: communityId } }); await db.user.delete({ where: { id: userId } }); await db.$disconnect();
+});
+for (const locale of ["en", "ar"] as const) for (const size of ["desktop", "mobile"] as const) {
+  test(`unified profile create/edit and property assignment ${locale} ${size}`, async ({ page, context, baseURL }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize(size === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    await context.addCookies([{ name: "ie_session", value: token, url: baseURL! }]);
+    const root = locale === "ar" ? "/ar" : "", slug = prefix + "-" + locale + "-" + size, name = "Synthetic advisor " + locale + size;
+    await page.goto(root + "/admin/agents"); await page.getByRole("button", { name: "New team profile", exact: true }).click();
+    const form = page.getByRole("dialog");
+    await form.getByLabel("Name", { exact: true }).fill(name); await form.getByLabel("URL slug", { exact: true }).fill(slug);
+    await form.getByLabel("Job title", { exact: true }).fill("Property Consultant"); await form.getByLabel("Profile bio", { exact: true }).fill("Synthetic browser fixture only");
+    await form.getByRole("switch", { name: /Active team profile/ }).click();
+    await form.getByRole("switch", { name: /Can act as property advisor/ }).click();
+    const create = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/agents" && r.request().method() === "POST");
+    await form.getByRole("button", { name: "Publish to Team", exact: true }).click(); expect((await create).status()).toBe(201);
+    await page.getByRole("button", { name: "Advisors", exact: true }).click();
+    await expect(page.getByRole("row").filter({ hasText: name })).toContainText("Eligible");
+    await page.goto(root + "/agents"); await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+    await page.goto(root + "/admin/properties"); await page.getByRole("button", { name: "Create property", exact: true }).click();
+    await page.getByLabel("Title", { exact: true }).fill("Synthetic property " + slug); await page.getByLabel("URL slug", { exact: true }).fill(slug + "-property");
+    await page.getByLabel("Latitude", { exact: true }).fill("25"); await page.getByLabel("Longitude", { exact: true }).fill("55");
+    await page.getByLabel("Price (AED)", { exact: false }).fill("100");
+    await page.getByRole("combobox", { name: "Community", exact: true }).click(); await page.getByRole("option", { name: prefix + " (PUBLISHED)", exact: true }).click();
+    await page.getByRole("combobox", { name: "Listing type", exact: true }).click(); await page.getByRole("option", { name: "SALE", exact: true }).click();
+    await page.getByRole("combobox", { name: "Listing availability", exact: true }).click(); await page.getByRole("option", { name: "AVAILABLE", exact: true }).click();
+    await page.getByLabel("Search available advisors", { exact: true }).fill(name);
+    await page.getByRole("combobox", { name: "Assigned advisor", exact: true }).click(); await page.getByRole("option", { name: new RegExp(name) }).click();
+    expect((await new AxeBuilder({ page }).include('[role="dialog"]').withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze()).violations).toEqual([]);
+    const save = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/properties" && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Save draft", exact: true }).click(); expect((await save).status()).toBe(201);
+    const agent = await db.agent.findUniqueOrThrow({ where: { slug } }), property = await db.property.findUniqueOrThrow({ where: { slug: slug + "-property" }, include: { listings: true } });
+    expect(property.listings[0].agentId).toBe(agent.id);
+    await page.getByRole("row").filter({ hasText: "Synthetic property " + slug }).getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Assigned advisor", exact: true })).toContainText(name);
+    await page.getByRole("combobox", { name: "Assigned advisor", exact: true }).click(); await page.getByRole("option", { name: "Unassigned — advisory desk", exact: true }).click();
+    const update = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/properties" && r.request().method() === "PATCH");
+    await page.getByRole("button", { name: "Save draft", exact: true }).click(); expect((await update).status()).toBe(200);
+    expect((await db.listing.findUniqueOrThrow({ where: { id: property.listings[0].id } })).agentId).toBeNull();
+    await page.goto(root + "/admin/agents"); await page.getByRole("row").filter({ hasText: name }).getByRole("button", { name: "Edit", exact: true }).click();
+    const withdraw = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/agents" && r.request().method() === "PATCH");
+    await page.getByRole("button", { name: "Save draft", exact: true }).click(); expect((await withdraw).status()).toBe(200);
+    await page.goto(root + "/agents"); await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
+  });
+}

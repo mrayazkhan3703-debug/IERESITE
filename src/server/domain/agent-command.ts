@@ -8,6 +8,7 @@ import { canManageAgentProfile, canManageCatalogResource } from "@/server/domain
 import { requirePublicMedia } from "@/server/domain/media-policy";
 
 export interface AgentCommandInput {
+  userId?: string | null;
   agentId: string;
   expectedUpdatedAt: string;
   name?: string;
@@ -30,6 +31,8 @@ export interface AgentCommandInput {
 
 export interface AgentCreateCommandInput {
   userId?: string | null;
+  active?: boolean;
+  publicAdvisor?: boolean;
   publicTeam?: boolean;
   name: string;
   slug: string;
@@ -81,6 +84,10 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
   const slug = input.slug.trim().toLowerCase();
   const jobTitle = input.jobTitle.trim();
   const bio = input.bio?.trim() ?? "";
+  const active = input.active ?? Boolean(input.publicTeam || input.publicAdvisor);
+  const publicAdvisor = input.publicAdvisor ?? false;
+  if (input.publicTeam && !active) throw new HttpError(422, "A published team profile must be active.", "PUBLICATION_VALIDATION");
+  if (publicAdvisor && (!active || !bio)) throw new HttpError(422, "A public advisor must be active and have a profile bio.", "PUBLICATION_VALIDATION");
   if (!name || !jobTitle || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 160) {
     throw new HttpError(422, "Name, job title, and a URL-safe slug are required.", "AGENT_VALIDATION");
   }
@@ -121,8 +128,8 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
           photoMediaId,
           phoneE164: input.phoneE164 ?? null, whatsappE164: input.whatsappE164 ?? null, email: input.email?.trim().toLowerCase() || null,
           languagesJson: JSON.stringify(input.languages ?? []), specialtiesJson: JSON.stringify(input.specialties ?? []), communitiesJson: JSON.stringify(input.communityIds ?? []),
-          active: input.publicTeam ?? false,
-          publicAdvisor: false,
+          active,
+          publicAdvisor,
         },
       });
       await replaceAdvisorRelations(tx, actor, agent.id, { languages: input.languages ?? [], specialties: input.specialties ?? [], communityIds: input.communityIds ?? [] });
@@ -131,7 +138,7 @@ export async function createAgentProfileCommand(actor: SessionUser, input: Agent
         department: input.department?.trim() || null,
         yearsExperience: input.yearsExperience ?? 0,
         photoMediaId, phoneE164: input.phoneE164 ?? null, whatsappE164: input.whatsappE164 ?? null, email: input.email?.trim().toLowerCase() || null,
-        languages: input.languages ?? [], specialties: input.specialties ?? [], communityIds: input.communityIds ?? [], active: input.publicTeam ?? false, publicAdvisor: false,
+        languages: input.languages ?? [], specialties: input.specialties ?? [], communityIds: input.communityIds ?? [], active, publicAdvisor,
       };
       await audit({
         actorId: actor.id, organizationId: linkedUser?.organizationId ?? actor.organizationId,
@@ -182,7 +189,15 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       if (publicAdvisor && (!active || !bio.trim())) {
         throw new HttpError(422, "A public advisor must be active and have a profile bio.", "PUBLICATION_VALIDATION");
       }
-      if (publicAdvisor && (!agent.user?.isActive || !agent.user.emailVerified || !agent.user.roles.some(({ role }) => role.key === "AGENT"))) {
+      const userId = input.userId === undefined ? agent.userId : input.userId;
+      const linkedUser = userId ? await tx.user.findFirst({
+        where: { id: userId, isActive: true, emailVerified: { not: null }, roles: { some: { role: { key: "AGENT" } } },
+          OR: [{ agent: null }, { agent: { is: { id: agent.id } } }],
+          ...(!actor.roles.includes("OWNER") ? { organizationId: agent.ownerOrganizationId ?? actor.organizationId ?? "__no_organization__" } : {}),
+        }, select: { id: true, organizationId: true },
+      }) : null;
+      if (input.userId !== undefined && userId && !linkedUser) throw new HttpError(422, "Choose an active, verified AGENT account in your permitted organization that has no other profile.", "INVALID_AGENT_ACCOUNT");
+      if (publicAdvisor && userId && !linkedUser) {
         throw new HttpError(422, "A public advisor must be linked to an active, email-verified AGENT account.", "PUBLICATION_VALIDATION");
       }
       const photoMediaId = input.photoMediaId === undefined
@@ -191,6 +206,7 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       validateAdvisorFacts({ phoneE164: input.phoneE164 === undefined ? agent.phoneE164 : input.phoneE164, whatsappE164: input.whatsappE164 === undefined ? agent.whatsappE164 : input.whatsappE164, email: input.email === undefined ? agent.email : input.email, languages: input.languages, specialties: input.specialties, communityIds: input.communityIds });
 
       const before = {
+        userId: agent.userId,
         name: agent.name, slug: agent.slug, jobTitle: agent.jobTitle, bio: agent.bio,
         department: agent.department, yearsExperience: agent.yearsExperience, active: agent.active, publicAdvisor: agent.publicAdvisor, publicTeam: agent.publicTeam,
         photoMediaId: agent.photoMediaId, phoneE164: agent.phoneE164, whatsappE164: agent.whatsappE164, email: agent.email,
@@ -198,7 +214,8 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
         specialties: input.specialties === undefined ? safeArray(agent.specialtiesJson) : input.specialties,
         communityIds: input.communityIds === undefined ? safeArray(agent.communitiesJson) : input.communityIds,
       };
-      const data: Prisma.AgentUpdateManyMutationInput = { updatedAt: new Date() };
+      const data: Prisma.AgentUncheckedUpdateManyInput = { updatedAt: new Date() };
+      if (input.userId !== undefined) data.userId = userId;
       if (input.name !== undefined) data.name = name;
       if (input.slug !== undefined) data.slug = slug;
       if (input.jobTitle !== undefined) data.jobTitle = jobTitle;
@@ -230,6 +247,7 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
       }
 
       const after = {
+        userId,
         name, slug, jobTitle, bio,
         department: input.department === undefined ? agent.department : input.department?.trim() || null,
         yearsExperience: input.yearsExperience ?? agent.yearsExperience, active, publicAdvisor, publicTeam,
