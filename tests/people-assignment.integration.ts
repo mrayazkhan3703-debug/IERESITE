@@ -94,4 +94,12 @@ describe("canonical profiles and property advisor assignment", () => {
     const changed = await db.agent.findUniqueOrThrow({ where: { id: advisor } });
     await expect(updateAgentCommand(actor, { agentId: advisor, expectedUpdatedAt: changed.updatedAt.toISOString(), bio: "Edited bio" }, null)).rejects.toMatchObject({ code: "PUBLICATION_VALIDATION" });
   });
+  test("profile audit preserves the previous relation values", async () => {
+    const current = await db.agent.findUniqueOrThrow({ where: { id: privateAgent } });
+    await updateAgentCommand(actor, { agentId: privateAgent, expectedUpdatedAt: current.updatedAt.toISOString(), languages: [{ code: "en", name: "English", fluency: "FLUENT" }], specialties: ["RENTALS"], communityIds: [community] }, null);
+    const audit = await db.auditLog.findFirstOrThrow({ where: { resourceId: privateAgent, action: "agent.update" }, orderBy: { createdAt: "desc" } });
+    expect(JSON.parse(audit.beforeJson!).languages).toEqual([]);
+    expect(JSON.parse(audit.afterJson!).languages).toEqual([{ code: "en", name: "English", fluency: "FLUENT" }]);
+    expect(JSON.parse(audit.beforeJson!).communityIds).toEqual([]); expect(JSON.parse(audit.afterJson!).communityIds).toEqual([community]);
+  });
 });

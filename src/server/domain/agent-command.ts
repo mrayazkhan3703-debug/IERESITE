@@ -210,9 +210,9 @@ export async function updateAgentCommand(actor: SessionUser, input: AgentCommand
         name: agent.name, slug: agent.slug, jobTitle: agent.jobTitle, bio: agent.bio,
         department: agent.department, yearsExperience: agent.yearsExperience, active: agent.active, publicAdvisor: agent.publicAdvisor, publicTeam: agent.publicTeam,
         photoMediaId: agent.photoMediaId, phoneE164: agent.phoneE164, whatsappE164: agent.whatsappE164, email: agent.email,
-        languages: input.languages === undefined ? safeArray(agent.languagesJson) : input.languages,
-        specialties: input.specialties === undefined ? safeArray(agent.specialtiesJson) : input.specialties,
-        communityIds: input.communityIds === undefined ? safeArray(agent.communitiesJson) : input.communityIds,
+        languages: safeArray(agent.languagesJson),
+        specialties: safeArray(agent.specialtiesJson),
+        communityIds: safeArray(agent.communitiesJson),
       };
       const data: Prisma.AgentUncheckedUpdateManyInput = { updatedAt: new Date() };
       if (input.userId !== undefined) data.userId = userId;
