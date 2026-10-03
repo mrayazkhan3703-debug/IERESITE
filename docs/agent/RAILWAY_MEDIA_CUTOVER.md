@@ -17,6 +17,8 @@ This procedure moves storage delivery into Cloudflare R2 `railway-main` while pr
 
 With writers paused, take a fresh complete inventory, refresh the full source copy, then take another inventory. All original and derivative keys and retained snapshot references must remain accounted for. Keep both receipts and reject differences that cannot be reconciled. Do not silently remove database references to make the check pass.
 
+Worker storage-maintenance errors use the existing durable deferral path: preserve the work, release the worker lease, return the claimed attempt, and reschedule after 30 seconds. This must not consume the normal failure budget or create dead-letter entries. Other storage/provider errors retain their ordinary retry/failure handling.
+
 ## Switch and verify
 
 Configure both services to the approved R2 endpoint, media bucket, region `auto`, path-style access, and `S3_KEY_PREFIX=railway-main`. Transfer credentials from their protected local configuration through the connector without printing them. Retain the write pause during deployment. Preserve all unrelated configuration and do not enable automatic deployment or seeding.

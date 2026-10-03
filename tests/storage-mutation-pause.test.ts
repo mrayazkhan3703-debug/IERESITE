@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { parseConfig } from "@/lib/config";
-import { requireStorageWrites } from "@/server/storage/mutation-policy";
+import { requireStorageWrites, storageWriteDeferral } from "@/server/storage/mutation-policy";
+import { HttpError } from "@/server/auth";
 
 test("storage cutover pause defaults off and can be explicitly disabled", () => {
   const base = { DATABASE_URL: "postgresql://fixture:fixture@localhost:5432/iere_test" };
@@ -16,6 +17,14 @@ test("paused writes return a specific retryable error", () => {
     expect(error).toMatchObject({ status: 503, code: "STORAGE_MUTATIONS_PAUSED" });
     expect((error as Error).message).toContain("Keep this form open");
   }
+});
+
+test("only an actual storage maintenance error defers durable work", () => {
+  expect(storageWriteDeferral(new HttpError(503, "Maintenance", "STORAGE_MUTATIONS_PAUSED")))
+    .toMatchObject({ code: "STORAGE_MUTATIONS_PAUSED", retryAfterMs: 30000 });
+  for (const error of [new HttpError(503, "Upstream", "UPSTREAM_FAILED"),
+    new HttpError(403, "Denied", "STORAGE_MUTATIONS_PAUSED"), new Error("STORAGE_MUTATIONS_PAUSED"),
+    { status: 503, code: "STORAGE_MUTATIONS_PAUSED" }, null]) expect(storageWriteDeferral(error)).toBeNull();
 });
 
 test("every upload, processing and deletion entry refuses before database or storage access", () => {

@@ -3,9 +3,10 @@ import { writeFile } from 'node:fs/promises';
 
 // Read-only, disposable CI comparison. Never fetch a hosted/customer origin.
 const variants = [
-  { name: 'baseline-repeat', origin: 'http://web-test:3000', fresh: false },
-  { name: 'long-keepalive-repeat', origin: 'http://iere-navigation-keepalive:3000', fresh: false },
-  { name: 'baseline-fresh-page', origin: 'http://web-test:3000', fresh: true },
+  { name: 'legacy-repeat', origin: 'http://web-test:3000', fresh: false, modern: false },
+  { name: 'modern-repeat', origin: 'http://web-test:3000', fresh: false, modern: true },
+  { name: 'legacy-fresh-page', origin: 'http://web-test:3000', fresh: true, modern: false },
+  { name: 'modern-fresh-page', origin: 'http://web-test:3000', fresh: true, modern: true },
 ];
 const browser = await chromium.launch();
 const rows = [];
@@ -24,8 +25,14 @@ try {
         const cdp = await context.newCDPSession(page);
         await cdp.send('Network.enable');
         await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
-        await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 150,
-          downloadThroughput: 200000, uploadThroughput: 93750 });
+        const conditions = { latency: 150, downloadThroughput: 200000, uploadThroughput: 93750 };
+        if (variant.modern) {
+          const rules = await cdp.send('Network.emulateNetworkConditionsByRule', {
+            matchedNetworkConditions: [{ urlPattern: '', ...conditions }],
+          });
+          if (rules.ruleIds.length !== 1) throw new Error('Network emulation rule missing');
+          await cdp.send('Network.overrideNetworkState', { offline: false, ...conditions });
+        } else await cdp.send('Network.emulateNetworkConditions', { offline: false, ...conditions });
         await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
         cdp.on('Network.responseReceived', event => {
           if (event.type === 'Document') documentNetwork = { timing: event.response.timing,

@@ -134,11 +134,9 @@ jobs:
       - name: Local browser delivery measurements
         run: docker compose --profile test run --rm -v "${{ github.workspace }}/test-results:/app/test-results" accessibility bun run test:performance
 
-      - name: Diagnose repeat-navigation connection delay (disposable read-only comparison)
+      - name: Compare legacy and current browser network emulation (disposable read-only)
         if: always()
         run: |
-          docker compose --profile test run -d --no-deps --name iere-navigation-keepalive -e KEEP_ALIVE_TIMEOUT=65000 web-test
-          trap 'docker rm -f iere-navigation-keepalive >/dev/null 2>&1 || true' EXIT
           docker compose --profile test run --rm -v "${{ github.workspace }}/test-results:/app/test-results" accessibility node scripts/diagnose-local-navigation.mjs
 
       - name: Evaluate candidate local performance budgets (not field CWV)

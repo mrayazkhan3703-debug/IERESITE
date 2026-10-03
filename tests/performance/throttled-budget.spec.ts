@@ -27,8 +27,10 @@ for (const profile of profiles) for (const route of profile.routes) {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Network.enable");
     await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
-    await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: profile.latency,
-      downloadThroughput: profile.download, uploadThroughput: profile.upload });
+    const networkConditions = { latency: profile.latency, downloadThroughput: profile.download, uploadThroughput: profile.upload };
+    const rules = await cdp.send("Network.emulateNetworkConditionsByRule", { matchedNetworkConditions: [{ urlPattern: "", ...networkConditions }] });
+    expect(rules.ruleIds).toHaveLength(1);
+    await cdp.send("Network.overrideNetworkState", { offline: false, ...networkConditions });
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: profile.cpu });
     await page.addInitScript(() => {
       const metrics: BudgetCapture = { lcpMs: null, cls: 0, longTaskMs: 0, lcpElement: null, shifts: [] };
@@ -128,6 +130,7 @@ for (const profile of profiles) for (const route of profile.routes) {
         return { key, limit, measured, status: measured === null ? "NOT_APPLICABLE" : measured <= limit ? "PASS" : "FAIL" };
       });
       const report = { route, profile, capturedAtUtc: new Date().toISOString(), budgets, metrics, samples, assessments,
+        networkEmulation: "Network.emulateNetworkConditionsByRule+Network.overrideNetworkState",
         status: assessments.some((a) => a.status === "FAIL") ? "FAIL" : "PASS", policy: "CANDIDATE_LOCAL_NOT_APPROVED",
         scope: "Pinned Chromium, 3 repeat navigations per case, HTTP cache disabled, CDP CPU/network throttling, 3s post-idle window. Synthetic two-frame pointer response, NOT INP/field CWV. External map origins blocked.",
         blockedOrigins: [...blockedExternalOrigins].sort() };
