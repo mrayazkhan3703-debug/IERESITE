@@ -107,6 +107,9 @@ jobs:
       - name: Active worker container shutdown and retry
         run: node scripts/verify-worker-container-shutdown.mjs
 
+      - name: Railway supervised worker container shutdown and retry
+        run: node scripts/verify-worker-container-shutdown.mjs --supervised
+
       - name: Local alert SMTP delivery and recovery (disposable Mailpit)
         run: docker compose --profile monitor-test run --build --rm monitor-test
 

@@ -10,6 +10,7 @@ import { uploadExistingBackup, validateConfig, validateReceipt, assessReceipt } 
 import { validateHostedSource } from "./backup-hosted.mjs";
 
 const fail = code => { throw new Error(code); };
+export const SAFE_BACKUP_ERROR_CODES = new Set(["RECOVERY_GATE_REQUIRED", "STORAGE_CAP_REACHED", "REFERENCED_OBJECT_MISSING", "OBJECT_CAPTURE_INCOMPLETE", "LATEST_RECEIPT_MISMATCH", "SOURCE_EXTENSIONS_MISSING", "UNSUPPORTED_MEDIA_KEY", "SOURCE_CA_REQUIRED", "INVALID_HOSTED_SOURCE", "PUBLIC_RECIPIENT_REQUIRED", "STORAGE_CAP_REQUIRED", "BACKUP_CREDENTIALS_REQUIRED", "SEPARATE_BACKUP_BUCKET_REQUIRED", "HOSTED_TOOL_FAILED", "MEDIA_BOUND_EXCEEDED", "INVALID_BACKUP_RECEIPT"]);
 export function railwayBackupConfiguration(env) {
   const source = validateHostedSource({ format: 1, sourceId: env.BACKUP_SOURCE_ID,
     databaseUrl: env.BACKUP_DATABASE_URL, databaseTransport: env.BACKUP_DATABASE_TRANSPORT,
@@ -109,8 +110,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.log(JSON.stringify(result));
     if (["STALE_RECEIPT", "BACKUP_MISSING"].includes(result.status)) process.exitCode = 1;
   }).catch(error => {
-    const allowed = new Set(["RECOVERY_GATE_REQUIRED", "STORAGE_CAP_REACHED", "REFERENCED_OBJECT_MISSING", "OBJECT_CAPTURE_INCOMPLETE", "LATEST_RECEIPT_MISMATCH", "SOURCE_EXTENSIONS_MISSING", "UNSUPPORTED_MEDIA_KEY", "SOURCE_CA_REQUIRED", "INVALID_HOSTED_SOURCE", "PUBLIC_RECIPIENT_REQUIRED", "STORAGE_CAP_REQUIRED", "BACKUP_CREDENTIALS_REQUIRED", "SEPARATE_BACKUP_BUCKET_REQUIRED", "HOSTED_TOOL_FAILED", "MEDIA_BOUND_EXCEEDED", "INVALID_BACKUP_RECEIPT"]);
-    console.error(JSON.stringify({ status: "BACKUP_FAILED", code: allowed.has(error.message) ? error.message : "REDACTED_FAILURE" })); process.exitCode = 1;
+    console.error(JSON.stringify({ status: "BACKUP_FAILED", code: SAFE_BACKUP_ERROR_CODES.has(error.message) ? error.message : "REDACTED_FAILURE" })); process.exitCode = 1;
   })
     .finally(() => clearTimeout(deadline));
 }

@@ -97,7 +97,8 @@ export async function captureReferencedObjects(store, bucket, references, direct
 }
 export async function hostedTool(program, args, env = {}) {
   return new Promise((done, reject) => {
-    const proc = spawn(program, args, { shell: false, stdio: ["ignore", "ignore", "ignore"], env: { PATH: process.env.PATH, LANG: "C.UTF-8", ...env } });
+    const proc = spawn(program, args, { shell: false, stdio: ["ignore", "ignore", "ignore"], env: { PATH: process.env.PATH, LANG: "C.UTF-8",
+      ...(process.env.LD_LIBRARY_PATH === "/opt/iere-postgres/lib" ? { LD_LIBRARY_PATH: "/opt/iere-postgres/lib" } : {}), ...env } });
     const timer = setTimeout(() => proc.kill("SIGKILL"), 15 * 60_000);
     proc.once("error", () => { clearTimeout(timer); reject(new Error("HOSTED_TOOL_FAILED")); });
     proc.once("close", code => { clearTimeout(timer); if (code === 0) done(); else reject(new Error("HOSTED_TOOL_FAILED")); });

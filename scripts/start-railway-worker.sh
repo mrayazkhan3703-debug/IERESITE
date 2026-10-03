@@ -10,4 +10,4 @@ if [ "${STAGING_WEB_ONLY:-}" != "false" ] || [ "${JOB_SCHEDULER_ENABLED:-}" != "
   exit 1
 fi
 bun run db:migrate:deploy
-exec bun run worker
+exec bun --no-env-file scripts/railway-worker-supervisor.mjs

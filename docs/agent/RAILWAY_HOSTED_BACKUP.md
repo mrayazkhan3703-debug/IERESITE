@@ -1,8 +1,18 @@
 # Railway hosted backup and recovery
 
-Status on 2026-10-03: implementation under verification. No actual Railway snapshot, encrypted roundtrip, independent schedule, or achieved recovery objective is claimed.
+Status on 2026-10-03: the owner requested necessary work only, retaining CRM/company SMTP deferral. A supervised backup child is under verification alongside the existing Railway Worker. No actual Railway snapshot, encrypted roundtrip, hosted schedule, or achieved recovery objective is claimed by the candidate.
 
 Live provisioning on 2026-10-03 was rejected with "Free plan resource provision limit exceeded" when creating `Encrypted-backup`. No new service exists. Five existing services remain operational. Do not remove or repurpose database/media/worker/email services automatically to bypass the cap, and do not claim independent scheduled protection. Purchasing remains the owner's action.
+
+## Existing Worker option
+
+The optional `RAILWAY_BACKUP_MODE` is `off` by default. `capture` runs one encrypted capture alongside the application's unchanged worker scheduler; it does not create or replace a service. `scheduled` runs immediately and every 30 minutes, refuses overlap and retains the same actual-source recovery/owner-key-copy gates as the separate runner. Enable scheduling only after downloading/decrypting/restoring an actual Railway capture. The private age key is never configured on Railway.
+
+`start-railway-worker.sh` still deploys forward migrations, then executes `railway-worker-supervisor.mjs`. The normal worker child receives application variables without backup destination keys. The backup child receives only an explicit backup variable allowlist, PATH, a fixed PostgreSQL-library path and an owned private temporary directory. Runtime PostgreSQL 16 clients and age 1.3.2 are built from pinned sources. Missing dependencies are checked using a real disposable database dump in CI. Neither child exposes backup credentials through a browser API.
+
+The supervisor caps captures at 25 minutes, stops the owned process group (including pg_dump/age/tar descendants), and removes interrupted plaintext/credential files from its validated temporary directory. Raw subprocess output is withheld; only validated success fields and an explicit error-code allowlist enter logs. Startup/configuration failures, overlapping attempts, stale prior receipts, interrupted captures and cleanup failures remain visible. Backup failure leaves the application scheduler running. Existing public and worker configuration stays unchanged; no demo seeding or database reset is introduced.
+
+This option runs independently of the owner's Windows computer but shares the Railway Worker's service lifecycle and resource budget. It is not an independently provisioned runner and does not prove continuous cadence or incident RPO/RTO. Keep backup receipt-age reporting and observe successive actual captures. Do not increase the reviewed whole-bucket cap or enable automatic deletion to hide capacity failures. A separate runner can be considered later when resource limits permit.
 
 ## Service configuration
 
