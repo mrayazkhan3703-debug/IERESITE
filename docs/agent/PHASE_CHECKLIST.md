@@ -8,8 +8,9 @@
 - [x] Keep dedicated Worker running; disable unverified automatic releases.
 - [x] Copy temporary storage objects into an isolated R2 namespace and verify hashes.
 - [ ] Refresh and reconcile every referenced object, then switch Web/Worker delivery to R2.
-- [ ] Release durable import preview/commit, templates, demo filter and reviewed archival after exact gates pass.
-- [x] Implement source/organization isolation, CSV/JSON selection and shared publication-eligibility preview; exact commit `61b2bf0` passes full CI `37116068223`. Live release remains pending browser recovery.
+- [x] Release durable import preview/commit, templates, demo filter and reviewed archival after exact gates pass; `61b2bf0` is live on Web/Worker. Live HTTP/API checks pass; no demo cleanup was committed.
+- [x] Implement source/organization isolation, CSV/JSON selection and shared publication-eligibility preview; exact commit `61b2bf0` passes full CI `37116068223` and deployed successfully.
+- [ ] Release and run owner-only complete media/import reference reconciliation before R2 delivery cutover.
 - [x] Reconcile all 46 public media entries against copied objects or bundled static assets; remove two confirmed unused verification PDFs through audited APIs. Full private/retained reference capture remains pending.
 - [ ] Finish column mapping and missing bulk content adapters.
 - [ ] Complete ten clean actual Mercury turns and approved company-document citations/freshness.

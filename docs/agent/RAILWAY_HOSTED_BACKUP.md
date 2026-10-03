@@ -2,6 +2,8 @@
 
 Status on 2026-10-03: implementation under verification. No actual Railway snapshot, encrypted roundtrip, independent schedule, or achieved recovery objective is claimed.
 
+Live provisioning on 2026-10-03 was rejected with "Free plan resource provision limit exceeded" when creating `Encrypted-backup`. No new service exists. Five existing services remain operational. Do not remove or repurpose database/media/worker/email services automatically to bypass the cap, and do not claim independent scheduled protection. Purchasing remains the owner's action.
+
 ## Service configuration
 
 ### Temporary migration safeguard
