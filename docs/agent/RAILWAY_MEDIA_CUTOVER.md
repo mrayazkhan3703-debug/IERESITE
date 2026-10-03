@@ -25,10 +25,16 @@ Configure both services to the approved R2 endpoint, media bucket, region `auto`
 
 After both deployments succeed, verify full-byte original and derivative delivery against the copied SHA-256 hashes. Check bundled images, video ranges and protected document denial as well as authenticated reads. Check retained private import snapshots through the existing worker/import workflow. Verify revision parity, worker heartbeat and preservation of all original people/property identities.
 
-If verification fails while writes remain paused, restore the exact previous storage configuration and deploy it on both services. Keep both copies and receipts. If any new R2 upload has been accepted, do not roll back to the stale source without reconciling those new bytes first.
+If verification fails while writes remain paused, deploy the protected, verified source configuration on both services. The source's authenticated public endpoint was byte-verified; masked connector variables prevent claiming recovery of the previous private endpoint's exact configuration. No callable atomic Railway rollback was available. Keep both copies and receipts. If any new R2 upload has been accepted, do not return to the stale source without reconciling those new bytes first.
 
 After verification, disable the pause on both services and verify a clearly identified, unattached technical upload through the existing secure pipeline. It must appear in Media Library and survive reload/delivery. Retain it for recovery acceptance; do not publish synthetic property facts. Confirm source and destination bucket privacy with anonymous requests.
 
 ## Recovery and launch
 
 Keep the temporary service until an actual Railway database/R2 encrypted backup has been restored successfully. Independent scheduled capture currently requires additional available infrastructure; the free-plan service cap blocked provisioning. Customer email, approved company facts, ten clean actual Advisor turns and owner-reviewed demo cleanup remain separate launch gates. This cutover does not certify them.
+
+## Observed 2026-10-03 cutover
+
+Exact CI 37125345657 passed release 9802eaa. Both source writers paused on that revision and old replicas stopped. The final full-byte copy contains 56 objects, 24,419,947 bytes, zero missing/size/hash issues and stable reference inventories. Paused HTTP upload/nonexistent deletion returned 503 with the maintenance code; reads remained available. R2 deployments passed 88 delivery checks. Both writers reopened on R2; a new labelled unattached technical JPEG passed direct R2 readback and duplicate reuse. The Worker processed an invalid private preview without canonical changes. All 27 people and 23 properties, and every pre-existing media identity/hash, were preserved.
+
+Evidence is under test-results/railway-r2-final-paused-copy-20261003.json, railway-paused-final-reconciliation-20261003.json, railway-r2-delivery-20261003.json, railway-r2-new-upload-20261003.json, railway-r2-private-worker-preview-20261003.json and railway-records-after-r2-cutover-20261003.json. Unsigned S3 rejected missing authorization (400 InvalidArgument/Authorization); r2.dev/custom-domain policy inspection is still required. Full database recovery remains unverified.
