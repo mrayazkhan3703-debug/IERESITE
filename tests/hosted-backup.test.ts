@@ -5,7 +5,7 @@ import { mkdtemp, rm, readFile, mkdir, writeFile, symlink } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateHostedSource, mediaObjectReferences, importObjectReferences, captureReferencedObjects, captureHosted } from "../scripts/backup-hosted.mjs";
-import { validateHostedInventory, validateHostedArchive, verifyHostedObjects, restoreStaticMedia } from "../scripts/hosted-restore-checks.mjs";
+import { validateHostedInventory, validateHostedArchive, verifyHostedObjects, restoreStaticMedia, recoveryDeliverySamples, isolatedRestoreDocumentUrl } from "../scripts/hosted-restore-checks.mjs";
 import { databaseTransport } from "../scripts/backup-source-policy.mjs";
 import { validateBackupScope } from "../scripts/backup-adapter.mjs";
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
@@ -16,6 +16,26 @@ const asset = () => ({ id: "fixture", storageKey: "public/media/fixture.png", ki
 const inventory = () => ({ format: 1, sourceId: "supabase-fixture", counts: { Property: "1" }, migrations: [{ migration_name: "20261001_fixture", checksum: "a".repeat(64) }],
   extensions: ["pg_trgm", "postgis", "vector"].map(extname => ({ extname, extversion: "1" })), objects: [{ assetId: "fixture", key: "public/media/fixture.png",
     file: "objects/" + hash("fixture"), bytes: 7, sha256: hash("fixture"), mimeType: "image/png", private: false, variant: null }] });
+
+test("delivery acceptance uses an existing gated or owned private PDF association", () => {
+  const value = { objects: [inventory().objects[0], { ...inventory().objects[0], assetId: "video", mimeType: "video/mp4" },
+    { ...inventory().objects[0], assetId: "private-pdf", mimeType: "application/pdf", private: true },
+    { ...inventory().objects[0], assetId: "gated-pdf", mimeType: "application/pdf" }] };
+  const portfolio = { id: "document", userId: "fixture-owner", mediaId: "private-pdf" };
+  expect(recoveryDeliverySamples(value, { mediaId: "gated-pdf" }, portfolio).protectedDocument.mode).toBe("gated");
+  expect(recoveryDeliverySamples(value, undefined, portfolio).protectedDocument.mode).toBe("portfolio");
+  for (const candidate of [undefined, { ...portfolio, userId: undefined }, { ...portfolio, mediaId: "gated-pdf" }, { ...portfolio, mediaId: "absent" }])
+    expect(() => recoveryDeliverySamples(value, undefined, candidate)).toThrow("DELIVERY_FIXTURES_MISSING");
+  expect(() => recoveryDeliverySamples({ objects: value.objects.filter(row => row.mimeType !== "video/mp4") }, undefined, portfolio)).toThrow();
+});
+
+test("restored private document downloads cannot follow a hosted or unexpected URL", () => {
+  expect(isolatedRestoreDocumentUrl("http://restored-objects:8333/iere-restored/private/portfolio/fixture.pdf?fixture=signed").hostname).toBe("restored-objects");
+  for (const url of ["https://restored-objects:8333/iere-restored/private/test.pdf", "http://outside.invalid:8333/iere-restored/private/test.pdf",
+    "http://restored-objects:8333/another/private/test.pdf", "http://restored-objects:8333/iere-restored/public/test.pdf",
+    "http://fixture@restored-objects:8333/iere-restored/private/test.pdf", "http://restored-objects:8333/iere-restored/private/test.pdf#secret", "not-a-url"])
+    expect(() => isolatedRestoreDocumentUrl(url)).toThrow("RESTORE_DOCUMENT_URL_OUTSIDE_ISOLATION");
+});
 async function scratch(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), "iere-hosted-fixture-"));
   try { await run(dir); } finally { await rm(dir, { recursive: true, force: true }); }
