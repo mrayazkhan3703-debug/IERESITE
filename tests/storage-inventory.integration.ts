@@ -32,6 +32,7 @@ test("owner inventory includes retained media without disclosing credentials and
   expect(body.backupAcceptance).toBe("NOT_VERIFIED");
   const privateRecord = body.media.find((row: { id: string }) => row.id === prefix);
   expect(privateRecord.isPrivate).toBe(true);
-  expect(Object.keys(privateRecord).sort()).toEqual(["checksum", "id", "isPrivate", "kind", "mimeType", "sizeBytes", "storageKey", "variantsJson"]);
+  expect(Object.keys(privateRecord).sort()).toEqual(["checksum", "id", "isPrivate", "kind", "mimeType", "sizeBytes", "storageChecksum", "storageKey", "variantsJson"]);
+  expect(body.checksumMeaning).toContain("before image sanitization");
   expect(JSON.stringify(body)).not.toContain("ACCESS_KEY");
 });

@@ -909,6 +909,7 @@ model MediaAsset {
   posterFor     MediaAsset[] @relation("VideoPoster")
   variantsJson String? // JSON {thumb, card, hero, webp...}
   checksum     String?
+  storageChecksum String? @db.VarChar(64) // SHA-256 of stored bytes; checksum retains source-file duplicate identity
   exifStripped Boolean  @default(true)
   isPrivate    Boolean  @default(false)
   uploadedBy   String?

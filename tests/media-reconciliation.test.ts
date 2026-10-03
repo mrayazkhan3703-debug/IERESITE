@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { reconcileMediaInventory } from "../scripts/reconcile-media-inventory.mjs";
+import { reconcileMediaInventory, storedOriginalChecksum } from "../scripts/reconcile-media-inventory.mjs";
 const key = "public/media/fixture.jpg", snapshotRef = `private/imports/${"a".repeat(24)}/${"b".repeat(64)}.csv`;
 const inventory = () => ({ capturedAtUtc: new Date().toISOString(), media: [
-  { id: "image", storageKey: key, mimeType: "image/jpeg", isPrivate: false, sizeBytes: 7, checksum: "a".repeat(64), variantsJson: '{"thumb":{}}' },
+  { id: "image", storageKey: key, mimeType: "image/jpeg", isPrivate: false, sizeBytes: 7, checksum: "b".repeat(64), storageChecksum: "a".repeat(64) as string | null, variantsJson: '{"thumb":{}}' },
   { id: "document", storageKey: "private/portfolio/fixture.pdf", mimeType: "application/pdf", isPrivate: true, sizeBytes: 9, variantsJson: null },
   { id: "bundled", storageKey: "static/images/team/fixture.jpg", mimeType: "image/jpeg", isPrivate: false, sizeBytes: 8, variantsJson: null },
 ], imports: [{ snapshotRef }] });
@@ -31,4 +31,14 @@ test("partial, duplicate and unverified copy receipts are refused", () => {
   expect(() => reconcileMediaInventory(inventory(), unverified)).toThrow("INVALID_VERIFIED_COPY");
   const wrongNamespace = copy(); wrongNamespace.objects[0].destinationKey = `another-company/${key}`;
   expect(() => reconcileMediaInventory(inventory(), wrongNamespace)).toThrow("INVALID_VERIFIED_COPY");
+});
+
+test("legacy image source hashes are preserved without pretending they identify sanitized storage bytes", () => {
+  const legacy = inventory(); legacy.media[0].storageChecksum = null;
+  const result = reconcileMediaInventory(legacy, copy());
+  expect(result.status).toBe("PASS_COPIED_REFERENCES");
+  expect(result.legacyImagesWithoutStoredChecksum).toBe(1);
+  expect(legacy.media[0].checksum).toBe("b".repeat(64));
+  expect(storedOriginalChecksum(legacy.media[0])).toBeNull();
+  expect(storedOriginalChecksum({ mimeType: "application/pdf", checksum: "c".repeat(64) })).toBe("c".repeat(64));
 });

@@ -62,6 +62,23 @@ test("capture reads the physical namespace but retains logical media and private
   });
 });
 
+test("capture validates recorded stored bytes while preserving legacy image source hashes", async () => {
+  const store = { send: async () => ({ Body: Readable.from([Buffer.from("fixture")]), ContentLength: 7 }) };
+  await scratch(async dir => {
+    const captured = await captureReferencedObjects(store, "fixture", mediaObjectReferences([{ ...asset(), sizeBytes: 7, checksum: "b".repeat(64), storageChecksum: hash("fixture") }]), dir);
+    expect(captured.objects[0].sha256).toBe(hash("fixture"));
+  });
+  await scratch(async dir => {
+    await expect(captureReferencedObjects(store, "fixture", mediaObjectReferences([{ ...asset(), sizeBytes: 7, storageChecksum: "b".repeat(64) }]), dir)).rejects.toThrow("STORED_MEDIA_CHECKSUM_MISMATCH");
+  });
+  await scratch(async dir => {
+    await expect(captureReferencedObjects(store, "fixture", mediaObjectReferences([{ ...asset(), sizeBytes: 8 }]), dir)).rejects.toThrow("STORED_MEDIA_SIZE_MISMATCH");
+  });
+  await scratch(async dir => {
+    expect((await captureReferencedObjects(store, "fixture", mediaObjectReferences([{ ...asset(), sizeBytes: 7, checksum: "b".repeat(64) }]), dir)).objects).toHaveLength(1);
+  });
+});
+
 test("bundled static images are captured and restored without being treated as R2 objects", async () => {
   await scratch(async dir => {
     const bundle = join(dir, "public"), capture = join(dir, "capture"), restored = join(dir, "restored");

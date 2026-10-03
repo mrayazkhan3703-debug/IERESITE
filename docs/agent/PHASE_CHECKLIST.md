@@ -10,8 +10,10 @@
 - [ ] Refresh and reconcile every referenced object, then switch Web/Worker delivery to R2.
 - [x] Release durable import preview/commit, templates, demo filter and reviewed archival after exact gates pass; `61b2bf0` is live on Web/Worker. Live HTTP/API checks pass; no demo cleanup was committed.
 - [x] Implement source/organization isolation, CSV/JSON selection and shared publication-eligibility preview; exact commit `61b2bf0` passes full CI `37116068223` and deployed successfully.
-- [ ] Release and run owner-only complete media/import reference reconciliation before R2 delivery cutover.
-- [x] Reconcile all 46 public media entries against copied objects or bundled static assets; remove two confirmed unused verification PDFs through audited APIs. Full private/retained reference capture remains pending.
+- [x] Release and run owner-only complete media/import reference inventory; exact `6a8b171` passed CI `37119372113` and is live on both services. Stored/source image hash correction is a separate candidate.
+- [x] Reconcile the original 46 public media entries against copied objects or bundled static assets; remove two confirmed unused verification PDFs through audited APIs. Complete reference inventory is now observed below; an actual database backup remains pending.
+- [x] Inspect all 48 current asset references including one private asset; verify all 56 copied objects and 88 public/static/range/private-denial delivery checks. One unattached technical video is retained for recovery; company records remain preserved.
+- [ ] Release stored-file checksum correction and temporary storage mutation pause, then perform final refresh and R2 delivery cutover.
 - [ ] Finish column mapping and missing bulk content adapters.
 - [ ] Complete ten clean actual Mercury turns and approved company-document citations/freshness.
 - [ ] Capture/restore an actual Railway encrypted backup; enable independent hosted scheduling.

@@ -96,6 +96,7 @@ const schema = z.object({
   WORKER_HEALTH_PORT: int(3001),
   REDIS_URL: z.string().url().optional(),
   STORAGE_PROVIDER: z.enum(["local", "s3"]).default("local"),
+  STORAGE_MUTATIONS_PAUSED: bool(false),
   S3_ENDPOINT: z.string().url().optional(),
   S3_PUBLIC_ENDPOINT: z.string().url().optional(),
   S3_REGION: z.string().default("us-east-1"),

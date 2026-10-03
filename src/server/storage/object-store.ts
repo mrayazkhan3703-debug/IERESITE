@@ -2,6 +2,7 @@ import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } fro
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig } from "@/lib/config";
 import { namespacedObjectKey } from "./namespace";
+import { requireStorageWrites } from "./mutation-policy";
 
 function client(endpoint: string): S3Client {
   const config = getConfig();
@@ -28,6 +29,7 @@ function storageConfig() {
 }
 
 export async function putPrivateObject(input: { key: string; body: Buffer; contentType: string }): Promise<void> {
+  requireStorageWrites();
   const config = storageConfig();
   await client(config.S3_ENDPOINT!).send(new PutObjectCommand({
     Bucket: config.S3_BUCKET,
@@ -40,6 +42,7 @@ export async function putPrivateObject(input: { key: string; body: Buffer; conte
 
 /** Public media is served through an application route, never a public bucket ACL. */
 export async function putPublicObject(input: { key: string; body: Buffer; contentType: string }): Promise<void> {
+  requireStorageWrites();
   const config = storageConfig();
   await client(config.S3_ENDPOINT!).send(new PutObjectCommand({
     Bucket: config.S3_BUCKET,
@@ -75,11 +78,13 @@ export async function* getPrivateObjectStream(key: string): AsyncGenerator<Uint8
 }
 
 export async function deletePublicObject(key: string): Promise<void> {
+  requireStorageWrites();
   const config = storageConfig();
   await client(config.S3_ENDPOINT!).send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: namespacedObjectKey(config.S3_KEY_PREFIX, key) }));
 }
 
 export async function deletePrivateObject(key: string): Promise<void> {
+  requireStorageWrites();
   const config = storageConfig();
   await client(config.S3_ENDPOINT!).send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: namespacedObjectKey(config.S3_KEY_PREFIX, key) }));
 }

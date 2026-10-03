@@ -5,6 +5,13 @@ import { mediaObjectReferences, importObjectReferences } from "./backup-hosted.m
 import { staticMediaKey } from "./backup-source-policy.mjs";
 
 const fail = code => { throw new Error(code); };
+// Images are sanitized before storage. Their legacy source hash must never be
+// reclassified as a stored hash or overwritten just to make a cutover pass.
+export function storedOriginalChecksum(asset) {
+  if (/^[a-f0-9]{64}$/.test(asset?.storageChecksum ?? "")) return asset.storageChecksum;
+  if (!asset?.mimeType?.startsWith("image/") && /^[a-f0-9]{64}$/.test(asset?.checksum ?? "")) return asset.checksum;
+  return null;
+}
 export function reconcileMediaInventory(inventory, copy) {
   if (!Array.isArray(inventory?.media) || !Array.isArray(inventory?.imports) ||
     !Number.isFinite(Date.parse(inventory.capturedAtUtc)) || copy?.complete !== true || copy?.copied !== true ||
@@ -26,7 +33,7 @@ export function reconcileMediaInventory(inventory, copy) {
     if (!copied) issues.push({ assetId: ref.assetId, key: ref.key, reason: "REFERENCED_OBJECT_NOT_COPIED" });
     else if (!ref.variant && Number.isSafeInteger(assets.get(ref.assetId)?.sizeBytes) && copied.bytes !== assets.get(ref.assetId).sizeBytes) {
       issues.push({ assetId: ref.assetId, key: ref.key, reason: "ORIGINAL_SIZE_MISMATCH" });
-    } else if (!ref.variant && /^[a-f0-9]{64}$/.test(assets.get(ref.assetId)?.checksum ?? "") && copied.sha256 !== assets.get(ref.assetId).checksum) {
+    } else if (!ref.variant && storedOriginalChecksum(assets.get(ref.assetId)) && copied.sha256 !== storedOriginalChecksum(assets.get(ref.assetId))) {
       issues.push({ assetId: ref.assetId, key: ref.key, reason: "ORIGINAL_CHECKSUM_MISMATCH" });
     }
   }
@@ -36,6 +43,8 @@ export function reconcileMediaInventory(inventory, copy) {
     mediaAssets: inventory.media.length, privateMediaAssets: inventory.media.filter(row => row.isPrivate).length,
     retainedImportSnapshots: inventory.imports.length, objectReferences: references.length - staticReferences,
     staticReferences, staticVerification: "RELEASE_BUNDLE_AND_RECOVERY_REQUIRED", issues,
+    legacyImagesWithoutStoredChecksum: inventory.media.filter(asset => !staticMediaKey(asset.storageKey) && asset.mimeType?.startsWith("image/") && !storedOriginalChecksum(asset)).length,
+    checksumScope: "Source upload hashes are preserved. Legacy sanitized images are verified by source-to-destination full-byte SHA-256 equality and recorded size; prior stored-file baseline hashes were not recorded.",
     unreferencedCopiedObjects: copy.objects.filter(row => !referencedKeys.has(row.key)).length,
     deletionEnabled: false, backupAcceptance: "NOT_VERIFIED", consistency: "Snapshot reference inventory compared with full-byte verified copy. Refresh before cutover; no writes or backup claim." };
 }

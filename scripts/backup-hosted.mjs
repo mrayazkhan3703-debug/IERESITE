@@ -35,7 +35,13 @@ export function mediaObjectReferences(assets) {
     if (typeof asset.id !== "string" || (!/^(public\/media|private\/portfolio)\/[A-Za-z0-9._/-]+$/.test(asset.storageKey ?? "") && !staticMediaKey(asset.storageKey)) ||
         asset.storageKey.split("/").some(x => !x || x === "." || x === "..")) fail("UNSUPPORTED_MEDIA_KEY");
     if (staticMediaKey(asset.storageKey) && (asset.isPrivate || !asset.mimeType?.startsWith("image/"))) fail("UNSUPPORTED_STATIC_MEDIA");
-    references.push({ assetId: asset.id, key: asset.storageKey, kind: asset.kind, mimeType: asset.mimeType, private: asset.isPrivate, variant: null });
+    const original = { assetId: asset.id, key: asset.storageKey, kind: asset.kind, mimeType: asset.mimeType, private: asset.isPrivate, variant: null };
+    if (!staticMediaKey(asset.storageKey)) {
+      if (Number.isSafeInteger(asset.sizeBytes) && asset.sizeBytes > 0) original.expectedBytes = asset.sizeBytes;
+      if (/^[a-f0-9]{64}$/.test(asset.storageChecksum ?? "")) original.expectedSha256 = asset.storageChecksum;
+      else if (!asset.mimeType?.startsWith("image/") && /^[a-f0-9]{64}$/.test(asset.checksum ?? "")) original.expectedSha256 = asset.checksum;
+    }
+    references.push(original);
     const variants = asset.variantsJson ? JSON.parse(asset.variantsJson) : {};
     if (!variants || typeof variants !== "object" || Array.isArray(variants)) fail("INVALID_VARIANTS");
     for (const name of Object.keys(variants)) {
@@ -81,6 +87,8 @@ export async function captureReferencedObjects(store, bucket, references, direct
     finally { response.Body.destroy?.(); }
     if (!bytes || (response.ContentLength !== undefined && bytes !== response.ContentLength)) fail("OBJECT_CAPTURE_INCOMPLETE");
     const sha256 = hash.digest("hex"), file = `objects/${sha256}`;
+    if (ref.expectedBytes && bytes !== ref.expectedBytes) fail("STORED_MEDIA_SIZE_MISMATCH");
+    if (ref.expectedSha256 && sha256 !== ref.expectedSha256) fail("STORED_MEDIA_CHECKSUM_MISMATCH");
     const target = resolve(directory, file);
     try { await lstat(target); await unlink(pending); } catch (error) { if (error.code !== "ENOENT") throw error; await rename(pending, target); }
     index.push({ ...ref, file, bytes, sha256 });
@@ -119,7 +127,8 @@ export async function captureHosted({ source, directory, staticRoot, fixture = f
     await reserved.unsafe("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     await reserved.unsafe("SET LOCAL statement_timeout = '120s'");
     const [snapshot] = await reserved.unsafe("SELECT pg_export_snapshot() AS snapshot, current_setting('server_version_num') AS version");
-    const assets = await reserved.unsafe('SELECT id, "storageKey", kind, "mimeType", "isPrivate", "variantsJson" FROM public."MediaAsset" ORDER BY id LIMIT 20001');
+    // JSON extraction remains compatible with hosted schemas before the additive stored-hash migration.
+    const assets = await reserved.unsafe('SELECT id, "storageKey", kind, "mimeType", "isPrivate", "variantsJson", "sizeBytes", checksum, to_jsonb(m)->>\'storageChecksum\' AS "storageChecksum" FROM public."MediaAsset" m ORDER BY id LIMIT 20001');
     const imports = await reserved.unsafe('SELECT DISTINCT "snapshotRef" FROM public."ImportRun" WHERE "snapshotRef" IS NOT NULL ORDER BY "snapshotRef" LIMIT 10001');
     const tables = await reserved.unsafe("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename");
     if (tables.length > 500) fail("DATABASE_BOUND_EXCEEDED");

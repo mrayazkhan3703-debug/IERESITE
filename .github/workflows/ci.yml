@@ -122,6 +122,12 @@ jobs:
       - name: Seed deterministic browser fixtures
         run: docker compose exec -T web bun run seed
 
+      - name: Storage cutover pause HTTP checks (disposable only)
+        run: |
+          docker compose run -d --no-deps --name iere-storage-paused-verification -e STORAGE_MUTATIONS_PAUSED=true web
+          trap 'docker rm -f iere-storage-paused-verification >/dev/null 2>&1 || true' EXIT
+          docker exec iere-storage-paused-verification bun scripts/check-paused-storage.mjs
+
       - name: Browser accessibility and responsive-image smoke
         run: docker compose --profile test run --build --rm -v "${{ github.workspace }}/test-results:/app/test-results" accessibility
 
