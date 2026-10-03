@@ -1,6 +1,7 @@
 import { expect, test } from "../accessibility/fixtures";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { CDPSession } from "@playwright/test";
 
 // Candidate local regression policy, not approved field CWV/INP or a production SLO.
 const budgets = { lcpMs: 2_500, cls: 0.1, scriptBodyBytes: 512_000, interactionFrameMs: 200 };
@@ -23,53 +24,61 @@ test.use({ locale: "en-GB", timezoneId: "UTC", contextOptions: { reducedMotion: 
 for (const profile of profiles) for (const route of profile.routes) {
   test(`candidate throttled budget: ${route} ${profile.name}`, async ({ page, blockedExternalOrigins }, testInfo) => {
     test.setTimeout(120_000);
-    await page.setViewportSize({ width: profile.width, height: profile.height });
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Network.enable");
-    await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
-    const networkConditions = { latency: profile.latency, downloadThroughput: profile.download, uploadThroughput: profile.upload };
-    const rules = await cdp.send("Network.emulateNetworkConditionsByRule", { matchedNetworkConditions: [{ urlPattern: "", ...networkConditions }] });
-    expect(rules.ruleIds).toHaveLength(1);
-    await cdp.send("Network.overrideNetworkState", { offline: false, ...networkConditions });
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: profile.cpu });
-    await page.addInitScript(() => {
-      const metrics: BudgetCapture = { lcpMs: null, cls: 0, longTaskMs: 0, lcpElement: null, shifts: [] };
-      const summarize = (node: Node | null | undefined): ElementSummary => {
-        const el = node instanceof Element ? node : null;
-        const rect = el?.getBoundingClientRect();
-        return { tag: el?.tagName.toLowerCase() ?? "unknown",
-          region: el?.closest("[data-consent-banner]") ? "consent" : el?.closest("header") ? "header" :
-            el?.closest("footer") ? "footer" : el?.closest("#main-content") ? "main" : "outside-main",
-          width: Math.round(rect?.width ?? 0), height: Math.round(rect?.height ?? 0) };
-      };
-      window.__iereBudget = metrics;
-      let start = 0; let last = 0; let value = 0;
-      new PerformanceObserver((list) => { for (const e of list.getEntries()) {
-        metrics.lcpMs = e.startTime;
-        metrics.lcpElement = summarize((e as PerformanceEntry & { element?: Element }).element);
-      } })
-        .observe({ type: "largest-contentful-paint", buffered: true });
-      new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) {
-          const shift = e as PerformanceEntry & { hadRecentInput: boolean; value: number; sources?: { node?: Node; previousRect?: DOMRectReadOnly; currentRect?: DOMRectReadOnly }[] };
-          if (shift.hadRecentInput) continue;
-          if (metrics.shifts.length < 20) metrics.shifts.push({ atMs: shift.startTime, value: shift.value,
-            sources: (shift.sources ?? []).slice(0, 5).map((s) => {
-              const bounds = (rect?: DOMRectReadOnly) => rect ? { x: Math.round(rect.x), y: Math.round(rect.y),
-                width: Math.round(rect.width), height: Math.round(rect.height) } : undefined;
-              return { ...summarize(s.node), previous: bounds(s.previousRect), current: bounds(s.currentRect) };
-            }) });
-          if (shift.startTime - last < 1_000 && shift.startTime - start < 5_000) value += shift.value;
-          else { start = shift.startTime; value = shift.value; }
-          last = shift.startTime; metrics.cls = Math.max(metrics.cls, value);
-        }
-      }).observe({ type: "layout-shift", buffered: true });
-      new PerformanceObserver((list) => { for (const e of list.getEntries()) metrics.longTaskMs += e.duration; })
-        .observe({ type: "longtask", buffered: true });
-    });
+    const context = page.context();
+    // Independent cold samples: repeat navigation on the same emulated target
+    // retains a measured pre-request delay. Keep the context, cache policy,
+    // network/CPU limits and budgets identical; create a fresh target per sample.
+    await page.close();
     const samples = [];
+    let activeCdp: CDPSession | null = null;
     try {
       for (let sample = 1; sample <= 3; sample++) {
+        page = await context.newPage();
+        await page.setViewportSize({ width: profile.width, height: profile.height });
+        const cdp = await page.context().newCDPSession(page);
+        activeCdp = cdp;
+        await cdp.send("Network.enable");
+        await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
+        const networkConditions = { latency: profile.latency, downloadThroughput: profile.download, uploadThroughput: profile.upload };
+        const rules = await cdp.send("Network.emulateNetworkConditionsByRule", { matchedNetworkConditions: [{ urlPattern: "", ...networkConditions }] });
+        expect(rules.ruleIds).toHaveLength(1);
+        await cdp.send("Network.overrideNetworkState", { offline: false, ...networkConditions });
+        await cdp.send("Emulation.setCPUThrottlingRate", { rate: profile.cpu });
+        await page.addInitScript(() => {
+          const metrics: BudgetCapture = { lcpMs: null, cls: 0, longTaskMs: 0, lcpElement: null, shifts: [] };
+          const summarize = (node: Node | null | undefined): ElementSummary => {
+            const el = node instanceof Element ? node : null;
+            const rect = el?.getBoundingClientRect();
+            return { tag: el?.tagName.toLowerCase() ?? "unknown",
+              region: el?.closest("[data-consent-banner]") ? "consent" : el?.closest("header") ? "header" :
+                el?.closest("footer") ? "footer" : el?.closest("#main-content") ? "main" : "outside-main",
+              width: Math.round(rect?.width ?? 0), height: Math.round(rect?.height ?? 0) };
+          };
+          window.__iereBudget = metrics;
+          let start = 0; let last = 0; let value = 0;
+          new PerformanceObserver((list) => { for (const e of list.getEntries()) {
+            metrics.lcpMs = e.startTime;
+            metrics.lcpElement = summarize((e as PerformanceEntry & { element?: Element }).element);
+          } })
+            .observe({ type: "largest-contentful-paint", buffered: true });
+          new PerformanceObserver((list) => {
+            for (const e of list.getEntries()) {
+              const shift = e as PerformanceEntry & { hadRecentInput: boolean; value: number; sources?: { node?: Node; previousRect?: DOMRectReadOnly; currentRect?: DOMRectReadOnly }[] };
+              if (shift.hadRecentInput) continue;
+              if (metrics.shifts.length < 20) metrics.shifts.push({ atMs: shift.startTime, value: shift.value,
+                sources: (shift.sources ?? []).slice(0, 5).map((s) => {
+                  const bounds = (rect?: DOMRectReadOnly) => rect ? { x: Math.round(rect.x), y: Math.round(rect.y),
+                    width: Math.round(rect.width), height: Math.round(rect.height) } : undefined;
+                  return { ...summarize(s.node), previous: bounds(s.previousRect), current: bounds(s.currentRect) };
+                }) });
+              if (shift.startTime - last < 1_000 && shift.startTime - start < 5_000) value += shift.value;
+              else { start = shift.startTime; value = shift.value; }
+              last = shift.startTime; metrics.cls = Math.max(metrics.cls, value);
+            }
+          }).observe({ type: "layout-shift", buffered: true });
+          new PerformanceObserver((list) => { for (const e of list.getEntries()) metrics.longTaskMs += e.duration; })
+            .observe({ type: "longtask", buffered: true });
+        });
         const response = await page.goto(route, { waitUntil: "networkidle" });
         expect(response?.status()).toBe(200);
         await page.evaluate(() => document.fonts.ready);
@@ -120,6 +129,9 @@ for (const profile of profiles) for (const route of profile.routes) {
           }
         }
         samples.push({ sample, ...navigation, interactionFrameMs: interactions.length ? Math.max(...interactions) : null });
+        await cdp.detach();
+        activeCdp = null;
+        await page.close();
       }
       const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
       const metrics = { lcpMs: median(samples.map((s) => s.lcpMs!)), cls: median(samples.map((s) => s.cls)),
@@ -132,7 +144,8 @@ for (const profile of profiles) for (const route of profile.routes) {
       const report = { route, profile, capturedAtUtc: new Date().toISOString(), budgets, metrics, samples, assessments,
         networkEmulation: "Network.emulateNetworkConditionsByRule+Network.overrideNetworkState",
         status: assessments.some((a) => a.status === "FAIL") ? "FAIL" : "PASS", policy: "CANDIDATE_LOCAL_NOT_APPROVED",
-        scope: "Pinned Chromium, 3 repeat navigations per case, HTTP cache disabled, CDP CPU/network throttling, 3s post-idle window. Synthetic two-frame pointer response, NOT INP/field CWV. External map origins blocked.",
+        sampleIsolation: "FRESH_PAGE_SAME_CONTEXT",
+        scope: "Pinned Chromium, 3 fresh-page navigations per case in the same context, HTTP cache disabled, identical CDP CPU/network throttling, 3s post-idle window. Synthetic two-frame pointer response, NOT INP/field CWV. External map origins blocked.",
         blockedOrigins: [...blockedExternalOrigins].sort() };
       const path = testInfo.outputPath("throttled-budget-metrics.json");
       await mkdir(dirname(path), { recursive: true });
@@ -141,6 +154,6 @@ for (const profile of profiles) for (const route of profile.routes) {
       console.log(JSON.stringify({ route, profile: profile.name, metrics, candidateBudget: report.status }));
       // Collect all failing routes before enforcing: these assertions verify instrumentation,
       // not budget success. A separate aggregation command fails on candidate budget violations.
-    } finally { await cdp.detach(); }
+    } finally { await activeCdp?.detach(); if (!page.isClosed()) await page.close(); }
   });
 }

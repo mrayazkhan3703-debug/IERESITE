@@ -7,13 +7,13 @@
 - [x] Remove automatic demo seed from Railway Web startup.
 - [x] Keep dedicated Worker running; disable unverified automatic releases.
 - [x] Copy temporary storage objects into an isolated R2 namespace and verify hashes.
-- [ ] Refresh and reconcile every referenced object, then switch Web/Worker delivery to R2.
+- [x] Refresh and reconcile every referenced object, then switch Web/Worker delivery to R2; `railway-main` active on exact passing `9802eaa`, final paused copy 56 objects / 24,419,947 bytes and 88 delivery checks pass. Uploads reopened and direct upload/private Worker snapshot verified.
 - [x] Release durable import preview/commit, templates, demo filter and reviewed archival after exact gates pass; `61b2bf0` is live on Web/Worker. Live HTTP/API checks pass; no demo cleanup was committed.
 - [x] Implement source/organization isolation, CSV/JSON selection and shared publication-eligibility preview; exact commit `61b2bf0` passes full CI `37116068223` and deployed successfully.
 - [x] Release and run owner-only complete media/import reference inventory; exact `6a8b171` passed CI `37119372113` and is live on both services. Stored/source image hash correction is a separate candidate.
 - [x] Reconcile the original 46 public media entries against copied objects or bundled static assets; remove two confirmed unused verification PDFs through audited APIs. Complete reference inventory is now observed below; an actual database backup remains pending.
 - [x] Inspect all 48 current asset references including one private asset; verify all 56 copied objects and 88 public/static/range/private-denial delivery checks. One unattached technical video is retained for recovery; company records remain preserved.
-- [ ] Release stored-file checksum correction and temporary storage mutation pause, then perform final refresh and R2 delivery cutover.
+- [x] Release stored-file checksum correction and temporary storage mutation pause, then perform final refresh and R2 delivery cutover. Historical sanitized-source hashes remain preserved; no unsupported historic stored-hash claim.
 - [ ] Finish column mapping and missing bulk content adapters.
 - [ ] Complete ten clean actual Mercury turns and approved company-document citations/freshness.
 - [ ] Capture/restore an actual Railway encrypted backup; enable independent hosted scheduling.
@@ -21,8 +21,10 @@
 - [x] Start Docker through supported tooling; restoration engine is available again.
 - [ ] Reconcile/export unique legacy company records before stopping Render workloads.
 - [x] Export selected Concord Tower/Hammad/Imran records and catalog/media dependencies in one read-only snapshot; retain private source bundle and hash receipt. Transfer/reconciliation remains pending.
+- [x] Transfer Hammad/Imran through audited Admin commands with photos and original website publication; verify both English/Arabic profiles, no login created. Transfer Concord Tower with gallery/floor plan/PDF into protected Draft; preserve source and ID mappings. Its expired listing requires an owner-supplied valid expiry before publication, so legacy acceptance remains incomplete.
 - [ ] Owner completes testing, supplies real content and reviews demo archival.
 - [ ] Company SMTP (owner deferred); customer enquiry notification acceptance.
+- [x] Retain latest owner deferral of CRM sync and company SMTP; private Mailpit remains testing only, no claim of customer email acceptance.
 - [ ] Review launch contacts/privacy/permissions/bilingual content and paid hosting usage.
 - [ ] Customer launch and later domain/canonical/cookie transition.
 
