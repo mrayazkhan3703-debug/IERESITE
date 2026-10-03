@@ -18,6 +18,7 @@ export function recoveryDeliverySamples(value, gatedDocument, portfolioDocument)
   if (!publicImage || !publicVideo || !protectedDocument) fail("DELIVERY_FIXTURES_MISSING");
   return { publicImage, publicVideo, protectedDocument };
 }
+/** @param {string} value @returns {URL} */
 export function isolatedRestoreDocumentUrl(value) {
   let url; try { url = new URL(value); } catch { fail("RESTORE_DOCUMENT_URL_OUTSIDE_ISOLATION"); }
   if (url.protocol !== "http:" || url.hostname !== "restored-objects" || url.port !== "8333" || url.username || url.password || url.hash || !url.pathname.startsWith("/iere-restored/private/")) fail("RESTORE_DOCUMENT_URL_OUTSIDE_ISOLATION");
