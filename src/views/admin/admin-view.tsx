@@ -51,6 +51,7 @@ import { withGalleryCover } from "@/lib/media-contract";
 import { ProjectPaymentPlanEditor } from "@/features/admin/shared/project-payment-plan-editor";
 import { UnitEditorDialog, UnitImportDialog, type UnitRow, type UnitProject, type UnitProperty } from "@/features/admin/shared/unit-studio-actions";
 import { AdminShell } from "@/features/admin/admin-shell";
+import { DemoCleanupStudio } from "@/features/admin/shared/demo-cleanup-studio";
 
 function isPublicMediaUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/uploads/") || value.startsWith("/api/media/"));
@@ -454,6 +455,8 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   const [communities, setCommunities] = React.useState<Record<string, unknown>[]>([]);
   const [propertyOptions, setPropertyOptions] = React.useState<{ projects: Record<string, unknown>[]; developers: Record<string, unknown>[]; agents: Record<string, unknown>[]; amenities: Record<string, unknown>[] }>({ projects: [], developers: [], agents: [], amenities: [] });
   const [q, setQ] = React.useState("");
+  const [demoFilter, setDemoFilter] = React.useState("all");
+  const [page, setPage] = React.useState(1);
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -464,10 +467,10 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   const [form, setForm] = React.useState(emptyPropertyForm);
 
   const load = React.useCallback(() => {
-    api.get<{ properties: Record<string, unknown>[]; total: number }>(`/api/admin/properties${q ? `?q=${encodeURIComponent(q)}` : ""}`)
+    api.get<{ properties: Record<string, unknown>[]; total: number }>(`/api/admin/properties?q=${encodeURIComponent(q)}&demo=${demoFilter}&page=${page}`)
       .then(setData)
       .catch(() => setData({ properties: [], total: 0 }));
-  }, [q]);
+  }, [q, demoFilter, page]);
 
   React.useEffect(() => { load(); }, [load]);
 
@@ -672,8 +675,8 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           <p className="mt-1 text-sm text-muted-foreground">Publish, price and feature listings — every change emits an index event and audit entry.</p>
         </div>
         <div className="flex flex-wrap gap-2"><div className="w-64">
-          <Input placeholder="Search titles…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search properties" />
-        </div>{canCreate && <Button onClick={openCreate}>Create property</Button>}</div>
+          <Input placeholder="Search titles…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Search properties" />
+        </div><label className="sr-only" htmlFor="property-demo-filter">Inventory provenance</label><select id="property-demo-filter" className="rounded-md border bg-background px-3 text-sm" value={demoFilter} onChange={e => { setDemoFilter(e.target.value); setPage(1); }}><option value="all">All inventory</option><option value="demo">Demo records</option><option value="company">Company records</option></select>{canCreate && <Button onClick={openCreate}>Create property</Button>}</div>
       </header>
 
       {data === null ? (
@@ -729,6 +732,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           </table>
         </div>
       )}
+      {data && <><div className="flex items-center gap-3 text-sm"><Button variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous properties</Button><span>Page {page} · {data.total} records</span><Button variant="outline" disabled={page * 15 >= data.total} onClick={() => setPage(p => p + 1)}>Next properties</Button></div>{canCreate && <DemoCleanupStudio properties={data.properties} onSaved={load} />}</>}
       {canReindex && <Button variant="outline" size="sm" className="gap-2" disabled={reindexing} onClick={async () => {
         setReindexing(true);
         try {

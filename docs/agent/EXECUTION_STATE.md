@@ -1,5 +1,20 @@
 # Execution State
 
+## Current Railway company transition (2026-10-03)
+
+- Active work: `codex/railway-isolated-test`, Railway Web and PostgreSQL retained. Customer launch remains gated; testing continues with demo labels and staging noindex.
+- Live Ayaz correction completed through audited Admin/media APIs: designation `Team member`, empty biography, original ID/photo/publication flags preserved. Current slug is `team-verification`.
+- Web startup no longer executes demo seed. Its configuration-only redeploy retains the previously passing `ac91208` application. Worker remains enabled; automatic deployments are disabled so passing commits can be released deliberately.
+- Preservation comparison: all 27 original people and all 22 original properties remain. One additional owner-created published property is present; no demo inventory has been archived.
+- Cloudflare R2 copy: 13 objects, 716877 bytes, verified by complete SHA-256 readback under `railway-main`. Source objects remain intact. Delivery has NOT switched; refresh/verify the copy at cutover.
+- Candidate `59936dd` passes build, typecheck, lint, credentials, unit/integration, worker, recovery and browser gates. CI `37110363569` fails mobile home LCP (2572ms English; 2680ms Arabic against 2500ms). Candidate is not deployed. Follow-up reduces hero encoding quality through Next Image and adds reviewed demo cleanup; requires its own exact gate.
+- Actual Mercury acceptance remains DEGRADED: first attempt timed out on turn 2; second attempt completed 7 turns before a timeout on turn 8. Durable replay returned the original result. No ten-clean-turn acceptance or approved-company-knowledge acceptance is claimed.
+- Docker Desktop is running after its supported start command; no socket-clearing action was used. Actual Railway encrypted capture/isolated restore and an independent hosted schedule remain outstanding.
+- Private legacy Supabase reconciliation export retained outside Git. Concord Tower, Hammad and Imran are absent from Railway; demo/verification records are distinguishable in the export. Reconciliation is required before Render shutdown.
+- Owner explicitly deferred company SMTP on 2026-10-03. Private Mailpit remains test-only; no customer email-delivery acceptance. CRM stays deferred. No hosting purchase or Render shutdown performed.
+
+## Historical Render execution state
+
 - Source baseline commit: `fb6ae2208d108d7cb57d8b52826201e85c608a61`
 - Current branch: `codex/production-recovery-wave1`
 - Current source checkpoint: `e9c189cc2e229ffa8e12800b1fb7191527f55cc7` (tested correction head `7800c59b09b133af260e93c953cb4128201ac374` has the same tracked tree)

@@ -119,6 +119,7 @@ export function Hero({
           alt="Dubai skyline at dusk across the water"
           fill
           sizes="100vw"
+          quality={60}
           preload
           className="h-full w-full object-cover"
         />

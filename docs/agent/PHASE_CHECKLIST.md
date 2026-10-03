@@ -1,5 +1,26 @@
 # Phase Checklist
 
+## Railway main-site transition: current acceptance overrides historical Render status
+
+- [x] Preserve existing people/property identities; compare private before/after manifests.
+- [x] Correct public Ayaz wording through audited updates and preserve media/publication.
+- [x] Remove automatic demo seed from Railway Web startup.
+- [x] Keep dedicated Worker running; disable unverified automatic releases.
+- [x] Copy temporary storage objects into an isolated R2 namespace and verify hashes.
+- [ ] Refresh and reconcile every referenced object, then switch Web/Worker delivery to R2.
+- [ ] Release durable import preview/commit, templates, demo filter and reviewed archival after exact gates pass.
+- [ ] Finish column mapping, publication-eligibility preview and missing bulk content adapters.
+- [ ] Complete ten clean actual Mercury turns and approved company-document citations/freshness.
+- [ ] Capture/restore an actual Railway encrypted backup; enable independent hosted scheduling.
+- [x] Start Docker through supported tooling; restoration engine is available again.
+- [ ] Reconcile/export unique legacy company records before stopping Render workloads.
+- [ ] Owner completes testing, supplies real content and reviews demo archival.
+- [ ] Company SMTP (owner deferred); customer enquiry notification acceptance.
+- [ ] Review launch contacts/privacy/permissions/bilingual content and paid hosting usage.
+- [ ] Customer launch and later domain/canonical/cookie transition.
+
+Historical phase completion below does not constitute Railway customer-launch acceptance.
+
 | Phase | Status | Checkpoint | Verification |
 |---|---|---|---|
 | 00 Baseline and forensic state | COMPLETE | `9389a1afd4c533776fbcd63a002874df4fd09bb3` | `VERIFICATION_LOG.md` 2026-09-28 |
