@@ -16,6 +16,7 @@ import { generateSitemap } from "@/server/seo/sitemap";
 import { logEvent } from "@/server/rate-limit";
 import { JobCancellationError, runCancellableJob } from "@/server/jobs/cancellation";
 import { releaseJobAfterShutdown } from "@/server/jobs/lease";
+import { storageWriteDeferral } from "@/server/storage/mutation-policy";
 
 export const OUTBOX_EVENT_TYPES = [
   "property.updated",
@@ -567,9 +568,10 @@ export async function processJobQueue(signal?: AbortSignal) {
         logEvent("job.cancelled", { ...identity, key: job.jobKey, reason: "shutdown" });
         return;
       }
-      if (err instanceof JobDeferredError) {
-        await releaseDeferredJob(db, job.id, WORKER_ID, err);
-        logEvent("job.deferred", { ...identity, key: job.jobKey, reason: err.code });
+      const deferred = err instanceof JobDeferredError ? err : storageWriteDeferral(err);
+      if (deferred) {
+        await releaseDeferredJob(db, job.id, WORKER_ID, deferred);
+        logEvent("job.deferred", { ...identity, key: job.jobKey, reason: deferred.code });
         continue;
       }
       const attempts = job.attempts;

@@ -435,14 +435,14 @@ export async function updatePropertyCommand(
         if (JSON.stringify(value) === JSON.stringify(source)) delete nextListingOverrides[field];
         else nextListingOverrides[field] = value;
       }
-      const richPropertyFields = ["subType", "builtUpAreaSqft", "plotAreaSqft", "furnishing", "view", "floor", "totalFloors", "handoverQuarter", "addressLine", "shortDescription", "reraPermit", "titleDeedRef", "highlights"] as const;
+      const richPropertyFields = ["subType", "builtUpAreaSqft", "plotAreaSqft", "furnishing", "view", "floor", "totalFloors", "handoverQuarter", "addressLine", "shortDescription", "reraPermit", "titleDeedRef", "highlights", "lat", "lng", "locationPrecision"] as const;
       for (const field of richPropertyFields) {
         const value = input[field];
         if (value === undefined) continue;
         if (JSON.stringify(value) === JSON.stringify(sourceValue(field))) delete nextPropertyOverrides[field];
         else nextPropertyOverrides[field] = value;
       }
-      const richListingFields = ["tenure", "priceQualifier", "serviceChargePerSqft", "offPlan", "isExclusive", "expiresAt", "agentId"] as const;
+      const richListingFields = ["tenure", "priceQualifier", "serviceChargePerSqft", "offPlan", "isExclusive", "expiresAt", "agentId", "listingType", "rentFrequency"] as const;
       for (const field of richListingFields) {
         const value = input[field];
         if (value === undefined) continue;

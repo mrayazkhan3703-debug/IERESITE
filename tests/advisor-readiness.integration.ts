@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
-import { createSession } from "@/server/auth";
+import { createSession, HttpError } from "@/server/auth";
+import { storageWriteDeferral } from "@/server/storage/mutation-policy";
 import { reconcileRagSourceIndex, rebuildDocumentIndex } from "@/server/rag/pipeline";
 import { hashRagContent } from "@/server/rag/provenance";
 import { JobDeferredError, releaseDeferredJob } from "@/server/jobs/deferred";
@@ -24,7 +25,7 @@ beforeAll(async () => {
   }) });
 });
 afterAll(async () => {
-  await db.jobRun.deleteMany({ where: { OR: [{ idempotencyKey: { startsWith: `rag-source:${sourceId}:` } }, { idempotencyKey: prefix + "-deferred" }] } });
+  await db.jobRun.deleteMany({ where: { OR: [{ idempotencyKey: { startsWith: `rag-source:${sourceId}:` } }, { idempotencyKey: { in: [prefix + "-deferred", prefix + "-storage-pause"] } }] } });
   await db.auditLog.deleteMany({ where: { actorId: ownerId } });
   await db.ragDocument.deleteMany({ where: { sourceId } });
   await db.ragSource.deleteMany({ where: { id: sourceId } });
@@ -56,6 +57,22 @@ describe("Advisor readiness and bounded approved-source indexing", () => {
     expect(await releaseDeferredJob(db, job.id, prefix, new JobDeferredError(), now)).toBe(1);
     expect(await db.jobRun.findUniqueOrThrow({ where: { id: job.id } })).toMatchObject({ status: "RETRYING", attempts: 0, error: "CRM_SYNC_DEFERRED", lockedBy: null, scheduledAt: new Date(now.getTime() + 86400000) });
     expect(await releaseDeferredJob(db, job.id, prefix, new JobDeferredError(), now)).toBe(0);
+    expect(await db.deadLetterEvent.count({ where: { sourceId: job.id } })).toBe(0);
+  });
+  test("repeated storage maintenance deferrals retain attempts and resume eligibility", async () => {
+    const job = await db.jobRun.create({ data: { jobKey: "media.process", payloadJson: { mediaId: prefix },
+      idempotencyKey: prefix + "-storage-pause", status: "RETRYING", attempts: 0 } });
+    const deferred = storageWriteDeferral(new HttpError(503, "Maintenance", "STORAGE_MUTATIONS_PAUSED"))!;
+    for (let cycle = 0; cycle < 6; cycle++) {
+      const now = new Date(Date.now() + cycle * 30000);
+      await db.jobRun.update({ where: { id: job.id }, data: { status: "RUNNING", attempts: { increment: 1 },
+        lockedBy: prefix, lockedAt: now, leaseExpiresAt: new Date(now.getTime() + 120000) } });
+      expect(await releaseDeferredJob(db, job.id, "another-worker", deferred, now)).toBe(0);
+      expect(await releaseDeferredJob(db, job.id, prefix, deferred, now)).toBe(1);
+      expect(await db.jobRun.findUniqueOrThrow({ where: { id: job.id } })).toMatchObject({
+        status: "RETRYING", attempts: 0, error: "STORAGE_MUTATIONS_PAUSED", lockedBy: null,
+        lockedAt: null, leaseExpiresAt: null, scheduledAt: new Date(now.getTime() + 30000) });
+    }
     expect(await db.deadLetterEvent.count({ where: { sourceId: job.id } })).toBe(0);
   });
   test("protects operational endpoints and returns safe measured metadata", async () => {

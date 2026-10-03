@@ -6,6 +6,7 @@ import { emitEvent } from "@/server/jobs/outbox";
 import fs from "fs/promises";
 import { localMediaPath } from "@/server/media/file-storage";
 import { deletePublicObject } from "@/server/storage/object-store";
+import { requireStorageWrites } from "@/server/storage/mutation-policy";
 
 export interface MediaMetadataInput {
   mediaAssetId: string;
@@ -54,6 +55,7 @@ export async function updateMediaMetadata(actor: SessionUser, input: MediaMetada
 
 /** Permanently remove an unreferenced public asset only; anything used downstream is protected. */
 export async function deleteUnusedMedia(actor: SessionUser, mediaAssetId: string, ip: string | null) {
+  requireStorageWrites();
   const media = await db.$transaction(async (tx) => {
     const asset = await tx.mediaAsset.findUnique({ where: { id: mediaAssetId } });
     if (!asset || asset.isPrivate) throw new HttpError(404, "Public media asset not found.", "NOT_FOUND");

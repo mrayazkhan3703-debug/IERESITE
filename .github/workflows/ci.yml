@@ -107,6 +107,9 @@ jobs:
       - name: Active worker container shutdown and retry
         run: node scripts/verify-worker-container-shutdown.mjs
 
+      - name: Railway supervised worker container shutdown and retry
+        run: node scripts/verify-worker-container-shutdown.mjs --supervised
+
       - name: Local alert SMTP delivery and recovery (disposable Mailpit)
         run: docker compose --profile monitor-test run --build --rm monitor-test
 
@@ -116,17 +119,28 @@ jobs:
       - name: Isolated encrypted S3 backup adapter (synthetic only)
         run: |
           docker build -f docker/backup-tools.Dockerfile -t iere-local-backup-tools .
-          docker run --rm --network none --entrypoint bun iere-local-backup-tools --no-env-file test tests/backup-adapter.test.ts tests/backup-storage-cap.test.ts tests/hosted-backup.test.ts tests/r2-backup-verification.test.ts tests/backup-operations-report.test.ts
+          docker run --rm --network none --entrypoint bun iere-local-backup-tools --no-env-file test tests/backup-adapter.test.ts tests/backup-storage-cap.test.ts tests/hosted-backup.test.ts tests/railway-backup.test.ts tests/r2-backup-verification.test.ts tests/backup-operations-report.test.ts tests/disposable-environment.test.ts tests/transition-capture.test.ts
           node scripts/verify-backup-adapter.mjs
 
       - name: Seed deterministic browser fixtures
         run: docker compose exec -T web bun run seed
+
+      - name: Storage cutover pause HTTP checks (disposable only)
+        run: |
+          docker compose run -d --no-deps --name iere-storage-paused-verification -e STORAGE_MUTATIONS_PAUSED=true web
+          trap 'docker rm -f iere-storage-paused-verification >/dev/null 2>&1 || true' EXIT
+          docker exec iere-storage-paused-verification bun scripts/check-paused-storage.mjs
 
       - name: Browser accessibility and responsive-image smoke
         run: docker compose --profile test run --build --rm -v "${{ github.workspace }}/test-results:/app/test-results" accessibility
 
       - name: Local browser delivery measurements
         run: docker compose --profile test run --rm -v "${{ github.workspace }}/test-results:/app/test-results" accessibility bun run test:performance
+
+      - name: Compare legacy and current browser network emulation (disposable read-only)
+        if: always()
+        run: |
+          docker compose --profile test run --rm -v "${{ github.workspace }}/test-results:/app/test-results" accessibility node scripts/diagnose-local-navigation.mjs
 
       - name: Evaluate candidate local performance budgets (not field CWV)
         run: node scripts/check-local-performance-budgets.mjs

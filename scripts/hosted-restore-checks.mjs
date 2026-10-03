@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, mkdir, lstat, realpath, copyFile } from "node:fs/promises";
+import { resolve, dirname, relative, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { hashFile, inspectBackup } from "./backup-adapter.mjs";
 import { S3Client, CreateBucketCommand, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { staticMediaKey } from "./backup-source-policy.mjs";
 
 const fail = code => { throw new Error(code); };
 export function validateHostedInventory(value) {
@@ -18,7 +19,7 @@ export function validateHostedInventory(value) {
   for (const row of value.objects) {
     if (!/^[a-f0-9]{64}$/.test(row.sha256) || row.file !== `objects/${row.sha256}` ||
         !Number.isInteger(row.bytes) || row.bytes < 1 || row.bytes > (row.variant === "import-snapshot" ? 50 : 25) * 1024 ** 2 ||
-        !(row.variant === "import-snapshot" ? /^private\/imports\/[a-f0-9]{24}\/[a-f0-9]{64}\.(csv|json)$/.test(row.key) && row.private === true : /^(public\/media|private\/portfolio)\/[A-Za-z0-9._/-]+$/.test(row.key)) ||
+        !(row.variant === "import-snapshot" ? /^private\/imports\/[a-f0-9]{24}\/[a-f0-9]{64}\.(csv|json)$/.test(row.key) && row.private === true : /^(public\/media|private\/portfolio)\/[A-Za-z0-9._/-]+$/.test(row.key) || (staticMediaKey(row.key) && row.private === false && !row.variant && row.mimeType?.startsWith("image/"))) ||
         row.key.split("/").some(x => !x || x === "." || x === "..")) fail("INVALID_INVENTORY");
   }
   return value;
@@ -44,8 +45,9 @@ async function inventory(directory, manifest) {
 export async function verifyHostedObjects(value, directory, store, bucket) {
   validateHostedInventory(value);
   await store.send(new CreateBucketCommand({ Bucket: bucket }));
-  let bytes = 0;
+  let bytes = 0, objectCount = 0;
   for (const row of value.objects) {
+    if (staticMediaKey(row.key)) continue; // Restored separately into the isolated application bundle.
     const file = resolve(directory, row.file), checked = await hashFile(file, (row.variant === "import-snapshot" ? 50 : 25) * 1024 ** 2);
     if (checked.sha256 !== row.sha256 || checked.bytes !== row.bytes) fail("OBJECT_HASH_MISMATCH");
     const body = await readFile(file);
@@ -56,12 +58,39 @@ export async function verifyHostedObjects(value, directory, store, bucket) {
     for await (const chunk of response.Body) { size += chunk.length; if (size > row.bytes) fail("OBJECT_HASH_MISMATCH"); hash.update(chunk); }
     if (size !== row.bytes || hash.digest("hex") !== row.sha256) fail("OBJECT_HASH_MISMATCH");
     bytes += size;
+    objectCount++;
   }
-  return { objectCount: value.objects.length, totalBytes: bytes };
+  return { objectCount, totalBytes: bytes, staticFilesRestoredSeparately: value.objects.length - objectCount };
+}
+
+export async function restoreStaticMedia(value, directory, publicRoot) {
+  validateHostedInventory(value);
+  const root = await realpath(publicRoot);
+  let count = 0, bytes = 0;
+  for (const row of value.objects.filter(row => staticMediaKey(row.key))) {
+    const file = resolve(directory, row.file), digest = await hashFile(file, 25 * 1024 ** 2);
+    if (digest.sha256 !== row.sha256 || digest.bytes !== row.bytes) fail("OBJECT_HASH_MISMATCH");
+    const target = resolve(root, row.key.slice("static/".length)), parent = dirname(target);
+    // Check every ancestor before creating directories; refuse links in the pinned bundle.
+    let current = root;
+    for (const segment of relative(root, parent).split(/[\\/]/)) {
+      current = resolve(current, segment);
+      try { const info = await lstat(current); if (info.isSymbolicLink() || !info.isDirectory()) fail("UNSAFE_STATIC_MEDIA"); }
+      catch (error) { if (error.code !== "ENOENT") throw error; await mkdir(current); }
+    }
+    const distance = relative(root, await realpath(parent));
+    if (distance.startsWith("..") || isAbsolute(distance)) fail("UNSAFE_STATIC_MEDIA");
+    try { const info = await lstat(target); if (info.isSymbolicLink() || !info.isFile()) fail("UNSAFE_STATIC_MEDIA"); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    await copyFile(file, target);
+    if ((await hashFile(target)).sha256 !== row.sha256) fail("OBJECT_HASH_MISMATCH");
+    count++; bytes += row.bytes;
+  }
+  return { staticFiles: count, totalBytes: bytes };
 }
 async function checks(mode, backup, extracted) {
   const manifest = JSON.parse(await readFile(resolve(backup, "manifest.json"), "utf8"));
-  if (manifest.format !== 2 || manifest.source !== "hosted-postgres-r2") fail("HOSTED_SCOPE_REQUIRED");
+  if (manifest.format !== 2 || !["hosted-postgres-r2", "hosted-postgres-s3"].includes(manifest.source)) fail("HOSTED_SCOPE_REQUIRED");
   if (mode === "prepare") {
     await inspectBackup(backup, manifest.syntheticFixture === true);
     const archive = resolve(backup, "object-storage.tar.gz");
@@ -72,6 +101,7 @@ async function checks(mode, backup, extracted) {
     return { status: "PASS_PREPARED", objects: value.objects.length };
   }
   const directory = resolve(extracted, "data"), value = await inventory(directory, manifest);
+  if (mode === "static") return { status: "PASS_STATIC_MEDIA", ...await restoreStaticMedia(value, directory, resolve(extracted, "public")) };
   const { SQL } = await import("bun");
   const sql = new SQL("postgresql://iere_restore@restored-db:5432/iere_restore", { max: 1, connectionTimeout: 10 });
   try {
@@ -103,7 +133,7 @@ async function checks(mode, backup, extracted) {
     const [protectedDoc] = await sql.unsafe('SELECT d."mediaId" FROM public."PropertyDocument" d JOIN public."MediaAsset" m ON m.id=d."mediaId" WHERE NOT m."isPrivate" AND (d.gated OR d."docType" IN (\'TITLE_DEED\',\'ESCALATION\')) LIMIT 1');
     if (!publicImage || !publicVideo || !protectedDoc) fail("DELIVERY_FIXTURES_MISSING");
     for (const row of [publicImage, publicVideo]) {
-      const response = await fetch(`${base}/api/media/${encodeURIComponent(row.assetId)}/content`);
+      const response = await fetch(staticMediaKey(row.key) ? `${base}/${row.key.slice("static/".length)}` : `${base}/api/media/${encodeURIComponent(row.assetId)}/content`);
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (response.status !== 200) {
         const text = new TextDecoder().decode(bytes);

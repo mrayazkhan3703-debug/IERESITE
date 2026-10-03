@@ -25,12 +25,14 @@ export const GET = apiHandler(async (req) => {
   const url = new URL(req.url);
   const status = url.searchParams.get("status") ?? undefined;
   const q = url.searchParams.get("q") ?? undefined;
+  const demo = url.searchParams.get("demo");
   const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
 
   const scope = catalogReadFilter(user);
   const filters = {
     ...(status ? { publicationStatus: status } : {}),
     ...(q ? { title: { contains: q } } : {}),
+    ...(demo === "demo" ? { OR: [{ isDemoData: true }, { sourceType: "DEMO_SEED" }] } : demo === "company" ? { isDemoData: false, sourceType: { not: "DEMO_SEED" } } : {}),
     deletedAt: null,
   };
   const where = { AND: [scope, filters] };

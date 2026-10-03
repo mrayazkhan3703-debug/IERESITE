@@ -25,7 +25,7 @@ async function cleanup() {
     await db.marketReport.deleteMany({ where: { id: { in: ids } } });
   }
   await db.redirect.deleteMany({ where: { OR: [{ fromPath: { contains: prefix } }, { toPath: { contains: prefix } }] } });
-  await db.mediaAsset.deleteMany({ where: { storageKey: { startsWith: prefix } } });
+  await db.mediaAsset.deleteMany({ where: { OR: [{ storageKey: { startsWith: prefix } }, { storageKey: { startsWith: `public/media/${prefix}` } }] } });
   await db.user.deleteMany({ where: { id: { in: [editorId, reviewerId] } } });
 }
 

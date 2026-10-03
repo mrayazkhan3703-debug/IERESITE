@@ -1,5 +1,15 @@
 # IERESITE release and production cutover report
 
+## Current Railway checkpoint — 3 October 2026
+
+Company testing now uses [Railway](https://web-production-5ab32.up.railway.app) and its [Admin](https://web-production-5ab32.up.railway.app/admin). Web and enabled Worker run exact `38ce295bd848b8272359414fc2585e57a678b3ea`, passing full CI `37131428062`, with 44 applied migrations and Cloudflare R2 delivery. Shared inventory column mapping, private preview approval/retry checks and the bounded completed-empty Mercury correction are deployed. Live routes, media hashes, original-record preservation and three actual Advisor turns pass. Concord Tower is published with owner-authorized no expiry, and transferred Team facts/photos plus later Admin visibility choices are retained.
+
+Fresh actual **legacy Supabase** encrypted recovery passed database/permissions/58-object/media/private-document checks. Its Windows schedule reports a fresh success; it does not cover Railway or provide independent hosted scheduling. Railway capture/restore/scheduling remains blocked by the current five-service cap. Ten-turn Mercury/approved knowledge acceptance, missing bulk content adapters, Cloudflare public-domain policy review and owner content/testing remain outstanding. CRM and company SMTP are explicitly deferred; customer launch remains unaccepted and staging noindex retained. Render workloads remain retained pending Railway recovery.
+
+Current evidence and deployment IDs are recorded in [RAILWAY_COMPANY_LAUNCH.md](RAILWAY_COMPANY_LAUNCH.md). The Render checkpoint below is historical, not the current company destination.
+
+## Historical Render checkpoint
+
 Updated: 1 October 2026. Deployment: https://ieresite.onrender.com (staging).
 Admin: https://ieresite.onrender.com/admin (existing OWNER account).
 

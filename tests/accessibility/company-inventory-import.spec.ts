@@ -1,0 +1,112 @@
+import { createHash, randomBytes } from "node:crypto";
+import { PrismaClient } from "@prisma/client";
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test } from "./fixtures";
+
+const db = new PrismaClient();
+const prefix = `company-import-ui-${crypto.randomUUID()}`;
+const ownerId = `${prefix}-owner`, communityId = `${prefix}-community`, token = randomBytes(32).toString("hex");
+
+test.beforeAll(async () => {
+  if (!["db", "postgres", "localhost", "127.0.0.1"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Disposable database required");
+  const role = await db.role.findUniqueOrThrow({ where: { key: "OWNER" } });
+  await db.user.create({ data: { id: ownerId, email: `${ownerId}@example.invalid`, emailVerified: new Date(), roles: { create: { roleId: role.id } } } });
+  await db.session.create({ data: { userId: ownerId, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + 3600000), mfaVerifiedAt: new Date() } });
+  await db.community.create({ data: { id: communityId, name: prefix, slug: communityId, lat: 25.08, lng: 55.14, publicationStatus: "DRAFT" } });
+});
+
+test.afterAll(async () => {
+  const runs = await db.importRun.findMany({ where: { triggeredBy: `${ownerId}@example.invalid` }, select: { id: true, importSourceId: true } });
+  const properties = await db.property.findMany({ where: { communityId }, select: { id: true } });
+  const ids = [...runs.map(r => r.id), ...properties.map(p => p.id)];
+  const events = await db.outboxEvent.findMany({ where: { aggregateId: { in: ids } }, select: { id: true } });
+  const jobs = await db.jobRun.findMany({ where: { idempotencyKey: { in: [...runs.map(r => `import:${r.id}:process`), ...events.map(e => `outbox:${e.id}:search.index.property`)] } }, select: { id: true } });
+  await db.deadLetterEvent.deleteMany({ where: { sourceId: { in: jobs.map(j => j.id) } } });
+  await db.jobRun.deleteMany({ where: { id: { in: jobs.map(j => j.id) } } });
+  await db.auditLog.deleteMany({ where: { actorId: ownerId } });
+  await db.outboxEvent.deleteMany({ where: { id: { in: events.map(e => e.id) } } });
+  await db.importRecord.deleteMany({ where: { importRunId: { in: runs.map(r => r.id) } } });
+  await db.importRunChunk.deleteMany({ where: { importRunId: { in: runs.map(r => r.id) } } });
+  await db.importRun.deleteMany({ where: { id: { in: runs.map(r => r.id) } } });
+  await db.importSource.deleteMany({ where: { id: { in: runs.map(r => r.importSourceId) } } });
+  await db.dataQualityIssue.deleteMany({ where: { propertyId: { in: properties.map(p => p.id) } } });
+  await db.priceHistory.deleteMany({ where: { propertyId: { in: properties.map(p => p.id) } } });
+  await db.property.deleteMany({ where: { communityId } });
+  await db.community.deleteMany({ where: { id: communityId } });
+  await db.user.deleteMany({ where: { id: ownerId } });
+  await db.$disconnect();
+});
+
+for (const locale of ["en", "ar"] as const) for (const size of ["desktop", "mobile"] as const) {
+  test(`company CSV column mapping approval ${locale} ${size}`, async ({ page, context, baseURL }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize(size === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    await context.addCookies([{ name: "ie_session", value: token, url: baseURL! }]);
+    await page.goto(`${locale === "ar" ? "/ar" : ""}/admin/imports`);
+    const sourceId = `${prefix}-mapped-${locale}-${size}`;
+    const source = `Company Ref,Property Name,District,Asking AED,Other AED\n${sourceId},Synthetic mapped ${locale} ${size},${prefix},1100000,1200000\n`;
+    await page.getByLabel("Choose inventory file", { exact: true }).setInputFiles({ name: "company-export.csv", mimeType: "text/csv", buffer: Buffer.from(source) });
+    await page.getByLabel("Map company export columns", { exact: true }).check();
+    for (const [field, column] of Object.entries({ externalId: "Company Ref", title: "Property Name", community: "District", priceAed: "Asking AED" })) await page.getByLabel(`Source column for ${field}`, { exact: true }).selectOption(column);
+    const commit = page.getByRole("button", { name: "Commit reviewed import", exact: true });
+    await expect(commit).toBeDisabled();
+    await page.getByRole("button", { name: "Validate only", exact: true }).click();
+    await expect(commit).toBeEnabled({ timeout: 60000 });
+    const preview = await db.importRun.findFirstOrThrow({ where: { triggeredBy: `${ownerId}@example.invalid`, dryRun: true }, orderBy: { createdAt: "desc" } });
+    expect(preview.snapshotSha256).toBe(createHash("sha256").update(source).digest("hex"));
+    expect(preview.adapterKey).toBe("iere.mapped-property-csv");
+    expect(preview.mappingJson).toContain('"priceAed":"Asking AED"');
+    await page.getByLabel("Source column for priceAed", { exact: true }).selectOption("Other AED");
+    await expect(commit).toBeDisabled();
+    await page.getByLabel("Source column for priceAed", { exact: true }).selectOption("Asking AED");
+    await expect(commit).toBeEnabled();
+    const audit = await new AxeBuilder({ page }).include("#main-content").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+    expect(audit.violations.filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
+    const queued = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/imports" && r.request().method() === "POST");
+    await commit.click();
+    const response = await queued; expect(response.status()).toBe(202);
+    const { importRunId } = await response.json() as { importRunId: string };
+    await expect.poll(async () => (await db.importRun.findUniqueOrThrow({ where: { id: importRunId } })).status, { timeout: 60000 }).toBe("SUCCEEDED");
+    const property = await db.property.findFirstOrThrow({ where: { sourceId }, include: { listings: true } });
+    expect(property.publicationStatus).toBe("DRAFT");
+    expect(String(property.listings[0].priceMinor)).toBe("110000000");
+    expect(await db.property.count({ where: { sourceId } })).toBe(1);
+    await page.screenshot({ path: `test-results/company-mapping-${locale}-${size}.png`, fullPage: true });
+  });
+  test(`company file preview and explicit draft commit ${locale} ${size}`, async ({ page, context, baseURL }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize(size === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    await context.addCookies([{ name: "ie_session", value: token, url: baseURL! }]);
+    await page.goto(`${locale === "ar" ? "/ar" : ""}/admin/imports`);
+    const title = `Synthetic import ${locale} ${size}`;
+    const source = JSON.stringify([{ externalId: `${prefix}-${locale}-${size}`, title, community: prefix, priceAed: 1000000, bedrooms: 2, bathrooms: 2 }]);
+    await page.getByLabel("Choose inventory file", { exact: true }).setInputFiles({ name: "company-inventory.json", mimeType: "application/json", buffer: Buffer.from(source) });
+    await expect(page.getByLabel("Inventory source format")).toHaveValue("json");
+    await expect(page.getByLabel("JSON records")).toHaveValue(source);
+    const commit = page.getByRole("button", { name: "Commit reviewed import", exact: true });
+    await expect(commit).toBeDisabled();
+    await page.getByRole("button", { name: "Validate only", exact: true }).click();
+    await expect(commit).toBeEnabled({ timeout: 60000 });
+    const preview = await db.importRun.findFirstOrThrow({ where: { triggeredBy: `${ownerId}@example.invalid`, dryRun: true }, orderBy: { createdAt: "desc" } });
+    const runRow = page.locator("div").filter({ has: page.getByText("DRY_RUN", { exact: true }) }).filter({ has: page.getByRole("button", { name: "Rows", exact: true }) }).last();
+    await runRow.getByRole("button", { name: "Rows", exact: true }).click();
+    await expect(page.getByText("Before publishing: The linked community must be published.", { exact: false })).toBeVisible();
+    await page.getByLabel("JSON records").fill(`${source} `);
+    await expect(commit).toBeDisabled();
+    await page.getByLabel("JSON records").fill(source);
+    await expect(commit).toBeEnabled();
+    const queued = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/imports" && r.request().method() === "POST");
+    await commit.click();
+    const response = await queued;
+    expect(response.status()).toBe(202);
+    const { importRunId } = await response.json() as { importRunId: string };
+    await expect.poll(async () => (await db.importRun.findUniqueOrThrow({ where: { id: importRunId } })).status, { timeout: 60000 }).toBe("SUCCEEDED");
+    const property = await db.property.findFirstOrThrow({ where: { sourceId: `${prefix}-${locale}-${size}` }, include: { listings: true } });
+    expect(property.publicationStatus).toBe("DRAFT");
+    expect(property.listings[0].publishedAt).toBeNull();
+    expect(preview.snapshotSha256).toBe(createHash("sha256").update(source).digest("hex"));
+    const audit = await new AxeBuilder({ page }).include("#main-content").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+    expect(audit.violations.filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
+    await page.screenshot({ path: `test-results/company-import-${locale}-${size}.png`, fullPage: true });
+  });
+}

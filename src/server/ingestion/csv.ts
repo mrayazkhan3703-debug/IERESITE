@@ -1,10 +1,7 @@
 import { parse as csvParse } from "csv-parse";
 import { Readable } from "node:stream";
-import { feedRecordSchema } from "./feed-record";
+import { canonicalInventoryHeader } from "@/lib/inventory-import-fields";
 
-const feedFieldsByHeader = new Map(
-  Object.keys(feedRecordSchema.shape).map((field) => [field.toLowerCase(), field]),
-);
 const numericFeedFields = new Set(["bedrooms", "bathrooms", "areaSqft", "priceAed", "lat", "lng"]);
 
 export class CsvParseError extends Error {
@@ -16,18 +13,18 @@ export class CsvParseError extends Error {
 
 function normalizeFeedHeader(header: string): string {
   const trimmed = header.trim();
-  const key = trimmed.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return feedFieldsByHeader.get(key) ?? trimmed;
+  return canonicalInventoryHeader(trimmed) ?? trimmed;
 }
 
 /** Parse streamed CSV using only canonical feed field names and types. */
 export async function* parseCsvStream(
   chunks: AsyncIterable<string | Uint8Array>,
+  rawColumns = false,
 ): AsyncGenerator<Record<string, unknown>> {
   const parser = csvParse({
     bom: true,
     columns(headers) {
-      const normalized = headers.map(normalizeFeedHeader);
+      const normalized = headers.map(header => rawColumns ? header.trim() : normalizeFeedHeader(header));
       const seen = new Set<string>();
       for (const header of normalized) {
         const duplicateKey = header.trim().toLowerCase();
@@ -44,6 +41,7 @@ export async function* parseCsvStream(
       if (context.header) return value;
       const column = typeof context.column === "string" ? context.column : "";
       if (value === "") return undefined;
+      if (rawColumns) return value;
       if (column === "externalId") return value;
       if (numericFeedFields.has(column) && /^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) return Number(value);
       if (column === "offPlan") {

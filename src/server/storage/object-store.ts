@@ -1,6 +1,8 @@
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig } from "@/lib/config";
+import { namespacedObjectKey } from "./namespace";
+import { requireStorageWrites } from "./mutation-policy";
 
 function client(endpoint: string): S3Client {
   const config = getConfig();
@@ -27,10 +29,11 @@ function storageConfig() {
 }
 
 export async function putPrivateObject(input: { key: string; body: Buffer; contentType: string }): Promise<void> {
+  requireStorageWrites();
   const config = storageConfig();
   await client(config.S3_ENDPOINT!).send(new PutObjectCommand({
     Bucket: config.S3_BUCKET,
-    Key: input.key,
+    Key: namespacedObjectKey(config.S3_KEY_PREFIX, input.key),
     Body: input.body,
     ContentType: input.contentType,
     CacheControl: "private, no-store",
@@ -39,10 +42,11 @@ export async function putPrivateObject(input: { key: string; body: Buffer; conte
 
 /** Public media is served through an application route, never a public bucket ACL. */
 export async function putPublicObject(input: { key: string; body: Buffer; contentType: string }): Promise<void> {
+  requireStorageWrites();
   const config = storageConfig();
   await client(config.S3_ENDPOINT!).send(new PutObjectCommand({
     Bucket: config.S3_BUCKET,
-    Key: input.key,
+    Key: namespacedObjectKey(config.S3_KEY_PREFIX, input.key),
     Body: input.body,
     ContentType: input.contentType,
     CacheControl: "public, max-age=3600, stale-while-revalidate=86400",
@@ -52,7 +56,7 @@ export async function putPublicObject(input: { key: string; body: Buffer; conten
 export async function getPublicObject(key: string, range?: { start: number; end: number }): Promise<Buffer | null> {
   const config = storageConfig();
   try {
-    const response = await client(config.S3_ENDPOINT!).send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key, ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}) }));
+    const response = await client(config.S3_ENDPOINT!).send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: namespacedObjectKey(config.S3_KEY_PREFIX, key), ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}) }));
     if (!response.Body) return null;
     return Buffer.from(await response.Body.transformToByteArray());
   } catch (error) {
@@ -67,20 +71,22 @@ export async function getPublicObject(key: string, range?: { start: number; end:
 /** Private import/source objects are never served through the public media route. */
 export async function* getPrivateObjectStream(key: string): AsyncGenerator<Uint8Array> {
   const config = storageConfig();
-  const response = await client(config.S3_ENDPOINT!).send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+  const response = await client(config.S3_ENDPOINT!).send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: namespacedObjectKey(config.S3_KEY_PREFIX, key) }));
   if (!response.Body) throw new Error("Private object storage returned an empty body");
   const body = response.Body as unknown as AsyncIterable<Uint8Array>;
   for await (const chunk of body) yield new Uint8Array(chunk);
 }
 
 export async function deletePublicObject(key: string): Promise<void> {
+  requireStorageWrites();
   const config = storageConfig();
-  await client(config.S3_ENDPOINT!).send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+  await client(config.S3_ENDPOINT!).send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: namespacedObjectKey(config.S3_KEY_PREFIX, key) }));
 }
 
 export async function deletePrivateObject(key: string): Promise<void> {
+  requireStorageWrites();
   const config = storageConfig();
-  await client(config.S3_ENDPOINT!).send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+  await client(config.S3_ENDPOINT!).send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: namespacedObjectKey(config.S3_KEY_PREFIX, key) }));
 }
 
 export async function signedPrivateObjectUrl(key: string, expiresIn = 300): Promise<string> {
@@ -88,7 +94,7 @@ export async function signedPrivateObjectUrl(key: string, expiresIn = 300): Prom
   const endpoint = config.S3_PUBLIC_ENDPOINT ?? config.S3_ENDPOINT!;
   return getSignedUrl(
     client(endpoint),
-    new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }),
+    new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: namespacedObjectKey(config.S3_KEY_PREFIX, key) }),
     { expiresIn },
   );
 }

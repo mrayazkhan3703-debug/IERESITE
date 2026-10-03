@@ -24,6 +24,15 @@ describe("Inception gateway controls (isolated database and network mocks)", () 
   test("429 is safely reported without retry or switching provider", async () => {
     const evidence = await run("rate-limit"); expect(evidence.calls).toBe(1); expect(evidence.code).toBe("PROVIDER_RATE_LIMITED"); expect(evidence.rows[0].status).toBe("FAILED");
   });
+  test("empty success retries once and charges both completed provider attempts", async () => {
+    const evidence = await run("empty-retry"); expect(evidence.calls).toBe(2); expect(evidence.code).toBeNull();
+    expect(evidence.rows).toHaveLength(2); expect(evidence.rows[0]).toMatchObject({ status: "FAILED", errorCode: "PROVIDER_OUTPUT_EMPTY", reservedTokens: 20 });
+    expect(evidence.rows[1]).toMatchObject({ status: "SUCCEEDED", reservedTokens: 20 });
+  });
+  test("repeated empty success stops after the second charged attempt", async () => {
+    const evidence = await run("always-empty"); expect(evidence.calls).toBe(2); expect(evidence.code).toBe("PROVIDER_OUTPUT_EMPTY");
+    expect(evidence.rows).toHaveLength(2); for (const row of evidence.rows) expect(row).toMatchObject({ status: "FAILED", reservedTokens: 20 });
+  });
   for (const [mode, code] of [["kill", "AI_KILL_SWITCH"], ["partial-rollout", "AI_KILL_SWITCH"], ["disabled", "AI_LIVE_DISABLED"], ["legacy", "AI_PROVIDER_NOT_APPROVED"], ["missing-key", "PROVIDER_CONFIG_MISSING"], ["request-limit", "AI_DAILY_REQUEST_LIMIT"], ["token-limit", "AI_DAILY_TOKEN_LIMIT"], ["prompt-limit", "AI_PROMPT_TOO_LARGE"], ["expired", "PROVIDER_TIMEOUT"]]) {
     test(`${mode} prevents external generation`, async () => { const evidence = await run(mode); expect(evidence.code).toBe(code); expect(evidence.calls).toBe(0); });
   }

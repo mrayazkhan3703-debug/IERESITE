@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, mkdir, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateHostedSource, mediaObjectReferences, importObjectReferences, captureReferencedObjects, captureHosted } from "../scripts/backup-hosted.mjs";
-import { validateHostedInventory, validateHostedArchive, verifyHostedObjects } from "../scripts/hosted-restore-checks.mjs";
+import { validateHostedInventory, validateHostedArchive, verifyHostedObjects, restoreStaticMedia } from "../scripts/hosted-restore-checks.mjs";
+import { databaseTransport } from "../scripts/backup-source-policy.mjs";
 import { validateBackupScope } from "../scripts/backup-adapter.mjs";
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const source = () => ({ format: 1, sourceId: "supabase-fixture", databaseUrl: "postgresql://fixture:fixture@db.example.invalid:5432/postgres?sslmode=verify-full",
@@ -25,6 +26,87 @@ test("hosted capture requires verified TLS, a CA, session port and explicit R2 c
     { databaseUrl: source().databaseUrl.replace("5432", "6543") }, { endpoint: "http://example.invalid" }, { secretAccessKey: "" }, { sourceId: "../escape" }]) {
     expect(() => validateHostedSource({ ...source(), ...patch })).toThrow();
   }
+});
+
+test("Railway private database transport is explicit and cannot downgrade an internet database", () => {
+  const railway = { ...source(), databaseTransport: "railway-private", databaseUrl: "postgresql://fixture:fixture@postgres.railway.internal:5432/iere_test", caCertificate: undefined, keyPrefix: "railway-main" };
+  expect(validateHostedSource(railway).keyPrefix).toBe("railway-main");
+  expect(databaseTransport(railway).sslmode).toBe("disable");
+  for (const patch of [{ databaseTransport: undefined }, { databaseUrl: railway.databaseUrl.replace("postgres.railway.internal", "db.example.invalid") },
+    { databaseUrl: `${railway.databaseUrl}?sslmode=require` }, { keyPrefix: "../escape" }, { databaseTransport: "unsafe" }]) {
+    expect(() => validateHostedSource({ ...railway, ...patch })).toThrow();
+  }
+});
+
+test("transition capture allows only the explicitly selected existing temporary media service", () => {
+  const temporary = { ...source(), databaseTransport: "railway-private", databaseUrl: "postgresql://fixture:fixture@postgres.railway.internal:5432/iere_test",
+    caCertificate: undefined, mediaProfile: "railway-temporary-seaweed", endpoint: "https://media-production-51c3.up.railway.app", bucket: "iere-railway-test" };
+  expect(validateHostedSource(temporary).mediaProfile).toBe("railway-temporary-seaweed");
+  for (const patch of [{ mediaProfile: undefined }, { endpoint: "https://other.up.railway.app" }, { bucket: "another-bucket" },
+    { keyPrefix: "railway-main" }, { endpoint: "http://media-production-51c3.up.railway.app" }, { databaseTransport: "verified-tls" }]) {
+    expect(() => validateHostedSource({ ...temporary, ...patch })).toThrow();
+  }
+  const manifest = { format: 2, source: "hosted-postgres-s3", mediaProfile: "railway-temporary-seaweed", sourceId: "railway-main",
+    database: { schema: "public" }, objectStorage: { format: "content-addressed-r2", objectCount: 1, inventorySha256: "a".repeat(64) } };
+  expect(() => validateBackupScope(manifest)).not.toThrow();
+  expect(() => validateBackupScope({ ...manifest, mediaProfile: "unknown" })).toThrow();
+});
+
+test("capture reads the physical namespace but retains logical media and private import keys", async () => {
+  await scratch(async dir => {
+    const keys: string[] = [];
+    const store = { send: async (command: { input: { Key: string } }) => { keys.push(command.input.Key); return { Body: Readable.from([Buffer.from("fixture")]), ContentLength: 7 }; } };
+    const captured = await captureReferencedObjects(store, "fixture", mediaObjectReferences([asset()]), dir, { keyPrefix: "railway-main" });
+    expect(keys).toEqual(["railway-main/public/media/fixture.png"]);
+    expect(captured.objects[0].key).toBe("public/media/fixture.png");
+  });
+});
+
+test("capture validates recorded stored bytes while preserving legacy image source hashes", async () => {
+  const store = { send: async () => ({ Body: Readable.from([Buffer.from("fixture")]), ContentLength: 7 }) };
+  await scratch(async dir => {
+    const captured = await captureReferencedObjects(store, "fixture", mediaObjectReferences([{ ...asset(), sizeBytes: 7, checksum: "b".repeat(64), storageChecksum: hash("fixture") }]), dir);
+    expect(captured.objects[0].sha256).toBe(hash("fixture"));
+  });
+  await scratch(async dir => {
+    await expect(captureReferencedObjects(store, "fixture", mediaObjectReferences([{ ...asset(), sizeBytes: 7, storageChecksum: "b".repeat(64) }]), dir)).rejects.toThrow("STORED_MEDIA_CHECKSUM_MISMATCH");
+  });
+  await scratch(async dir => {
+    await expect(captureReferencedObjects(store, "fixture", mediaObjectReferences([{ ...asset(), sizeBytes: 8 }]), dir)).rejects.toThrow("STORED_MEDIA_SIZE_MISMATCH");
+  });
+  await scratch(async dir => {
+    expect((await captureReferencedObjects(store, "fixture", mediaObjectReferences([{ ...asset(), sizeBytes: 7, checksum: "b".repeat(64) }]), dir)).objects).toHaveLength(1);
+  });
+});
+
+test("bundled static images are captured and restored without being treated as R2 objects", async () => {
+  await scratch(async dir => {
+    const bundle = join(dir, "public"), capture = join(dir, "capture"), restored = join(dir, "restored");
+    await mkdir(join(bundle, "images", "team"), { recursive: true }); await mkdir(capture); await mkdir(restored);
+    await writeFile(join(bundle, "images", "team", "fixture.jpg"), "fixture");
+    const refs = mediaObjectReferences([{ ...asset(), storageKey: "static/images/team/fixture.jpg" }]);
+    const store = { send: async () => { throw new Error("Static media must not call storage"); } };
+    const captured = await captureReferencedObjects(store, "fixture", refs, capture, { staticRoot: bundle });
+    const value = { ...inventory(), ...captured };
+    expect(validateHostedInventory(value).objects).toHaveLength(1);
+    expect((await restoreStaticMedia(value, capture, restored)).staticFiles).toBe(1);
+    expect(await readFile(join(restored, "images", "team", "fixture.jpg"), "utf8")).toBe("fixture");
+    await mkdir(join(dir, "missing"));
+    await expect(captureReferencedObjects(store, "fixture", refs, join(dir, "missing"))).rejects.toThrow("STATIC_BUNDLE_REQUIRED");
+    expect(() => mediaObjectReferences([{ ...asset(), storageKey: "static/images/../secret.jpg" }])).toThrow();
+    expect(() => mediaObjectReferences([{ ...asset(), storageKey: "static/images/fixture.jpg", isPrivate: true }])).toThrow();
+  });
+});
+
+test("static restore rejects a linked ancestor rather than writing outside its isolated root", async () => {
+  await scratch(async dir => {
+    const capture = join(dir, "capture"), restored = join(dir, "restored"), outside = join(dir, "outside");
+    await mkdir(join(capture, "objects"), { recursive: true }); await mkdir(restored); await mkdir(outside);
+    await writeFile(join(capture, inventory().objects[0].file), "fixture");
+    await symlink(outside, join(restored, "images"), process.platform === "win32" ? "junction" : "dir");
+    const value = { ...inventory(), objects: [{ ...inventory().objects[0], key: "static/images/fixture.jpg" }] };
+    await expect(restoreStaticMedia(value, capture, restored)).rejects.toThrow("UNSAFE_STATIC_MEDIA");
+  });
 });
 test("reference inventory covers originals, videos, private documents and every supported derivative", () => {
   const rows = mediaObjectReferences([{ ...asset(), variantsJson: JSON.stringify({ thumb: {}, card: {}, hero: {} }) },

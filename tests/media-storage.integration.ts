@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import { mkdtemp, readFile, unlink, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 const uploaded: StoredMedia[] = [];
 const privateKeys: string[] = [];
@@ -111,8 +112,14 @@ describe("S3-compatible public and private media delivery", () => {
     expect((await sharp(bytes).metadata()).exif).toBeDefined();
     const stored = await storeUpload(new File([new Uint8Array(bytes)], "exif-verification.jpg", { type: "image/jpeg" })); uploaded.push(stored);
     const response = await requestContent(stored.id);
-    const metadata = await sharp(Buffer.from(await response.arrayBuffer())).metadata();
+    const delivered = Buffer.from(await response.arrayBuffer());
+    const metadata = await sharp(delivered).metadata();
     expect(metadata.exif).toBeUndefined(); expect(metadata.width).toBe(19);
+    const asset = await db.mediaAsset.findUniqueOrThrow({ where: { id: stored.id } });
+    expect(asset.checksum).toBe(createHash("sha256").update(bytes).digest("hex"));
+    expect(asset.storageChecksum).toBe(createHash("sha256").update(delivered).digest("hex"));
+    expect(asset.storageChecksum).not.toBe(asset.checksum);
+    await expect(storeUpload(new File([new Uint8Array(bytes)], "same-source.jpg", { type: "image/jpeg" }))).rejects.toMatchObject({ code: "DUPLICATE_MEDIA", existingAsset: { id: stored.id } });
   });
 
   test("gated report grants are scoped, expire, and revoke when unpublished", async () => {
