@@ -11,7 +11,7 @@ async function restore(directory, configFile) {
   if (existsSync(resolve(directory, "INCOMPLETE.txt"))) throw new Error("INCOMPLETE_BACKUP");
   const manifest = JSON.parse(readFileSync(resolve(directory, "manifest.json"), "utf8").replace(/^\uFEFF/, ""));
   validateBackupScope(manifest, manifest.syntheticFixture === true);
-  if (manifest.source !== "hosted-postgres-r2") throw new Error("HOSTED_SCOPE_REQUIRED");
+  if (!["hosted-postgres-r2", "hosted-postgres-s3"].includes(manifest.source)) throw new Error("HOSTED_SCOPE_REQUIRED");
   const config = JSON.parse(readFileSync(configFile, "utf8").replace(/^\uFEFF/, ""));
   for (const key of ["toolImage", "postgresImage", "storageImage", "appImage"]) {
     if (!/^sha256:[a-f0-9]{64}$/.test(config[key] ?? "")) throw new Error("PINNED_RESTORE_IMAGES_REQUIRED");

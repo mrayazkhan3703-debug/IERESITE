@@ -19,8 +19,13 @@ export function validateHostedSource(value, fixture = false) {
   objectNamespace(value.keyPrefix, "public/media/validation");
   let storage;
   try { storage = new URL(value.endpoint); } catch { fail("INVALID_HOSTED_SOURCE"); }
+  const profile = value.mediaProfile ?? "cloudflare-r2";
+  const acceptedHost = profile === "cloudflare-r2"
+    ? /^[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(storage.hostname)
+    : profile === "railway-temporary-seaweed" && value.databaseTransport === "railway-private" &&
+      storage.hostname === "media-production-51c3.up.railway.app" && value.bucket === "iere-railway-test" && !value.keyPrefix;
   if (storage.username || storage.password || storage.search || storage.hash || storage.pathname !== "/" ||
-      (!fixture && (storage.protocol !== "https:" || !/^[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(storage.hostname)))) fail("INVALID_HOSTED_SOURCE");
+      (!fixture && (storage.protocol !== "https:" || storage.port || !acceptedHost))) fail("INVALID_HOSTED_SOURCE");
   return value;
 }
 export function mediaObjectReferences(assets) {
@@ -103,7 +108,7 @@ export async function captureHosted({ source, directory, staticRoot, fixture = f
   const transport = databaseTransport(source, fixture);
   const sql = postgres ?? new SQL(source.databaseUrl, { max: 1, connectionTimeout: 15, idleTimeout: 0, maxLifetime: 0,
     tls: transport.tls });
-  const remote = store ?? new S3Client({ endpoint: source.endpoint, region: "auto", forcePathStyle: true,
+  const remote = store ?? new S3Client({ endpoint: source.endpoint, region: source.mediaProfile === "railway-temporary-seaweed" ? "us-east-1" : "auto", forcePathStyle: true,
     credentials: { accessKeyId: source.accessKeyId, secretAccessKey: source.secretAccessKey }, maxAttempts: 3,
     requestHandler: { connectionTimeout: 5000, socketTimeout: 30000 }, requestChecksumCalculation: "WHEN_REQUIRED", responseChecksumValidation: "WHEN_REQUIRED" });
   let reserved;
@@ -140,7 +145,8 @@ export async function captureHosted({ source, directory, staticRoot, fixture = f
     await runTool("tar", ["-czf", resolve(directory, "object-storage.tar.gz"), "-C", directory, "inventory.json", "objects"]);
     await runTool("pg_restore", ["--list", resolve(directory, "database.dump")]);
     await runTool("tar", ["-tzf", resolve(directory, "object-storage.tar.gz")]);
-    const manifest = { format: 2, source: "hosted-postgres-r2", sourceId: source.sourceId, syntheticFixture: fixture,
+    const manifest = { format: 2, source: source.mediaProfile === "railway-temporary-seaweed" ? "hosted-postgres-s3" : "hosted-postgres-r2",
+      mediaProfile: source.mediaProfile ?? "cloudflare-r2", sourceId: source.sourceId, syntheticFixture: fixture,
       createdAtUtc: started, completedAtUtc: new Date().toISOString(),
       database: { file: "database.dump", sha256: (await hashFile(resolve(directory, "database.dump"))).sha256, serverVersionNum: snapshot.version, schema: "public" },
       objectStorage: { file: "object-storage.tar.gz", sha256: (await hashFile(resolve(directory, "object-storage.tar.gz"))).sha256, format: "content-addressed-r2", objectCount: captured.objects.length, totalBytes: captured.totalBytes, inventorySha256: (await hashFile(resolve(directory, "inventory.json"))).sha256 },

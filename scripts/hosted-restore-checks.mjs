@@ -90,7 +90,7 @@ export async function restoreStaticMedia(value, directory, publicRoot) {
 }
 async function checks(mode, backup, extracted) {
   const manifest = JSON.parse(await readFile(resolve(backup, "manifest.json"), "utf8"));
-  if (manifest.format !== 2 || manifest.source !== "hosted-postgres-r2") fail("HOSTED_SCOPE_REQUIRED");
+  if (manifest.format !== 2 || !["hosted-postgres-r2", "hosted-postgres-s3"].includes(manifest.source)) fail("HOSTED_SCOPE_REQUIRED");
   if (mode === "prepare") {
     await inspectBackup(backup, manifest.syntheticFixture === true);
     const archive = resolve(backup, "object-storage.tar.gz");

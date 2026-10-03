@@ -38,6 +38,20 @@ test("Railway private database transport is explicit and cannot downgrade an int
   }
 });
 
+test("transition capture allows only the explicitly selected existing temporary media service", () => {
+  const temporary = { ...source(), databaseTransport: "railway-private", databaseUrl: "postgresql://fixture:fixture@postgres.railway.internal:5432/iere_test",
+    caCertificate: undefined, mediaProfile: "railway-temporary-seaweed", endpoint: "https://media-production-51c3.up.railway.app", bucket: "iere-railway-test" };
+  expect(validateHostedSource(temporary).mediaProfile).toBe("railway-temporary-seaweed");
+  for (const patch of [{ mediaProfile: undefined }, { endpoint: "https://other.up.railway.app" }, { bucket: "another-bucket" },
+    { keyPrefix: "railway-main" }, { endpoint: "http://media-production-51c3.up.railway.app" }, { databaseTransport: "verified-tls" }]) {
+    expect(() => validateHostedSource({ ...temporary, ...patch })).toThrow();
+  }
+  const manifest = { format: 2, source: "hosted-postgres-s3", mediaProfile: "railway-temporary-seaweed", sourceId: "railway-main",
+    database: { schema: "public" }, objectStorage: { format: "content-addressed-r2", objectCount: 1, inventorySha256: "a".repeat(64) } };
+  expect(() => validateBackupScope(manifest)).not.toThrow();
+  expect(() => validateBackupScope({ ...manifest, mediaProfile: "unknown" })).toThrow();
+});
+
 test("capture reads the physical namespace but retains logical media and private import keys", async () => {
   await scratch(async dir => {
     const keys: string[] = [];

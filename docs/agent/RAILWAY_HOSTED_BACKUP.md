@@ -4,6 +4,16 @@ Status on 2026-10-03: implementation under verification. No actual Railway snaps
 
 ## Service configuration
 
+### Temporary migration safeguard
+
+`capture-railway-transition.mjs` provides a one-time encrypted capture before media cutover. It uses the existing Web service's private database URL and current S3 credentials, with only the owner's public age recipient supplied. It accepts the explicitly named temporary `media-production-51c3.up.railway.app` endpoint and `iere-railway-test` bucket, with no prefix. It does not upload new credentials or a private age identity to Railway. This transitional profile is rejected by the scheduled production runner.
+
+The tool requires PostgreSQL 16 `pg_dump`/`pg_restore`, `tar` and `age`, and a fresh absolute ciphertext destination outside the public directory. Its exported database snapshot, object inventory, complete object bytes and bundled images reuse the existing hosted capture checks. Plaintext remains in an owned private temporary directory and is removed on completion/failure. Only the encrypted `.tar.gz.age` capsule and sanitized receipt are retained for download. Missing objects invalidate the capture; an incomplete ciphertext has no success receipt and must not be used. Neither an encrypted capture nor its receipt proves recovery.
+
+After download, validate the complete ciphertext hash against the receipt, decrypt locally with the existing owner-held identity, and pass the three captured members through the normal encrypted R2 adapter and isolated hosted restore workflow. The forward manifest source `hosted-postgres-s3` explicitly records `railway-temporary-seaweed`; older `hosted-postgres-r2` archives remain valid. A transitional restore cannot satisfy the production R2 schedule gate. Repeat capture and recovery after R2 cutover before enabling the independent schedule.
+
+Current state: tools prepared; Railway browser file-transfer failure prevented upload/execution. No transitional capture is claimed.
+
 Use a dedicated service in the same Railway project/environment as PostgreSQL. Build the exact passing commit with `docker/backup-tools.Dockerfile`. Disable auto deploy; retain the accepted commit. It has no public domain, health endpoint, attached media/database volume, or application worker. The image includes the pinned release's public bundle for existing `static/images/...` MediaAsset references.
 
 Start with `bun --no-env-file scripts/backup-railway.mjs plan`. This validates explicit configuration and prints sanitized metadata without network calls. Run `capture` manually for the first real snapshot; this exits after completing capture, encryption, upload, and full ciphertext readback. Never pass a private age identity to Railway.

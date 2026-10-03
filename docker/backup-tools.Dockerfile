@@ -15,10 +15,13 @@ COPY --from=age-build /go/bin/age /go/bin/age-keygen /usr/local/bin/
 COPY scripts/backup-hosted.mjs scripts/hosted-restore-checks.mjs scripts/backup-adapter.mjs scripts/check-backup-evidence.mjs scripts/r2-backup-verification.mjs scripts/report-backup-operations.mjs ./scripts/
 COPY scripts/backup-source-policy.mjs ./scripts/
 COPY scripts/backup-railway.mjs ./scripts/
+COPY scripts/capture-railway-transition.mjs ./scripts/
 COPY public ./public/
 COPY docs/agent/RECOVERY_TARGETS.json docs/agent/BACKUP_OPERATIONS_POLICY.json ./docs/agent/
 COPY tests/fixtures/backup-adapter-fixture.mjs ./tests/fixtures/
 COPY tests/backup-adapter.test.ts tests/backup-storage-cap.test.ts tests/hosted-backup.test.ts tests/r2-backup-verification.test.ts tests/backup-operations-report.test.ts ./tests/
 COPY tests/railway-backup.test.ts ./tests/
+COPY bunfig.toml ./
+COPY tests/disposable-environment.ts tests/require-disposable-environment.ts tests/disposable-environment.test.ts tests/transition-capture.test.ts ./tests/
 USER 1000:1000
 ENTRYPOINT ["bun", "--no-env-file", "scripts/backup-adapter.mjs"]

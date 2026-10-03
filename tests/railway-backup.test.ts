@@ -31,7 +31,7 @@ test("scheduled backups require actual recovery of this source and the owner key
   const now = Date.now(), pass = evidence(now);
   const approved = { BACKUP_OWNER_KEY_COPY_CONFIRMED: "true", BACKUP_RECOVERY_EVIDENCE: JSON.stringify(pass) };
   expect(() => requireRailwayRecovery(approved, "railway-main", now)).not.toThrow();
-  for (const patch of [{ status: "FAILED" }, { sourceId: "supabase-old" }, { syntheticFixture: true }, { outboundJobs: "ENABLED" },
+  for (const patch of [{ status: "FAILED" }, { sourceId: "supabase-old" }, { source: "hosted-postgres-s3" }, { syntheticFixture: true }, { outboundJobs: "ENABLED" },
     { databaseChecks: { status: "FAILED" } }, { restoreCompletedAtUtc: new Date(now + 86400000).toISOString() }]) {
     expect(() => requireRailwayRecovery({ ...approved, BACKUP_RECOVERY_EVIDENCE: JSON.stringify({ ...pass, ...patch }) }, "railway-main", now)).toThrow();
   }
