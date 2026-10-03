@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { access, writeFile, readFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { workerBackupConfiguration, startBackupLoop, safeBackupResult, safeBackupFailure } from "../scripts/railway-worker-supervisor.mjs";
+import { workerBackupConfiguration, startBackupLoop, safeBackupResult, safeBackupFailure, safeBackupProgress } from "../scripts/railway-worker-supervisor.mjs";
 
 const env = () => ({ RAILWAY_BACKUP_MODE: "capture", PATH: "/usr/local/bin:/usr/bin:/bin",
   BACKUP_SOURCE_ID: "railway-main", BACKUP_DATABASE_URL: "postgresql://fixture:fixture@postgres.railway.internal:5432/iere_test",
@@ -80,6 +80,29 @@ test("backup summaries reject incomplete output and never echo unapproved child 
   expect(safeBackupResult("x".repeat(8193))).toBeNull();
   expect(safeBackupFailure(JSON.stringify({ status: "BACKUP_FAILED", code: "HOSTED_TOOL_FAILED", secret: "fixture-private-key" }))).toBe("HOSTED_TOOL_FAILED");
   expect(safeBackupFailure(JSON.stringify({ status: "BACKUP_FAILED", code: "fixture-private-key" }))).toBe("REDACTED_FAILURE");
+});
+
+test("phase diagnostics expose only approved phases and nonnegative bounded counts", () => {
+  expect(safeBackupProgress(JSON.stringify({ event: "backup.phase", phase: "OBJECT_PROGRESS", objects: 25, totalBytes: 1024,
+    databaseUrl: "fixture-private-uri", objectKey: "fixture-private-path" }))).toEqual({ event: "backup.phase", phase: "OBJECT_PROGRESS", objects: 25, totalBytes: 1024 });
+  for (const output of ["fixture-private-error", "x".repeat(8193), JSON.stringify({ event: "backup.phase", phase: "fixture-private-uri" }),
+    JSON.stringify({ event: "backup.phase", phase: "SOURCE_CONNECT", objects: -1 }),
+    JSON.stringify({ event: "backup.phase", phase: "SOURCE_CONNECT", totalBytes: Number.MAX_SAFE_INTEGER + 1 })]) expect(safeBackupProgress(output)).toBeNull();
+});
+
+test("fragmented phase lines survive child stderr without exposing raw failures", async () => {
+  const logs: unknown[] = [], child = Object.assign(new EventEmitter(), { pid: 123, stderr: new EventEmitter() });
+  const loop = startBackupLoop({ env: env(), spawnChild: () => {
+    setTimeout(() => {
+      child.stderr.emit("data", Buffer.from('{"event":"backup.phase","phase":"SOURCE_'));
+      child.stderr.emit("data", Buffer.from('CONNECT","secret":"fixture-private-secret"}\nfixture-private-error\n'));
+      child.stderr.emit("data", Buffer.from('{"status":"BACKUP_FAILED","code":"HOSTED_TOOL_FAILED"}\n'));
+      child.emit("close", 1, null);
+    }, 5); return child;
+  }, terminate: () => {}, log: (value: unknown) => logs.push(value) });
+  await until(() => loop.status() === "CAPTURE_FINISHED");
+  expect(JSON.stringify(logs)).toContain("SOURCE_CONNECT"); expect(JSON.stringify(logs)).toContain("HOSTED_TOOL_FAILED");
+  expect(JSON.stringify(logs)).not.toContain("fixture-private"); await loop.stop();
 });
 
 test.skipIf(process.platform === "win32")("shutdown kills an owned real process group including descendants and removes its temp files", async () => {

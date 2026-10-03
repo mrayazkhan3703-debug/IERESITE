@@ -127,7 +127,7 @@ test("retained private import snapshots are captured with strict keys", () => {
 });
 test("database counts, migrations and pg_dump share the exported repeatable-read snapshot", async () => {
   await scratch(async root => {
-    const statements: string[] = [], tools: { name: string; args: string[] }[] = [];
+    const statements: string[] = [], tools: { name: string; args: string[] }[] = [], phases: {phase: string}[] = [];
     const reserved = { release() {}, unsafe: async (text: string) => {
       statements.push(text);
       if (text.includes("pg_export_snapshot")) return [{ snapshot: "fixture-snapshot", version: "170006" }];
@@ -145,10 +145,13 @@ test("database counts, migrations and pg_dump share the exported repeatable-read
       if (name === "tar" && args[0] === "-czf") await writeFile(args[1], "FIXTURE_ONLY_NOT_REAL_ARCHIVE");
     };
     const manifest = await captureHosted({ source: source(), fixture: true, directory: join(root, "capture"), postgres: { reserve: async () => reserved },
-      store: { send: async () => ({ Body: Readable.from([Buffer.from("fixture")]), ContentLength: 7 }) }, runTool });
+      store: { send: async () => ({ Body: Readable.from([Buffer.from("fixture")]), ContentLength: 7 }) }, runTool, onProgress: event => phases.push(event) });
     expect(statements[0]).toContain("REPEATABLE READ READ ONLY"); expect(tools[0].args).toContain("--snapshot=fixture-snapshot");
     expect(tools[0].args.join(" ")).not.toContain("postgresql://"); expect(manifest.syntheticFixture).toBe(true);
     expect(manifest.objectStorage.objectCount).toBe(1);
+    expect(tools[0].args).toContain("--lock-wait-timeout=30s");
+    expect(phases.map(event => event.phase)).toEqual(["SOURCE_CONNECT", "SOURCE_SNAPSHOT", "SOURCE_INVENTORY", "DATABASE_DUMP", "DATABASE_DUMP_COMPLETE", "OBJECT_CAPTURE", "OBJECT_PROGRESS", "OBJECT_CAPTURE_COMPLETE", "ARCHIVE_VALIDATION", "CAPTURE_COMPLETE"]);
+    expect(JSON.stringify(phases)).not.toContain("fixture"); expect(JSON.stringify(phases)).not.toContain("public/media");
     await expect(readFile(join(root, "capture", "INCOMPLETE.txt"))).rejects.toThrow();
     await expect(captureHosted({ source: source(), directory: join(root, "unsafe"), runTool })).rejects.toThrow("FIXTURE_TOOL_ONLY");
   });

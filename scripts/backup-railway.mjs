@@ -76,8 +76,11 @@ export async function runRailwayBackup(action, env) {
     credentials: config.credentials, maxAttempts: 3, requestHandler: { connectionTimeout: 5000, socketTimeout: 30000 },
     requestChecksumCalculation: "WHEN_REQUIRED", responseChecksumValidation: "WHEN_REQUIRED" });
   let root;
+  const progress = value => console.error(JSON.stringify({ event: "backup.phase", ...value }));
   try {
+    progress({ phase: "LATEST_RECEIPT" });
     const previous = await latestRailwayReceipt(store, config.destination);
+    progress({ phase: "LATEST_RECEIPT_COMPLETE" });
     if (action === "report") return previous ? assessReceipt(previous.receipt, config.destination) : { status: "BACKUP_MISSING", achievedRpo: "NOT_VERIFIED", achievedRto: "NOT_VERIFIED" };
     root = await mkdtemp(resolve(tmpdir(), "iere-railway-backup-"));
     const recipientFile = resolve(root, "recipients.txt"), credentialFile = resolve(root, "credentials.json");
@@ -85,8 +88,10 @@ export async function runRailwayBackup(action, env) {
     await writeFile(credentialFile, JSON.stringify(config.credentials), { mode: 0o600, flag: "wx" });
     const destination = { ...config.destination, recipientFile, credentialFile };
     const directory = resolve(root, "capture");
-    const manifest = await captureHosted({ source: config.source, directory, staticRoot: resolve(import.meta.dirname, "../public") });
+    const manifest = await captureHosted({ source: config.source, directory, staticRoot: resolve(import.meta.dirname, "../public"), onProgress: progress });
+    progress({ phase: "ENCRYPT_UPLOAD" });
     const receipt = await uploadExistingBackup({ config: destination, directory, outputDirectory: resolve(root, "encrypted"), store });
+    progress({ phase: "ENCRYPT_UPLOAD_COMPLETE" });
     // A compare-and-set pointer avoids an older concurrent run replacing the latest recovery point.
     await publishLatestRailwayReceipt(store, destination, receipt);
     return { status: "VERIFIED_CIPHERTEXT_ONLY", sourceId: manifest.sourceId, runId: receipt.runId, objectCount: manifest.objectStorage.objectCount,

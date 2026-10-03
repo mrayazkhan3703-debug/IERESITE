@@ -6,6 +6,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { railwayBackupConfiguration, requireRailwayRecovery, SAFE_BACKUP_ERROR_CODES } from "./backup-railway.mjs";
+import { BACKUP_PHASES } from "./backup-hosted.mjs";
 
 const BACKUP_VARIABLES = ["BACKUP_SOURCE_ID", "BACKUP_DATABASE_URL", "BACKUP_DATABASE_TRANSPORT", "BACKUP_DATABASE_CA",
   "BACKUP_MEDIA_ENDPOINT", "BACKUP_MEDIA_BUCKET", "BACKUP_MEDIA_KEY_PREFIX", "BACKUP_MEDIA_ACCESS_KEY_ID", "BACKUP_MEDIA_SECRET_ACCESS_KEY",
@@ -30,6 +31,18 @@ export function safeBackupResult(output) {
 export function safeBackupFailure(output) {
   try { if (output.length > 8192) return "REDACTED_FAILURE"; const value = JSON.parse(output); return value.status === "BACKUP_FAILED" && SAFE_BACKUP_ERROR_CODES.has(value.code) ? value.code : "REDACTED_FAILURE"; }
   catch { return "REDACTED_FAILURE"; }
+}
+
+export function safeBackupProgress(output) {
+  try {
+    if (output.length > 8192) return null;
+    const value = JSON.parse(output);
+    if (value.event !== "backup.phase" || !BACKUP_PHASES.has(value.phase)) return null;
+    /** @type {{event:string, phase:string, objects?:number,totalBytes?:number}} */
+    const safe = { event: "backup.phase", phase: value.phase };
+    for (const key of ["objects", "totalBytes"]) { if (value[key] !== undefined) { if (!Number.isSafeInteger(value[key]) || value[key] < 0) return null; safe[key] = value[key]; } }
+    return safe;
+  } catch { return null; }
 }
 
 export function workerBackupConfiguration(env) {
@@ -68,7 +81,7 @@ export function startBackupLoop({ env, spawnChild = spawn, terminate = terminate
     let finish;
     const completed = new Promise(done => { finish = done; });
     const state = { child: null, completed, cancelled: false }; active = state;
-    let forceTimer, deadline, root, exitCode = null, exitSignal = null, output = "", errorOutput = "";
+    let forceTimer, deadline, root, exitCode = null, exitSignal = null, output = "", errorOutput = "", errorLine = "";
     const stopChild = () => {
       state.cancelled = true;
       if (!state.child) return;
@@ -85,7 +98,16 @@ export function startBackupLoop({ env, spawnChild = spawn, terminate = terminate
         });
         state.child = child;
         child.stdout?.on("data", chunk => { if (output.length <= 8192) output += chunk.toString(); });
-        child.stderr?.on("data", chunk => { if (errorOutput.length <= 8192) errorOutput += chunk.toString(); });
+        child.stderr?.on("data", chunk => {
+          for (const part of chunk.toString().split(/(?<=\n)/)) {
+            errorLine += part;
+            if (part.endsWith("\n")) {
+              const line = errorLine.trim(), progress = safeBackupProgress(line);
+              if (progress) log(progress); else if (safeBackupFailure(line) !== "REDACTED_FAILURE") errorOutput = line;
+              errorLine = "";
+            } else if (errorLine.length > 8192) errorLine = "INVALID_OVERSIZED_LINE";
+          }
+        });
         log({ event: "backup.started", mode: config.mode, atUtc: new Date().toISOString() });
         deadline = setTimeout(() => { log({ event: "backup.failed", status: "DEADLINE_EXCEEDED" }); stopChild(); }, deadlineMs);
         await new Promise(done => {

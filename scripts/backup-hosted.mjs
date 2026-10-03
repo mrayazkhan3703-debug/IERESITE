@@ -11,6 +11,7 @@ import { hashFile, ARCHIVE_LIMIT } from "./backup-adapter.mjs";
 import { databaseTransport, objectNamespace, staticMediaKey } from "./backup-source-policy.mjs";
 
 const fail = code => { throw new Error(code); };
+export const BACKUP_PHASES = new Set(["LATEST_RECEIPT", "LATEST_RECEIPT_COMPLETE", "SOURCE_CONNECT", "SOURCE_SNAPSHOT", "SOURCE_INVENTORY", "DATABASE_DUMP", "DATABASE_DUMP_COMPLETE", "OBJECT_CAPTURE", "OBJECT_PROGRESS", "OBJECT_CAPTURE_COMPLETE", "ARCHIVE_VALIDATION", "CAPTURE_COMPLETE", "ENCRYPT_UPLOAD", "ENCRYPT_UPLOAD_COMPLETE"]);
 export function validateHostedSource(value, fixture = false) {
   if (value?.format !== 1 || !/^[a-z0-9][a-z0-9-]{2,80}$/.test(value.sourceId ?? "") ||
       !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value.bucket ?? "") ||
@@ -58,8 +59,8 @@ export function importObjectReferences(rows) {
     return { assetId: null, key: row.snapshotRef, kind: "DOCUMENT", mimeType: row.snapshotRef.endsWith(".csv") ? "text/csv" : "application/json", private: true, variant: "import-snapshot" };
   });
 }
-/** @param {any} store @param {string} bucket @param {any[]} references @param {string} directory @param {{keyPrefix?: string, staticRoot?: string}} options */
-export async function captureReferencedObjects(store, bucket, references, directory, { keyPrefix = "", staticRoot } = {}) {
+/** @param {any} store @param {string} bucket @param {any[]} references @param {string} directory @param {{keyPrefix?: string, staticRoot?: string, onProgress?: (event: {phase:string, objects?:number,totalBytes?:number}) => void}} options */
+export async function captureReferencedObjects(store, bucket, references, directory, { keyPrefix = "", staticRoot, onProgress = () => {} } = {}) {
   await mkdir(resolve(directory, "objects"), { mode: 0o700 });
   const index = []; let totalBytes = 0;
   for (let i = 0; i < references.length; i++) {
@@ -92,6 +93,7 @@ export async function captureReferencedObjects(store, bucket, references, direct
     const target = resolve(directory, file);
     try { await lstat(target); await unlink(pending); } catch (error) { if (error.code !== "ENOENT") throw error; await rename(pending, target); }
     index.push({ ...ref, file, bytes, sha256 });
+    if ((i + 1) % 25 === 0 || i + 1 === references.length) onProgress({ phase: "OBJECT_PROGRESS", objects: i + 1, totalBytes });
   }
   return { objects: index, totalBytes };
 }
@@ -104,8 +106,8 @@ export async function hostedTool(program, args, env = {}) {
     proc.once("close", code => { clearTimeout(timer); if (code === 0) done(); else reject(new Error("HOSTED_TOOL_FAILED")); });
   });
 }
-/** @param {{source: any, directory: string, staticRoot?: string, fixture?: boolean, postgres?: any, store?: any, runTool?: typeof hostedTool}} options */
-export async function captureHosted({ source, directory, staticRoot, fixture = false, postgres, store, runTool = hostedTool }) {
+/** @param {{source: any, directory: string, staticRoot?: string, fixture?: boolean, postgres?: any, store?: any, runTool?: typeof hostedTool, onProgress?: (event: {phase:string, objects?:number,totalBytes?:number}) => void}} options */
+export async function captureHosted({ source, directory, staticRoot, fixture = false, postgres, store, runTool = hostedTool, onProgress = () => {} }) {
   source = validateHostedSource(source, fixture);
   if (runTool !== hostedTool && !fixture) fail("FIXTURE_TOOL_ONLY");
   if (!isAbsolute(directory)) fail("ABSOLUTE_OUTPUT_REQUIRED");
@@ -123,11 +125,13 @@ export async function captureHosted({ source, directory, staticRoot, fixture = f
   let reserved;
   const caPath = resolve(directory, "source-ca.crt");
   try {
+    onProgress({ phase: "SOURCE_CONNECT" });
     reserved = await sql.reserve();
     if (transport.sslmode === "verify-full") await writeFile(caPath, source.caCertificate, { flag: "wx", mode: 0o600 });
     await reserved.unsafe("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     await reserved.unsafe("SET LOCAL statement_timeout = '120s'");
     const [snapshot] = await reserved.unsafe("SELECT pg_export_snapshot() AS snapshot, current_setting('server_version_num') AS version");
+    onProgress({ phase: "SOURCE_SNAPSHOT" });
     // JSON extraction remains compatible with hosted schemas before the additive stored-hash migration.
     const assets = await reserved.unsafe('SELECT id, "storageKey", kind, "mimeType", "isPrivate", "variantsJson", "sizeBytes", checksum, to_jsonb(m)->>\'storageChecksum\' AS "storageChecksum" FROM public."MediaAsset" m ORDER BY id LIMIT 20001');
     const imports = await reserved.unsafe('SELECT DISTINCT "snapshotRef" FROM public."ImportRun" WHERE "snapshotRef" IS NOT NULL ORDER BY "snapshotRef" LIMIT 10001');
@@ -142,16 +146,22 @@ export async function captureHosted({ source, directory, staticRoot, fixture = f
     const migrations = await reserved.unsafe('SELECT migration_name, checksum FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY migration_name');
     const extensions = await reserved.unsafe("SELECT extname, extversion FROM pg_extension WHERE extname IN ('postgis','pg_trgm','vector') ORDER BY extname");
     if (extensions.length !== 3) fail("SOURCE_EXTENSIONS_MISSING");
+    onProgress({ phase: "SOURCE_INVENTORY" });
     const dbUrl = new URL(source.databaseUrl);
-    await runTool("pg_dump", ["--format=custom", "--schema=public", "--no-owner", "--no-privileges", `--snapshot=${snapshot.snapshot}`, "--file", resolve(directory, "database.dump")], {
+    onProgress({ phase: "DATABASE_DUMP" });
+    await runTool("pg_dump", ["--format=custom", "--schema=public", "--no-owner", "--no-privileges", "--lock-wait-timeout=30s", `--snapshot=${snapshot.snapshot}`, "--file", resolve(directory, "database.dump")], {
       PGHOST: dbUrl.hostname, PGPORT: dbUrl.port || "5432", PGUSER: decodeURIComponent(dbUrl.username), PGPASSWORD: decodeURIComponent(dbUrl.password),
       PGDATABASE: decodeURIComponent(dbUrl.pathname.slice(1)), PGSSLMODE: transport.sslmode, PGCONNECT_TIMEOUT: "15",
       ...(transport.sslmode === "verify-full" ? { PGSSLROOTCERT: caPath } : {}),
     });
+    onProgress({ phase: "DATABASE_DUMP_COMPLETE" });
     // Immutable media keys from the same DB snapshot include library assets, posters, private documents and retained references.
-    const captured = await captureReferencedObjects(remote, source.bucket, [...mediaObjectReferences(assets), ...importObjectReferences(imports)], directory, { keyPrefix: source.keyPrefix, staticRoot });
+    onProgress({ phase: "OBJECT_CAPTURE" });
+    const captured = await captureReferencedObjects(remote, source.bucket, [...mediaObjectReferences(assets), ...importObjectReferences(imports)], directory, { keyPrefix: source.keyPrefix, staticRoot, onProgress });
+    onProgress({ phase: "OBJECT_CAPTURE_COMPLETE", objects: captured.objects.length, totalBytes: captured.totalBytes });
     const inventory = { format: 1, sourceId: source.sourceId, snapshot: snapshot.snapshot, sourceKeyPrefix: source.keyPrefix ?? "", databaseTransport: source.databaseTransport ?? "verified-tls", counts, migrations, extensions, ...captured };
     await writeFile(resolve(directory, "inventory.json"), JSON.stringify(inventory), { flag: "wx", mode: 0o600 });
+    onProgress({ phase: "ARCHIVE_VALIDATION" });
     await runTool("tar", ["-czf", resolve(directory, "object-storage.tar.gz"), "-C", directory, "inventory.json", "objects"]);
     await runTool("pg_restore", ["--list", resolve(directory, "database.dump")]);
     await runTool("tar", ["-tzf", resolve(directory, "object-storage.tar.gz")]);
@@ -165,6 +175,7 @@ export async function captureHosted({ source, directory, staticRoot, fixture = f
     await writeFile(resolve(directory, "manifest.json"), JSON.stringify(manifest), { flag: "wx", mode: 0o600 });
     await reserved.unsafe("ROLLBACK");
     await unlink(marker);
+    onProgress({ phase: "CAPTURE_COMPLETE" });
     return manifest;
   } finally {
     if (reserved) { await reserved.unsafe("ROLLBACK").catch(() => {}); reserved.release(); }
