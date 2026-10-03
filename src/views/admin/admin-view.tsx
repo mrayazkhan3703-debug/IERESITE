@@ -2001,6 +2001,7 @@ function ImportsSection() {
   const [error, setError] = React.useState("");
   const [csv, setCsv] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [preview, setPreview] = React.useState<{ runId: string; csv: string } | null>(null);
   const requestKey = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [details, setDetails] = React.useState<{ runId: string; records: Record<string, unknown>[]; loading: boolean; truncated: boolean } | null>(null);
 
@@ -2024,11 +2025,12 @@ function ImportsSection() {
       }
       const res = await api.post<{ importRunId: string; status: string; duplicateRequest: boolean }>(
         "/api/admin/imports",
-        { format: "csv", data: csv, dryRun },
+        { format: "csv", data: csv, dryRun, ...(!dryRun ? { previewRunId: preview?.runId } : {}) },
         { headers: { "Idempotency-Key": requestKey.current.key } },
       );
       toast.info(`${dryRun ? "Validation" : "Import"} ${res.status.toLowerCase()}${res.duplicateRequest ? " (existing request)" : ""} · run ${res.importRunId}`);
-      if (!dryRun) setCsv("");
+      if (dryRun) setPreview({ runId: res.importRunId, csv });
+      else { setCsv(""); setPreview(null); }
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Import failed");
@@ -2057,6 +2059,7 @@ function ImportsSection() {
 
       <div className="rounded-xl border border-border/70 bg-card p-5">
         <h2 className="kicker mb-2">Run a CSV import</h2>
+        <a href="/api/admin/imports/template?format=csv" className="mb-3 inline-block text-sm underline">Download blank inventory CSV template</a>
         <p className="mb-3 text-xs text-muted-foreground">
           Headers: externalId,title,community,project,developer,propertyType,listingType,bedrooms,bathrooms,areaSqft,priceAed,offPlan,availability,view,furnishing,handover,description,agentEmail,lat,lng
         </p>
@@ -2070,8 +2073,9 @@ function ImportsSection() {
         />
         <div className="mt-3 flex gap-2">
           <Button size="sm" variant="outline" onClick={() => runImport(true)} disabled={busy}>Validate only</Button>
-          <Button size="sm" onClick={() => runImport(false)} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Import</Button>
+          <Button size="sm" onClick={() => runImport(false)} disabled={busy || !preview || preview.csv !== csv || !data?.runs.some(run => run.id === preview.runId && run.status === "DRY_RUN")}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Commit reviewed import</Button>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">Validate first, then review row outcomes below before committing. Changing the file requires a new preview. Valid rows become drafts; invalid rows are skipped with errors.</p>
       </div>
 
       {data && (

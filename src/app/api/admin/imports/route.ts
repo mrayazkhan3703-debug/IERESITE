@@ -10,6 +10,8 @@ import { Readable } from "node:stream";
 import { MAX_IMPORT_SNAPSHOT_BYTES, persistImportSnapshot } from "@/server/ingestion/snapshot";
 import { deletePrivateObject } from "@/server/storage/object-store";
 import { stageImportCommand } from "@/server/domain/import-command";
+import { createHash } from "node:crypto";
+import { requireReviewedImport } from "@/server/ingestion/preview-approval";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +52,8 @@ export const GET = apiHandler(async () => {
 const postSchema = z.object({
   format: z.enum(["json", "csv"]).default("json"),
   data: z.union([z.string(), z.array(z.unknown())]),
-  dryRun: z.boolean().default(false),
+  dryRun: z.boolean().default(true),
+  previewRunId: z.string().min(1).max(128).optional(),
 });
 
 /** Run an import from posted JSON array or CSV text (Q07 golden path: admin → ingestion → index → public) */
@@ -92,6 +95,10 @@ export const POST = apiHandler(async (req) => {
     throw error;
   }
 
+  if (!input.dryRun) {
+    const preview = input.previewRunId ? await db.importRun.findUnique({ where: { id: input.previewRunId } }) : null;
+    requireReviewedImport(preview, { email: user.email, sha256: createHash("sha256").update(bytes).digest("hex"), format });
+  }
   const snapshot = await persistImportSnapshot({ sourceKey: "INTERACTIVE_UPLOAD", format, bytes });
   try {
     const staged = await stageImportCommand(user, { snapshot, idempotencyKey, dryRun: input.dryRun }, clientIp(req));

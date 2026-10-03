@@ -265,6 +265,7 @@ function illustrativeRents() {
 /* ------------------------------------------------------------------ */
 
 async function main() {
+  if (process.env.APP_ENV === "production") throw new Error("Demo seed is disabled in production. Use db:initialize for authorization only.");
   /* Provision authorization before the optional demo-data short circuit. */
   for (const [roleKey, permissionKeys] of Object.entries(ROLE_PERMISSION_MANIFEST)) {
     const role = await db.role.upsert({

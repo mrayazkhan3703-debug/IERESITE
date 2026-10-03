@@ -20,7 +20,16 @@ const limitIdempotencyKey = `staged-import-limit-${suffix}`;
 const externalId = `synthetic-staged-${suffix}`;
 let ownerCookie = "";
 
-async function postImport(csv: string, options: { idempotencyKey?: string; dryRun?: boolean } = {}) {
+async function postImport(csv: string, options: { idempotencyKey?: string; dryRun?: boolean } = {}): Promise<Response> {
+  const key = options.idempotencyKey ?? idempotencyKey;
+  let previewRunId: string | undefined;
+  if (!options.dryRun) {
+    const preview = await postImport(csv, { idempotencyKey: `${key}-preview`, dryRun: true });
+    if (preview.status !== 202) return preview;
+    previewRunId = (await preview.json() as { importRunId: string }).importRunId;
+    const reviewed = await waitForRun(previewRunId);
+    expect(reviewed.status).toBe("DRY_RUN");
+  }
   return fetch(`${baseUrl}/api/admin/imports`, {
     method: "POST",
     headers: {
@@ -29,7 +38,7 @@ async function postImport(csv: string, options: { idempotencyKey?: string; dryRu
       "x-requested-with": "fetch",
       "idempotency-key": options.idempotencyKey ?? idempotencyKey,
     },
-    body: JSON.stringify({ format: "csv", data: csv, dryRun: options.dryRun ?? false }),
+    body: JSON.stringify({ format: "csv", data: csv, dryRun: options.dryRun ?? false, previewRunId }),
   });
 }
 
@@ -69,7 +78,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const runs = await db.importRun.findMany({ where: { idempotencyKey: { in: [idempotencyKey, dryRunIdempotencyKey, unsupportedModeKey, partialIdempotencyKey, limitIdempotencyKey] } }, select: { id: true, snapshotRef: true } });
+  const keys = [idempotencyKey, dryRunIdempotencyKey, unsupportedModeKey, partialIdempotencyKey, limitIdempotencyKey];
+  const runs = await db.importRun.findMany({ where: { idempotencyKey: { in: keys.flatMap(key => [key, `${key}-preview`]) } }, select: { id: true, snapshotRef: true } });
   const runIds = runs.map((run) => run.id);
   const records = runIds.length ? await db.importRecord.findMany({ where: { importRunId: { in: runIds } }, select: { propertyId: true, listingId: true } }) : [];
   const propertyIds = [...new Set(records.flatMap((record) => record.propertyId ? [record.propertyId] : []))];
@@ -109,6 +119,15 @@ afterAll(async () => {
 });
 
 describe("staged Admin import path", () => {
+  test("refuses an apply request without a durable preview", async () => {
+    const response = await fetch(`${baseUrl}/api/admin/imports`, {
+      method: "POST",
+      headers: { cookie: ownerCookie, "content-type": "application/json", "x-requested-with": "fetch", "idempotency-key": `unreviewed-${suffix}` },
+      body: JSON.stringify({ format: "json", dryRun: false, data: [{ externalId: "unreviewed", title: "Unreviewed fixture", community: "Unknown community", priceAed: 1 }] }),
+    });
+    expect(response.status).toBe(409);
+    expect(await db.importRun.findUnique({ where: { idempotencyKey: `unreviewed-${suffix}` } })).toBeNull();
+  });
   test("queues once by idempotency key, applies a durable chunk, and leaves imported inventory private", async () => {
     const csv = [
       "external_id,title,community,property_type,listing_type,bedrooms,bathrooms,price_aed,off_plan,availability,description,lat,lng",

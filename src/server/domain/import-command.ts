@@ -33,6 +33,7 @@ export async function stageImportCommand(actor: SessionUser, input: StageImportI
 
   const existing = await db.importRun.findUnique({ where: { idempotencyKey } });
   if (existing) {
+    if (existing.triggeredBy !== actor.email) throw new HttpError(409, "This request key belongs to another administrator.", "IMPORT_IDEMPOTENCY_CONFLICT");
     if (!sameRequest(existing, snapshot, input.dryRun)) {
       throw new HttpError(409, "This import request key was already used for different snapshot data.", "IMPORT_IDEMPOTENCY_CONFLICT");
     }
@@ -91,7 +92,7 @@ export async function stageImportCommand(actor: SessionUser, input: StageImportI
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2002", "P2034"].includes(error.code)) {
       const raced = await db.importRun.findUnique({ where: { idempotencyKey } });
-      if (raced && sameRequest(raced, snapshot, input.dryRun)) {
+      if (raced && raced.triggeredBy === actor.email && sameRequest(raced, snapshot, input.dryRun)) {
         return { importRunId: raced.id, status: raced.status, duplicateRequest: true };
       }
       if (raced) throw new HttpError(409, "This import request key was already used for different snapshot data.", "IMPORT_IDEMPOTENCY_CONFLICT");

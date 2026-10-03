@@ -156,26 +156,6 @@ export async function runImport(opts: {
       continue;
     }
 
-    if (opts.dryRun) {
-      const existingProperty = await client.property.findFirst({ where: { sourceId: rec.externalId, sourceType: "IMPORT" }, select: { id: true } });
-      const plannedAction = existingProperty ? "UPDATE" : "CREATE";
-      if (existingProperty) summary.wouldUpdate++;
-      else summary.wouldCreate++;
-      await client.importRecord.create({
-        data: {
-          importRunId: run.id,
-          ...recordMeta,
-          entityKind: "PROPERTY",
-          externalKey: rec.externalId,
-          action: "DRY_RUN",
-          checksum: cs,
-          issuesJson: JSON.stringify({ plannedAction }),
-          rawJson: JSON.stringify(rec),
-        },
-      });
-      continue;
-    }
-
     try {
       // Resolve community by name (normalized contains)
       const communityName = rec.community.trim();
@@ -191,6 +171,26 @@ export async function runImport(opts: {
       if (partialCommunities.length > 1) throw new Error(`Ambiguous community reference: ${rec.community}`);
       const community = exactCommunity ?? slugCommunity ?? partialCommunities[0] ?? null;
       if (!community) throw new Error(`Unknown community: ${rec.community}`);
+
+      if (opts.dryRun) {
+        const existingProperty = await client.property.findFirst({ where: { sourceId: rec.externalId, sourceType: "IMPORT" }, select: { id: true } });
+        const plannedAction = existingProperty ? "UPDATE" : "CREATE";
+        if (existingProperty) summary.wouldUpdate++;
+        else summary.wouldCreate++;
+        await client.importRecord.create({
+          data: {
+            importRunId: run.id,
+            ...recordMeta,
+            entityKind: "PROPERTY",
+            externalKey: rec.externalId,
+            action: "DRY_RUN",
+            checksum: cs,
+            issuesJson: JSON.stringify({ plannedAction }),
+            rawJson: JSON.stringify(rec),
+          },
+        });
+        continue;
+      }
 
       // Resolve project/developer only when the source supplied an explicit
       // developer identity. Ambiguous references require human reconciliation.

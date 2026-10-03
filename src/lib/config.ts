@@ -100,6 +100,7 @@ const schema = z.object({
   S3_PUBLIC_ENDPOINT: z.string().url().optional(),
   S3_REGION: z.string().default("us-east-1"),
   S3_BUCKET: z.string().default("iere-local"),
+  S3_KEY_PREFIX: z.string().max(160).regex(/^(?:[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*)?$/).default(""),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_FORCE_PATH_STYLE: bool(true),
