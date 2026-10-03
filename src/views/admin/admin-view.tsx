@@ -52,6 +52,7 @@ import { ProjectPaymentPlanEditor } from "@/features/admin/shared/project-paymen
 import { UnitEditorDialog, UnitImportDialog, type UnitRow, type UnitProject, type UnitProperty } from "@/features/admin/shared/unit-studio-actions";
 import { AdminShell } from "@/features/admin/admin-shell";
 import { DemoCleanupStudio } from "@/features/admin/shared/demo-cleanup-studio";
+import { InventoryColumnMapper, inventoryMappingKey, type InventoryColumnSelection } from "@/features/admin/shared/inventory-column-mapper";
 
 function isPublicMediaUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/uploads/") || value.startsWith("/api/media/"));
@@ -2006,7 +2007,8 @@ function ImportsSection() {
   const [csv, setCsv] = React.useState("");
   const [format, setFormat] = React.useState<"csv" | "json">("csv");
   const [busy, setBusy] = React.useState(false);
-  const [preview, setPreview] = React.useState<{ runId: string; csv: string; format: "csv" | "json" } | null>(null);
+  const [preview, setPreview] = React.useState<{ runId: string; csv: string; format: "csv" | "json"; mappingKey: string } | null>(null);
+  const [columnMapping, setColumnMapping] = React.useState<InventoryColumnSelection | null>(null);
   const requestKey = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [details, setDetails] = React.useState<{ runId: string; records: Record<string, unknown>[]; loading: boolean; truncated: boolean } | null>(null);
 
@@ -2025,22 +2027,24 @@ function ImportsSection() {
     setBusy(true);
     try {
       let records: string | unknown[] = csv;
+      if (columnMapping && !Object.keys(columnMapping).length) throw new Error("Choose source columns before validating the mapping.");
       if (format === "json") {
         try { records = JSON.parse(csv); } catch { throw new Error("JSON must be a valid array of inventory records."); }
         if (!Array.isArray(records)) throw new Error("JSON must be an array of inventory records.");
       }
-      const fingerprint = `${dryRun ? "dry" : "apply"}\u0000${format}\u0000${csv}`;
+      const mappingKey = inventoryMappingKey(columnMapping);
+      const fingerprint = `${dryRun ? "dry" : "apply"}\u0000${format}\u0000${mappingKey}\u0000${csv}`;
       if (!requestKey.current || requestKey.current.fingerprint !== fingerprint) {
         requestKey.current = { fingerprint, key: clientRequestId() };
       }
       const res = await api.post<{ importRunId: string; status: string; duplicateRequest: boolean }>(
         "/api/admin/imports",
-        { format, data: records, dryRun, ...(!dryRun ? { previewRunId: preview?.runId } : {}) },
+        { format, data: records, dryRun, ...(columnMapping ? { columnMapping } : {}), ...(!dryRun ? { previewRunId: preview?.runId } : {}) },
         { headers: { "Idempotency-Key": requestKey.current.key } },
       );
       toast.info(`${dryRun ? "Validation" : "Import"} ${res.status.toLowerCase()}${res.duplicateRequest ? " (existing request)" : ""} · run ${res.importRunId}`);
-      if (dryRun) setPreview({ runId: res.importRunId, csv, format });
-      else { setCsv(""); setPreview(null); }
+      if (dryRun) setPreview({ runId: res.importRunId, csv, format, mappingKey });
+      else { setCsv(""); setPreview(null); setColumnMapping(null); }
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Import failed");
@@ -2077,7 +2081,7 @@ function ImportsSection() {
             if (!file) return;
             if (file.size > 50 * 1024 * 1024) { toast.error("Inventory files are limited to 50 MiB and 500 records."); e.target.value = ""; return; }
             if (!/\.(csv|json)$/i.test(file.name)) { toast.error("Choose a CSV or JSON file."); e.target.value = ""; return; }
-            try { const text = await file.text(); setFormat(/\.json$/i.test(file.name) ? "json" : "csv"); setCsv(text); setPreview(null); }
+            try { const text = await file.text(); setFormat(/\.json$/i.test(file.name) ? "json" : "csv"); setCsv(text); setPreview(null); setColumnMapping(null); }
             catch { toast.error("The source file could not be read. Choose it again."); }
           }} /></label>
         </div>
@@ -2092,9 +2096,10 @@ function ImportsSection() {
           placeholder={format === "json" ? "Paste an array of your company inventory records using the canonical fields." : "Paste your company source export using canonical CSV headers."}
           className="w-full rounded-md border border-input bg-background p-3 font-mono text-xs outline-none focus:border-brand/60"
         />
+        <InventoryColumnMapper source={csv} format={format} value={columnMapping} onChange={setColumnMapping} disabled={busy} />
         <div className="mt-3 flex gap-2">
           <Button size="sm" variant="outline" onClick={() => runImport(true)} disabled={busy}>Validate only</Button>
-          <Button size="sm" onClick={() => runImport(false)} disabled={busy || !preview || preview.csv !== csv || preview.format !== format || !data?.runs.some(run => run.id === preview.runId && run.status === "DRY_RUN")}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Commit reviewed import</Button>
+          <Button size="sm" onClick={() => runImport(false)} disabled={busy || !preview || preview.csv !== csv || preview.format !== format || preview.mappingKey !== inventoryMappingKey(columnMapping) || !data?.runs.some(run => run.id === preview.runId && run.status === "DRY_RUN")}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Commit reviewed import</Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">Validate first, then review additions, updates, duplicates, row errors and publication prerequisites below before committing. Changing the file or format requires a new preview. New valid rows become drafts; invalid rows are skipped with errors. Publishing never independently verifies source facts.</p>
       </div>

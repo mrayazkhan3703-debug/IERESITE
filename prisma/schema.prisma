@@ -2222,6 +2222,7 @@ model ImportRun {
   adapterKey         String?
   adapterVersion     Int?
   sourceVersion      String?
+  mappingJson        String? // immutable reviewed field-to-source mapping; null for canonical/historical runs
   snapshotRetrievedAt DateTime? @db.Timestamptz(3)
   snapshotSha256     String?   @db.VarChar(64)
   snapshotRef        String? // private object-store key; never a public URL

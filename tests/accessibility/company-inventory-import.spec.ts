@@ -38,6 +38,41 @@ test.afterAll(async () => {
 });
 
 for (const locale of ["en", "ar"] as const) for (const size of ["desktop", "mobile"] as const) {
+  test(`company CSV column mapping approval ${locale} ${size}`, async ({ page, context, baseURL }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize(size === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    await context.addCookies([{ name: "ie_session", value: token, url: baseURL! }]);
+    await page.goto(`${locale === "ar" ? "/ar" : ""}/admin/imports`);
+    const sourceId = `${prefix}-mapped-${locale}-${size}`;
+    const source = `Company Ref,Property Name,District,Asking AED,Other AED\n${sourceId},Synthetic mapped ${locale} ${size},${prefix},1100000,1200000\n`;
+    await page.getByLabel("Choose inventory file", { exact: true }).setInputFiles({ name: "company-export.csv", mimeType: "text/csv", buffer: Buffer.from(source) });
+    await page.getByLabel("Map company export columns", { exact: true }).check();
+    for (const [field, column] of Object.entries({ externalId: "Company Ref", title: "Property Name", community: "District", priceAed: "Asking AED" })) await page.getByLabel(`Source column for ${field}`, { exact: true }).selectOption(column);
+    const commit = page.getByRole("button", { name: "Commit reviewed import", exact: true });
+    await expect(commit).toBeDisabled();
+    await page.getByRole("button", { name: "Validate only", exact: true }).click();
+    await expect(commit).toBeEnabled({ timeout: 60000 });
+    const preview = await db.importRun.findFirstOrThrow({ where: { triggeredBy: `${ownerId}@example.invalid`, dryRun: true }, orderBy: { createdAt: "desc" } });
+    expect(preview.snapshotSha256).toBe(createHash("sha256").update(source).digest("hex"));
+    expect(preview.adapterKey).toBe("iere.mapped-property-csv");
+    expect(preview.mappingJson).toContain('"priceAed":"Asking AED"');
+    await page.getByLabel("Source column for priceAed", { exact: true }).selectOption("Other AED");
+    await expect(commit).toBeDisabled();
+    await page.getByLabel("Source column for priceAed", { exact: true }).selectOption("Asking AED");
+    await expect(commit).toBeEnabled();
+    const audit = await new AxeBuilder({ page }).include("#main-content").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+    expect(audit.violations.filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
+    const queued = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/imports" && r.request().method() === "POST");
+    await commit.click();
+    const response = await queued; expect(response.status()).toBe(202);
+    const { importRunId } = await response.json() as { importRunId: string };
+    await expect.poll(async () => (await db.importRun.findUniqueOrThrow({ where: { id: importRunId } })).status, { timeout: 60000 }).toBe("SUCCEEDED");
+    const property = await db.property.findFirstOrThrow({ where: { sourceId }, include: { listings: true } });
+    expect(property.publicationStatus).toBe("DRAFT");
+    expect(String(property.listings[0].priceMinor)).toBe("110000000");
+    expect(await db.property.count({ where: { sourceId } })).toBe(1);
+    await page.screenshot({ path: `test-results/company-mapping-${locale}-${size}.png`, fullPage: true });
+  });
   test(`company file preview and explicit draft commit ${locale} ${size}`, async ({ page, context, baseURL }) => {
     test.setTimeout(120000);
     await page.setViewportSize(size === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 1000 });

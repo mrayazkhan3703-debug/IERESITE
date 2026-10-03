@@ -4,7 +4,8 @@ import { apiHandler, jsonBody } from "@/server/api-handler";
 import { HttpError, requirePermission } from "@/server/auth";
 import { clientIp } from "@/server/rate-limit";
 import { db } from "@/lib/db";
-import { JsonParseError, getCanonicalAdapterForFormat } from "@/server/ingestion/adapters";
+import { JsonParseError, getUploadIngestionAdapter } from "@/server/ingestion/adapters";
+import { columnMappingSchema, serializeColumnMapping } from "@/server/ingestion/column-mapping";
 import { CsvParseError } from "@/server/ingestion/csv";
 import { Readable } from "node:stream";
 import { MAX_IMPORT_SNAPSHOT_BYTES, persistImportSnapshot } from "@/server/ingestion/snapshot";
@@ -55,6 +56,7 @@ const postSchema = z.object({
   data: z.union([z.string(), z.array(z.unknown())]),
   dryRun: z.boolean().default(true),
   previewRunId: z.string().min(1).max(128).optional(),
+  columnMapping: columnMappingSchema.optional(),
 });
 
 /** Run an import from posted JSON array or CSV text (Q07 golden path: admin → ingestion → index → public) */
@@ -80,7 +82,8 @@ export const POST = apiHandler(async (req) => {
   }
 
   const format = input.format.toUpperCase() as "CSV" | "JSON";
-  const adapter = getCanonicalAdapterForFormat(format);
+  const mappingJson = serializeColumnMapping(input.columnMapping);
+  const adapter = getUploadIngestionAdapter(format, mappingJson);
   try {
     let count = 0;
     for await (const rawRecord of adapter.parse(Readable.from([bytes]))) {
@@ -99,9 +102,9 @@ export const POST = apiHandler(async (req) => {
 
   if (!input.dryRun) {
     const preview = input.previewRunId ? await db.importRun.findFirst({ where: { id: input.previewRunId, importSource: { name: scope.name } } }) : null;
-    requireReviewedImport(preview, { email: user.email, sha256: createHash("sha256").update(bytes).digest("hex"), format });
+    requireReviewedImport(preview, { email: user.email, sha256: createHash("sha256").update(bytes).digest("hex"), format, mappingJson, adapterKey: adapter.key, adapterVersion: adapter.version });
   }
-  const snapshot = await persistImportSnapshot({ sourceKey: scope.name, format, bytes });
+  const snapshot = await persistImportSnapshot({ sourceKey: scope.name, format, bytes, mappingJson });
   try {
     const staged = await stageImportCommand(user, { snapshot, idempotencyKey, dryRun: input.dryRun }, clientIp(req));
     return NextResponse.json(staged, { status: 202 });

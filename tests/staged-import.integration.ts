@@ -5,6 +5,8 @@ import { mapOutboxEventToJob } from "@/server/jobs/outbox";
 import { processStagedImport } from "@/server/ingestion/staged";
 import { deletePrivateObject } from "@/server/storage/object-store";
 import { companyImportSource } from "@/server/domain/import-scope";
+import { createHash } from "node:crypto";
+import { serializeColumnMapping, type ColumnMapping } from "@/server/ingestion/column-mapping";
 
 const baseUrl = process.env.TEST_BASE_URL ?? "http://web:3000";
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -18,14 +20,15 @@ const dryRunIdempotencyKey = `staged-import-dry-run-${suffix}`;
 const unsupportedModeKey = `staged-import-mode-${suffix}`;
 const partialIdempotencyKey = `staged-import-partial-${suffix}`;
 const limitIdempotencyKey = `staged-import-limit-${suffix}`;
+const mappingIdempotencyKey = `staged-import-mapping-${suffix}`;
 const externalId = `synthetic-staged-${suffix}`;
 let ownerCookie = "";
 
-async function postImport(csv: string, options: { idempotencyKey?: string; dryRun?: boolean } = {}): Promise<Response> {
+async function postImport(csv: string, options: { idempotencyKey?: string; dryRun?: boolean; columnMapping?: ColumnMapping } = {}): Promise<Response> {
   const key = options.idempotencyKey ?? idempotencyKey;
   let previewRunId: string | undefined;
   if (!options.dryRun) {
-    const preview = await postImport(csv, { idempotencyKey: `${key}-preview`, dryRun: true });
+    const preview = await postImport(csv, { idempotencyKey: `${key}-preview`, dryRun: true, columnMapping: options.columnMapping });
     if (preview.status !== 202) return preview;
     previewRunId = (await preview.json() as { importRunId: string }).importRunId;
     const reviewed = await waitForRun(previewRunId);
@@ -39,7 +42,7 @@ async function postImport(csv: string, options: { idempotencyKey?: string; dryRu
       "x-requested-with": "fetch",
       "idempotency-key": options.idempotencyKey ?? idempotencyKey,
     },
-    body: JSON.stringify({ format: "csv", data: csv, dryRun: options.dryRun ?? false, previewRunId }),
+    body: JSON.stringify({ format: "csv", data: csv, dryRun: options.dryRun ?? false, previewRunId, columnMapping: options.columnMapping }),
   });
 }
 
@@ -79,7 +82,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const keys = [idempotencyKey, dryRunIdempotencyKey, unsupportedModeKey, partialIdempotencyKey, limitIdempotencyKey];
+  const keys = [idempotencyKey, dryRunIdempotencyKey, unsupportedModeKey, partialIdempotencyKey, limitIdempotencyKey, mappingIdempotencyKey];
   const runs = await db.importRun.findMany({ where: { idempotencyKey: { in: keys.flatMap(key => [key, `${key}-preview`]) } }, select: { id: true, snapshotRef: true } });
   const runIds = runs.map((run) => run.id);
   const records = runIds.length ? await db.importRecord.findMany({ where: { importRunId: { in: runIds } }, select: { propertyId: true, listingId: true } }) : [];
@@ -121,6 +124,36 @@ afterAll(async () => {
 });
 
 describe("staged Admin import path", () => {
+  test("mapped source bytes stay immutable and changed mappings require a new preview", async () => {
+    const sourceId = `000-${suffix}`;
+    const csv = `Reference,Name,District,Asking,Other price\n${sourceId},Synthetic mapped fixture,Synthetic Staged Import Community ${suffix},1100000,1200000\n`;
+    const columnMapping = { externalId: "Reference", title: "Name", community: "District", priceAed: "Asking" };
+    const response = await postImport(csv, { idempotencyKey: `${mappingIdempotencyKey}-preview`, dryRun: true, columnMapping });
+    expect(response.status).toBe(202);
+    const { importRunId } = await response.json() as { importRunId: string };
+    const preview = await waitForRun(importRunId);
+    expect(preview.status).toBe("DRY_RUN");
+    expect(preview.snapshotSha256).toBe(createHash("sha256").update(csv).digest("hex"));
+    expect(preview.mappingJson).toBe(serializeColumnMapping(columnMapping));
+    expect(preview.adapterKey).toBe("iere.mapped-property-csv");
+    expect(await db.property.findFirst({ where: { sourceId } })).toBeNull();
+    const commit = async (mapping: ColumnMapping) => fetch(`${baseUrl}/api/admin/imports`, {
+      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json", "x-requested-with": "fetch", "idempotency-key": mappingIdempotencyKey },
+      body: JSON.stringify({ format: "csv", data: csv, dryRun: false, previewRunId: importRunId, columnMapping: mapping }),
+    });
+    expect((await commit({ ...columnMapping, priceAed: "Other price" })).status).toBe(409);
+    expect(await db.importRun.findUnique({ where: { idempotencyKey: mappingIdempotencyKey } })).toBeNull();
+    const committed = await commit(columnMapping);
+    expect(committed.status).toBe(202);
+    const applied = await committed.json() as { importRunId: string };
+    expect((await waitForRun(applied.importRunId)).status).toBe("SUCCEEDED");
+    const property = await db.property.findFirstOrThrow({ where: { sourceId }, include: { listings: true } });
+    expect(property.publicationStatus).toBe("DRAFT");
+    expect(String(property.listings[0].priceMinor)).toBe("110000000");
+    const replay = await commit(columnMapping);
+    expect((await replay.json() as { importRunId: string }).importRunId).toBe(applied.importRunId);
+    expect(await db.property.count({ where: { sourceId } })).toBe(1);
+  }, 60_000);
   test("refuses an apply request without a durable preview", async () => {
     const response = await fetch(`${baseUrl}/api/admin/imports`, {
       method: "POST",

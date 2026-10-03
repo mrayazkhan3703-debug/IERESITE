@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseCsvStream } from "./csv";
 import { feedRecordSchema, type FeedRecord } from "./feed-record";
+import { readColumnMapping, mapInventoryColumns } from "./column-mapping";
 
 export const CANONICAL_CSV_ADAPTER_KEY = "iere.canonical-property-csv";
 export const CANONICAL_CSV_ADAPTER_VERSION = 1;
@@ -17,6 +18,7 @@ export const acquiredSnapshotSchema = z.object({
   storageRef: z.string().trim().min(1).max(500),
   adapterKey: z.string().trim().min(1).max(160),
   adapterVersion: z.number().int().positive(),
+  mappingJson: z.string().max(10000).nullable().optional(),
 });
 
 export type AcquiredSnapshot = z.infer<typeof acquiredSnapshotSchema>;
@@ -133,6 +135,22 @@ export function getIngestionAdapter(key: string, version: number): VersionedInge
   const adapter = adapterVersions.get(`${key}@${version}`);
   if (!adapter) throw new UnsupportedIngestionAdapterError(key, version);
   return adapter;
+}
+
+export function getConfiguredIngestionAdapter(key: string, version: number, mappingJson?: string | null): VersionedIngestionAdapter {
+  const mapping = readColumnMapping(mappingJson);
+  if (key === "iere.mapped-property-csv" || key === "iere.mapped-property-json") {
+    if (!mapping || version !== 1) throw new UnsupportedIngestionAdapterError(key, version);
+    const format = key.endsWith("csv") ? "CSV" : "JSON";
+    return { key, version, format, parse: format === "CSV" ? chunks => parseCsvStream(chunks, true) : parseCanonicalJson,
+      normalize: raw => mapInventoryColumns(raw, mapping), validate: validateCanonicalFields };
+  }
+  if (mapping) throw new UnsupportedIngestionAdapterError(key, version);
+  return getIngestionAdapter(key, version);
+}
+
+export function getUploadIngestionAdapter(format: "CSV" | "JSON", mappingJson?: string | null): VersionedIngestionAdapter {
+  return mappingJson ? getConfiguredIngestionAdapter(`iere.mapped-property-${format.toLowerCase()}`, 1, mappingJson) : getCanonicalAdapterForFormat(format);
 }
 
 export function getCanonicalAdapterForFormat(format: "CSV" | "JSON"): VersionedIngestionAdapter {

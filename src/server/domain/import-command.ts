@@ -17,11 +17,13 @@ function sameRequest(run: {
   adapterVersion: number | null;
   inputFormat: string | null;
   dryRun: boolean;
+  mappingJson?: string | null;
 }, snapshot: AcquiredSnapshot, dryRun: boolean): boolean {
   return run.snapshotSha256 === snapshot.sha256
     && run.adapterKey === snapshot.adapterKey
     && run.adapterVersion === snapshot.adapterVersion
     && run.inputFormat === snapshot.format
+    && (run.mappingJson ?? null) === (snapshot.mappingJson ?? null)
     && run.dryRun === dryRun;
 }
 
@@ -60,6 +62,7 @@ export async function stageImportCommand(actor: SessionUser, input: StageImportI
           dryRun: input.dryRun,
           adapterKey: snapshot.adapterKey,
           adapterVersion: snapshot.adapterVersion,
+          mappingJson: snapshot.mappingJson ?? null,
           sourceVersion: snapshot.sourceVersion,
           snapshotRetrievedAt: snapshot.retrievedAt,
           snapshotSha256: snapshot.sha256,
@@ -85,6 +88,7 @@ export async function stageImportCommand(actor: SessionUser, input: StageImportI
           sha256: snapshot.sha256,
           adapterKey: snapshot.adapterKey,
           adapterVersion: snapshot.adapterVersion,
+          mappingJson: snapshot.mappingJson ?? null,
           dryRun: input.dryRun,
           outboxEventId: event.id,
         },

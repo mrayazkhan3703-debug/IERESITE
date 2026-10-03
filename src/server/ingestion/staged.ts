@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
-  getIngestionAdapter,
+  getConfiguredIngestionAdapter,
   acquiredSnapshotSchema,
   JsonParseError,
   UnsupportedIngestionAdapterError,
@@ -194,8 +194,9 @@ export async function processStagedImport(runId: string, options: { signal?: Abo
     storageRef: run.snapshotRef,
     adapterKey: run.adapterKey,
     adapterVersion: run.adapterVersion,
+    mappingJson: run.mappingJson,
   });
-  const adapter = getIngestionAdapter(snapshot.adapterKey, snapshot.adapterVersion);
+  const adapter = getConfiguredIngestionAdapter(snapshot.adapterKey, snapshot.adapterVersion, snapshot.mappingJson);
   if (adapter.format !== snapshot.format) {
     await failRun(runId, "The staged input format does not match its recorded adapter.");
     return;
