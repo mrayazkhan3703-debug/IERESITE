@@ -1,10 +1,10 @@
 # Railway company launch checkpoint
 
-Updated 2026-10-03. Railway remains a staging, noindex company testing site. Customer launch is not accepted yet.
+Updated 2026-10-03. Railway remains a staging, noindex company testing site. Customer launch is not accepted yet. External CRM synchronization and company SMTP remain explicitly deferred at the owner's latest request.
 
 ## Preserve and release
 
-- Keep the labelled demo inventory during owner testing. No cleanup has been committed.
+- Keep the labelled demo inventory during owner testing. This release performs no cleanup. Later read-only reconciliation observed an existing audited `property.demo.archive` at 14:10 UTC; preserve that owner-side change rather than restoring an older checkpoint.
 - Preserve company profiles, uploaded media, owner changes and original relationships. Ayaz's audited wording correction is retained.
 - Web and Worker deployment startup must never seed demos. Release only an exact passing commit; retain the enabled dedicated Worker and deferred external CRM sync.
 - R2 `railway-main` is active on Web and Worker at exact `9802eaa15a7d432606a4e6ddca2e98d0498551ed`, full CI `37125345657`. Final unpaused deployments are Web `a220db20-9985-4e71-9f15-754ede0d9835` and Worker `cc799a3c-62ca-47a0-b2db-839c4ca9636e`. All 43 migrations are applied. Keep the temporary media service and its source bytes until actual backup/recovery acceptance.
@@ -28,10 +28,14 @@ The account currently enforces a five-service ceiling, and adding a separate bac
 - Column mapping and missing bulk content adapters, with preview and explicit commit.
 - Ten clean actual Mercury turns within the configured usage budget; approved company knowledge and freshness/citations.
 - Actual consistent Railway/R2 encrypted capture, isolated restoration and independent scheduling. Local backup contracts and verified media copies do not prove recovery.
-- Legacy company-record reconciliation/transfer; retain the protected Concord Tower/Hammad/Imran export and source system until acceptance.
+- Remaining legacy acceptance: source and target records remain retained. Hammad (`cmusi6el800cbw101dl51g009`, `samm`) and Imran (`cmusi6f3500cqw101m3j1xetz`, `imran`) were transferred through normal audited Admin commands with their recorded facts, photos and website publication settings; no login or privilege was copied. Both English/Arabic profiles and photos return 200. Concord Tower (`cmusi8hkx00dfw10148duwkue`) was transferred into Draft with its gallery, floor plan and PDF. Publication returns specific expiry errors because the source listing has expired; its anonymous route returns 404. Do not fabricate an extension or discard retained uploads. Five media assets were uploaded through the existing pipeline; a protected source-to-target receipt records IDs and source hashes. Six original source files totaling 9,555,448 bytes were captured, after verifying current source record versions. This selected export is not a complete backup. Keep Render/Supabase and exports until actual recovery and owner correction of the expired listing are accepted.
 - Owner-supplied facts/content, completed testing, and reviewed archival of demo inventory.
 - Company transactional email and notification acceptance: explicitly deferred by the owner. Private Mailpit is test capture only.
 - Reviewed company contacts, privacy/consent, permissions and bilingual publishing; later domain/canonical/cookie transition.
 - Cloudflare bucket managed/custom public-domain policy inspection; application private routes and unsigned S3 authorization are checked, but these do not prove dashboard public-domain settings.
 
 Current read-only operations checks show a running Worker, zero pending outbox events and zero unreplayed dead-letter entries. On 2026-10-03 at 12:58 UTC, Mercury had 40111 reserved tokens against the configured 60000 daily limit and remained UNVERIFIED. No budget increase or provider switch is authorized by this checkpoint.
+
+## Advisor follow-up candidate
+
+Actual Arabic calculation on 2026-10-03 returned a non-fallback answer with a successful yield tool in 3722 ms. Its follow-up returned `PROVIDER_OUTPUT_EMPTY` in 1360 ms. Duplicate replay reused the result, and reload retained four messages. At that checkpoint the daily reservation was 45510/60000 tokens; ten clean conversation turns are still not accepted. The candidate retries only a completed empty response once within the existing deadline and records measured usage and safe HTTP/request correlation. Both attempts are charged; repeated empty output stops. Timeouts, authentication, rate-limit, malformed and truncated output still do not retry. Focused provider, gateway and deadline tests: 41 pass / 0 fail / 172 assertions. Typecheck and lint pass locally, and credential scanning reports zero findings. Full exact-commit CI and live release remain required.

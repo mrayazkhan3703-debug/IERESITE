@@ -23,6 +23,7 @@ globalThis.fetch = Object.assign(async (url: RequestInfo | URL) => {
   if (String(url) !== "https://api.inceptionlabs.ai/v1/chat/completions") throw new Error("Unexpected network origin");
   if (mode === "retry" && calls === 1) return Response.json({ error: { code: "server_error" } }, { status: 503 });
   if (mode === "rate-limit") return Response.json({ error: { code: "rate_limit_reached", message: "private input" } }, { status: 429 });
+  if (mode === "always-empty" || (mode === "empty-retry" && calls === 1)) return Response.json({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "" } }], usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } });
   return Response.json({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "Synthetic completion" } }], ...(mode === "unknown-usage" ? {} : { usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } }) });
 }, { preconnect: fetch.preconnect });
 const { getChatProvider, safeProviderFailureCode } = await import("@/server/ai/gateway");

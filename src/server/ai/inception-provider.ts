@@ -91,7 +91,13 @@ export async function generateWithInception(req: ChatRequest, options: Inception
     if (choice?.finish_reason === "length") throw new AiProviderError("PROVIDER_OUTPUT_TRUNCATED", "The AI response reached its token limit.", usage);
     if (choice?.finish_reason === "content_filter" || message?.refusal) throw new AiProviderError("PROVIDER_OUTPUT_BLOCKED", "The AI response was blocked.", usage);
     if (!choice || !message || message.role !== "assistant" || (choice.finish_reason !== "stop" && choice.finish_reason !== null && choice.finish_reason !== undefined)) throw new AiProviderError("PROVIDER_RESPONSE_INVALID", "The AI provider returned an unsupported response.", usage);
-    if (typeof message.content !== "string" || !message.content.trim()) throw new AiProviderError("PROVIDER_OUTPUT_EMPTY", "The AI provider returned no answer.", usage);
+    if (typeof message.content !== "string" || !message.content.trim()) {
+      const requestId = response.headers.get("x-request-id");
+      throw new AiProviderError("PROVIDER_OUTPUT_EMPTY", "The AI provider returned no answer.", usage, {
+        httpStatus: response.status, providerCode: null,
+        requestId: requestId && /^[A-Za-z0-9_-]{8,128}$/.test(requestId) && !requestId.includes(options.apiKey.trim()) ? requestId : null,
+      });
+    }
     return { content: message.content, ...usage, model: options.model };
   } catch (error) {
     if (controller.signal.aborted) throw new AiProviderError("PROVIDER_TIMEOUT", "The AI provider request timed out.");
