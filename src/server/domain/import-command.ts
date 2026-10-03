@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { audit, HttpError, type SessionUser } from "@/server/auth";
 import { emitEvent } from "@/server/jobs/outbox";
 import { acquiredSnapshotSchema, type AcquiredSnapshot } from "@/server/ingestion/adapters";
+import { companyImportSource } from "./import-scope";
 
 export interface StageImportInput {
   snapshot: AcquiredSnapshot;
@@ -26,14 +27,15 @@ function sameRequest(run: {
 
 export async function stageImportCommand(actor: SessionUser, input: StageImportInput, ip: string | null) {
   const snapshot = acquiredSnapshotSchema.parse(input.snapshot);
+  const scope = companyImportSource(actor);
   const idempotencyKey = input.idempotencyKey.trim();
   if (idempotencyKey.length < 8 || idempotencyKey.length > 128) {
     throw new HttpError(400, "A valid import idempotency key is required.", "IMPORT_IDEMPOTENCY_KEY_INVALID");
   }
 
-  const existing = await db.importRun.findUnique({ where: { idempotencyKey } });
+  const existing = await db.importRun.findUnique({ where: { idempotencyKey }, include: { importSource: { select: { name: true } } } });
   if (existing) {
-    if (existing.triggeredBy !== actor.email) throw new HttpError(409, "This request key belongs to another administrator.", "IMPORT_IDEMPOTENCY_CONFLICT");
+    if (existing.triggeredBy !== actor.email || existing.importSource.name !== scope.name) throw new HttpError(409, "This request key belongs to another administrator or company.", "IMPORT_IDEMPOTENCY_CONFLICT");
     if (!sameRequest(existing, snapshot, input.dryRun)) {
       throw new HttpError(409, "This import request key was already used for different snapshot data.", "IMPORT_IDEMPOTENCY_CONFLICT");
     }
@@ -43,10 +45,11 @@ export async function stageImportCommand(actor: SessionUser, input: StageImportI
   try {
     return await db.$transaction(async (tx) => {
       const source = await tx.importSource.upsert({
-        where: { name: "INTERACTIVE_UPLOAD" },
-        create: { name: "INTERACTIVE_UPLOAD", sourceType: snapshot.format, notes: "Admin-submitted source snapshot" },
+        where: { name: scope.name },
+        create: { name: scope.name, ownerOrganizationId: scope.ownerOrganizationId, sourceType: snapshot.format, notes: "Company Admin-submitted source snapshot" },
         update: {},
       });
+      if (source.ownerOrganizationId !== scope.ownerOrganizationId) throw new HttpError(409, "The import source ownership changed.", "IMPORT_SCOPE_CONFLICT");
       const run = await tx.importRun.create({
         data: {
           importSourceId: source.id,
@@ -91,8 +94,8 @@ export async function stageImportCommand(actor: SessionUser, input: StageImportI
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2002", "P2034"].includes(error.code)) {
-      const raced = await db.importRun.findUnique({ where: { idempotencyKey } });
-      if (raced && raced.triggeredBy === actor.email && sameRequest(raced, snapshot, input.dryRun)) {
+      const raced = await db.importRun.findUnique({ where: { idempotencyKey }, include: { importSource: { select: { name: true } } } });
+      if (raced && raced.triggeredBy === actor.email && raced.importSource.name === scope.name && sameRequest(raced, snapshot, input.dryRun)) {
         return { importRunId: raced.id, status: raced.status, duplicateRequest: true };
       }
       if (raced) throw new HttpError(409, "This import request key was already used for different snapshot data.", "IMPORT_IDEMPOTENCY_CONFLICT");

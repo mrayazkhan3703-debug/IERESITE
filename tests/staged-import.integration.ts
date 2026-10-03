@@ -4,6 +4,7 @@ import { createSession } from "@/server/auth";
 import { mapOutboxEventToJob } from "@/server/jobs/outbox";
 import { processStagedImport } from "@/server/ingestion/staged";
 import { deletePrivateObject } from "@/server/storage/object-store";
+import { companyImportSource } from "@/server/domain/import-scope";
 
 const baseUrl = process.env.TEST_BASE_URL ?? "http://web:3000";
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -110,6 +111,7 @@ afterAll(async () => {
   if (propertyIds.length) await db.listing.deleteMany({ where: { propertyId: { in: propertyIds } } });
   if (propertyIds.length) await db.property.deleteMany({ where: { id: { in: propertyIds } } });
   if (runIds.length) await db.importRun.deleteMany({ where: { id: { in: runIds } } });
+  await db.importSource.deleteMany({ where: { name: companyImportSource({ id: ids.user, email: "", sessionId: "", name: null, roles: ["OWNER"], organizationId: null, permissions: [], mfaVerified: true }).name } });
   await db.session.deleteMany({ where: { userId: ids.user } });
   await db.user.deleteMany({ where: { id: ids.user } });
   await db.community.deleteMany({ where: { id: ids.community } });
@@ -220,7 +222,7 @@ describe("staged Admin import path", () => {
   }, 60_000);
 
   test("unimplemented source modes fail closed without applying records", async () => {
-    const source = await db.importSource.findUniqueOrThrow({ where: { name: "INTERACTIVE_UPLOAD" } });
+    const source = await db.importSource.findUniqueOrThrow({ where: { name: companyImportSource({ id: ids.user, email: "", sessionId: "", name: null, roles: ["OWNER"], organizationId: null, permissions: [], mfaVerified: true }).name } });
     const run = await db.importRun.create({ data: { importSourceId: source.id, idempotencyKey: unsupportedModeKey, importMode: "INCREMENTAL", status: "QUEUED" } });
     await processStagedImport(run.id);
     const failed = await db.importRun.findUniqueOrThrow({ where: { id: run.id } });

@@ -40,6 +40,7 @@ model Organization {
   ownedCommunities Community[] @relation("CommunityOwner")
   ownedAgents      Agent[] @relation("AgentOwner")
   invitations      UserInvitation[]
+  importSources    ImportSource[] @relation("ImportSourceOwner")
 }
 
 model User {
@@ -2190,6 +2191,9 @@ model MediaProcessingJob {
 // ============================================================
 
 model ImportSource {
+  ownerOrganizationId String?
+  ownerOrganization Organization? @relation("ImportSourceOwner", fields: [ownerOrganizationId], references: [id], onDelete: Restrict)
+  @@index([ownerOrganizationId])
   id         String   @id @default(cuid())
   name       String   @unique
   sourceType String   @default("CSV") // CSV|JSON|API|XML

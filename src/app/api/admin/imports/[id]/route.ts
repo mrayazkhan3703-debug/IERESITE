@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiHandler } from "@/server/api-handler";
 import { HttpError, requirePermission } from "@/server/auth";
 import { db } from "@/lib/db";
+import { importRunReadFilter } from "@/server/domain/import-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,14 @@ function summarizeIssues(value: string | null): { field: string | null; message:
     }
     if (parsed && typeof parsed === "object" && "plannedAction" in parsed) {
       const action = (parsed as { plannedAction?: unknown }).plannedAction;
-      if (action === "CREATE" || action === "UPDATE") return [{ field: null, message: `Would ${action.toLowerCase()} this property.` }];
+      if (action === "CREATE" || action === "UPDATE") {
+        const publicationIssues = "publicationIssues" in parsed && Array.isArray(parsed.publicationIssues) ? parsed.publicationIssues.slice(0, 8).flatMap((issue: unknown) => {
+          if (!issue || typeof issue !== "object") return [];
+          const item = issue as Record<string, unknown>;
+          return typeof item.message === "string" ? [{ field: typeof item.field === "string" ? item.field.slice(0, 100) : null, message: `Before publishing: ${item.message.slice(0, 300)}` }] : [];
+        }) : [];
+        return [{ field: null, message: `Would ${action.toLowerCase()} this property. Imports do not publish records or verify source facts.` }, ...publicationIssues];
+      }
     }
   } catch {
     return [{ field: null, message: "Issue details are unavailable." }];
@@ -30,11 +38,11 @@ function summarizeIssues(value: string | null): { field: string | null; message:
 
 /** Bounded, permission-gated outcome detail; raw provider records stay private. */
 export const GET = apiHandler(async (_req, ctx: { params: Promise<{ id: string }> }) => {
-  await requirePermission("import:read");
+  const actor = await requirePermission("import:read");
   const { id } = await ctx.params;
   if (!id || id.length > 128) throw new HttpError(400, "Invalid import run id.", "IMPORT_RUN_ID_INVALID");
-  const run = await db.importRun.findUnique({
-    where: { id },
+  const run = await db.importRun.findFirst({
+    where: { id, ...importRunReadFilter(actor) },
     select: { id: true, status: true, importMode: true, recordCursor: true, recordsTotal: true, recordsFailed: true },
   });
   if (!run) throw new HttpError(404, "Import run not found.", "IMPORT_RUN_NOT_FOUND");

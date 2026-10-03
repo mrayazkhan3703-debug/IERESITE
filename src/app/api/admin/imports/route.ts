@@ -12,15 +12,16 @@ import { deletePrivateObject } from "@/server/storage/object-store";
 import { stageImportCommand } from "@/server/domain/import-command";
 import { createHash } from "node:crypto";
 import { requireReviewedImport } from "@/server/ingestion/preview-approval";
+import { companyImportSource, importRunReadFilter } from "@/server/domain/import-scope";
 
 export const dynamic = "force-dynamic";
 
 /** Import runs history + data-quality issues (Q07) */
 export const GET = apiHandler(async () => {
-  await requirePermission("import:read");
+  const actor = await requirePermission("import:read");
   const [runs, quality] = await Promise.all([
-    db.importRun.findMany({ where: { datasetKind: null }, orderBy: { createdAt: "desc" }, take: 10, include: { importSource: { select: { name: true } } } }),
-    db.dataQualityIssue.findMany({ where: { status: "OPEN" }, orderBy: { detectedAt: "desc" }, take: 30, include: { property: { select: { title: true, slug: true } } } }),
+    db.importRun.findMany({ where: { datasetKind: null, ...importRunReadFilter(actor) }, orderBy: { createdAt: "desc" }, take: 10, include: { importSource: { select: { name: true } } } }),
+    db.dataQualityIssue.findMany({ where: { status: "OPEN", ...(!actor.roles.includes("OWNER") ? { property: { ownerOrganizationId: actor.organizationId ?? "__no_organization__" } } : {}) }, orderBy: { detectedAt: "desc" }, take: 30, include: { property: { select: { title: true, slug: true } } } }),
   ]);
   return NextResponse.json({
     runs: runs.map((r) => ({
@@ -59,6 +60,7 @@ const postSchema = z.object({
 /** Run an import from posted JSON array or CSV text (Q07 golden path: admin → ingestion → index → public) */
 export const POST = apiHandler(async (req) => {
   const user = await requirePermission("import:*");
+  const scope = companyImportSource(user);
   const raw = await jsonBody<z.infer<typeof postSchema>>(req);
   const input = postSchema.parse(raw);
   const idempotencyKey = req.headers.get("idempotency-key");
@@ -96,10 +98,10 @@ export const POST = apiHandler(async (req) => {
   }
 
   if (!input.dryRun) {
-    const preview = input.previewRunId ? await db.importRun.findUnique({ where: { id: input.previewRunId } }) : null;
+    const preview = input.previewRunId ? await db.importRun.findFirst({ where: { id: input.previewRunId, importSource: { name: scope.name } } }) : null;
     requireReviewedImport(preview, { email: user.email, sha256: createHash("sha256").update(bytes).digest("hex"), format });
   }
-  const snapshot = await persistImportSnapshot({ sourceKey: "INTERACTIVE_UPLOAD", format, bytes });
+  const snapshot = await persistImportSnapshot({ sourceKey: scope.name, format, bytes });
   try {
     const staged = await stageImportCommand(user, { snapshot, idempotencyKey, dryRun: input.dryRun }, clientIp(req));
     return NextResponse.json(staged, { status: 202 });

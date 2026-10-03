@@ -2004,8 +2004,9 @@ function ImportsSection() {
   const [data, setData] = React.useState<{ runs: Record<string, unknown>[]; qualityIssues: Record<string, unknown>[] } | null>(null);
   const [error, setError] = React.useState("");
   const [csv, setCsv] = React.useState("");
+  const [format, setFormat] = React.useState<"csv" | "json">("csv");
   const [busy, setBusy] = React.useState(false);
-  const [preview, setPreview] = React.useState<{ runId: string; csv: string } | null>(null);
+  const [preview, setPreview] = React.useState<{ runId: string; csv: string; format: "csv" | "json" } | null>(null);
   const requestKey = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [details, setDetails] = React.useState<{ runId: string; records: Record<string, unknown>[]; loading: boolean; truncated: boolean } | null>(null);
 
@@ -2020,20 +2021,25 @@ function ImportsSection() {
   }, [data, load]);
 
   const runImport = async (dryRun: boolean) => {
-    if (!csv.trim()) { toast.error("Paste CSV records first"); return; }
+    if (!csv.trim()) { toast.error("Choose a source file or paste records first"); return; }
     setBusy(true);
     try {
-      const fingerprint = `${dryRun ? "dry" : "apply"}\u0000${csv}`;
+      let records: string | unknown[] = csv;
+      if (format === "json") {
+        try { records = JSON.parse(csv); } catch { throw new Error("JSON must be a valid array of inventory records."); }
+        if (!Array.isArray(records)) throw new Error("JSON must be an array of inventory records.");
+      }
+      const fingerprint = `${dryRun ? "dry" : "apply"}\u0000${format}\u0000${csv}`;
       if (!requestKey.current || requestKey.current.fingerprint !== fingerprint) {
         requestKey.current = { fingerprint, key: clientRequestId() };
       }
       const res = await api.post<{ importRunId: string; status: string; duplicateRequest: boolean }>(
         "/api/admin/imports",
-        { format: "csv", data: csv, dryRun, ...(!dryRun ? { previewRunId: preview?.runId } : {}) },
+        { format, data: records, dryRun, ...(!dryRun ? { previewRunId: preview?.runId } : {}) },
         { headers: { "Idempotency-Key": requestKey.current.key } },
       );
       toast.info(`${dryRun ? "Validation" : "Import"} ${res.status.toLowerCase()}${res.duplicateRequest ? " (existing request)" : ""} · run ${res.importRunId}`);
-      if (dryRun) setPreview({ runId: res.importRunId, csv });
+      if (dryRun) setPreview({ runId: res.importRunId, csv, format });
       else { setCsv(""); setPreview(null); }
       load();
     } catch (e) {
@@ -2057,29 +2063,40 @@ function ImportsSection() {
     <div className="space-y-6">
       <header>
         <h1 className="font-display text-2xl font-semibold">Imports & data quality</h1>
-        <p className="mt-1 text-sm text-muted-foreground">CSV validation and ingestion run asynchronously in the dedicated worker. Imported inventory remains draft until an editor explicitly publishes it.</p>
+        <p className="mt-1 text-sm text-muted-foreground">CSV/JSON validation and ingestion run asynchronously in the dedicated worker. New inventory remains draft until an editor explicitly publishes it. Source refreshes preserve recorded Admin overrides and existing publication settings.</p>
       </header>
       {error && <div role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm"><p>{error}</p><Button size="sm" variant="outline" className="mt-2" onClick={load}>Retry inventory import history</Button></div>}
 
       <div className="rounded-xl border border-border/70 bg-card p-5">
-        <h2 className="kicker mb-2">Run a CSV import</h2>
-        <a href="/api/admin/imports/template?format=csv" className="mb-3 inline-block text-sm underline">Download blank inventory CSV template</a>
+        <h2 className="kicker mb-2">Import company inventory</h2>
+        <div className="mb-3 flex flex-wrap gap-4 text-sm"><a href="/api/admin/imports/template?format=csv" className="underline">Download blank inventory CSV template</a><a href="/api/admin/imports/template?format=json" className="underline">Download blank inventory JSON template</a></div>
+        <div className="mb-3 flex flex-wrap items-end gap-4 text-sm">
+          <label className="space-y-1"><span className="block">Source format</span><select aria-label="Inventory source format" value={format} onChange={e => setFormat(e.target.value as "csv" | "json")} className="rounded-md border bg-background p-2"><option value="csv">CSV</option><option value="json">JSON</option></select></label>
+          <label className="space-y-1"><span className="block">Choose inventory file</span><input type="file" accept=".csv,.json,text/csv,application/json" disabled={busy} onChange={async e => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (file.size > 50 * 1024 * 1024) { toast.error("Inventory files are limited to 50 MiB and 500 records."); e.target.value = ""; return; }
+            if (!/\.(csv|json)$/i.test(file.name)) { toast.error("Choose a CSV or JSON file."); e.target.value = ""; return; }
+            try { const text = await file.text(); setFormat(/\.json$/i.test(file.name) ? "json" : "csv"); setCsv(text); setPreview(null); }
+            catch { toast.error("The source file could not be read. Choose it again."); }
+          }} /></label>
+        </div>
         <p className="mb-3 text-xs text-muted-foreground">
-          Headers: externalId,title,community,project,developer,propertyType,listingType,bedrooms,bathrooms,areaSqft,priceAed,offPlan,availability,view,furnishing,handover,description,agentEmail,lat,lng
+          Canonical fields: externalId,title,community,project,developer,propertyType,listingType,rentFrequency,bedrooms,bathrooms,areaSqft,priceAed,offPlan,availability,view,furnishing,handover,description,agentEmail,lat,lng. Rental frequency: YEARLY, MONTHLY, WEEKLY or DAILY. Limit: 500 records.
         </p>
         <textarea
           value={csv}
           onChange={(e) => setCsv(e.target.value)}
           rows={5}
-          aria-label="CSV records"
-          placeholder={"externalId,title,community,propertyType,listingType,bedrooms,bathrooms,priceAed,offPlan,availability,description,lat,lng\nPaste a verified source export using canonical headers; no sample property data is provided."}
+          aria-label={format === "csv" ? "CSV records" : "JSON records"}
+          placeholder={format === "json" ? "Paste an array of your company inventory records using the canonical fields." : "Paste your company source export using canonical CSV headers."}
           className="w-full rounded-md border border-input bg-background p-3 font-mono text-xs outline-none focus:border-brand/60"
         />
         <div className="mt-3 flex gap-2">
           <Button size="sm" variant="outline" onClick={() => runImport(true)} disabled={busy}>Validate only</Button>
-          <Button size="sm" onClick={() => runImport(false)} disabled={busy || !preview || preview.csv !== csv || !data?.runs.some(run => run.id === preview.runId && run.status === "DRY_RUN")}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Commit reviewed import</Button>
+          <Button size="sm" onClick={() => runImport(false)} disabled={busy || !preview || preview.csv !== csv || preview.format !== format || !data?.runs.some(run => run.id === preview.runId && run.status === "DRY_RUN")}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Commit reviewed import</Button>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">Validate first, then review row outcomes below before committing. Changing the file requires a new preview. Valid rows become drafts; invalid rows are skipped with errors.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Validate first, then review additions, updates, duplicates, row errors and publication prerequisites below before committing. Changing the file or format requires a new preview. New valid rows become drafts; invalid rows are skipped with errors. Publishing never independently verifies source facts.</p>
       </div>
 
       {data && (

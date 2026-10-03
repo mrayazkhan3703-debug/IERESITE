@@ -9,7 +9,8 @@
 - [x] Copy temporary storage objects into an isolated R2 namespace and verify hashes.
 - [ ] Refresh and reconcile every referenced object, then switch Web/Worker delivery to R2.
 - [ ] Release durable import preview/commit, templates, demo filter and reviewed archival after exact gates pass.
-- [ ] Finish column mapping, publication-eligibility preview and missing bulk content adapters.
+- [x] Implement source/organization isolation, CSV/JSON selection and shared publication-eligibility preview; local contracts pass, exact release gate pending.
+- [ ] Finish column mapping and missing bulk content adapters.
 - [ ] Complete ten clean actual Mercury turns and approved company-document citations/freshness.
 - [ ] Capture/restore an actual Railway encrypted backup; enable independent hosted scheduling.
 - [x] Implement Railway backup transport/namespace/static capture and a public-recipient-only hosted runner; verify focused contracts. Live recovery/scheduling stays unchecked.

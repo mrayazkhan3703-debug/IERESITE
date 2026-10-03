@@ -77,6 +77,10 @@ for (const profile of profiles) for (const route of profile.routes) {
           const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
           const document = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
           return { ...window.__iereBudget, documentTiming: { requestStartMs: document.requestStart, responseStartMs: document.responseStart,
+            fetchStartMs: document.fetchStart, unloadStartMs: document.unloadEventStart, unloadEndMs: document.unloadEventEnd,
+            redirectStartMs: document.redirectStart, redirectEndMs: document.redirectEnd,
+            domainLookupStartMs: document.domainLookupStart, domainLookupEndMs: document.domainLookupEnd,
+            connectStartMs: document.connectStart, connectEndMs: document.connectEnd, workerStartMs: document.workerStart,
             responseEndMs: document.responseEnd, domInteractiveMs: document.domInteractive, serverWaitMs: document.responseStart - document.requestStart,
             transferBytes: document.transferSize, bodyBytes: document.encodedBodySize,
             routePreflightMs: document.serverTiming.find(entry => entry.name === "route_preflight")?.duration ?? null },
