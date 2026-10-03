@@ -120,7 +120,8 @@ export function Hero({
           fill
           sizes="100vw"
           quality={60}
-          preload
+          loading="eager"
+          fetchPriority="high"
           className="h-full w-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-ink/92 via-ink/62 to-ink/35" />

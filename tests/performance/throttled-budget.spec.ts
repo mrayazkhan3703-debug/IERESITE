@@ -75,7 +75,14 @@ for (const profile of profiles) for (const route of profile.routes) {
         await page.waitForTimeout(3_000);
         const navigation = await page.evaluate(() => {
           const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
-          return { ...window.__iereBudget, scriptBodyBytes: resources.filter((e) => new URL(e.name).pathname.endsWith(".js"))
+          const document = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+          return { ...window.__iereBudget, documentTiming: { requestStartMs: document.requestStart, responseStartMs: document.responseStart,
+            responseEndMs: document.responseEnd, domInteractiveMs: document.domInteractive, serverWaitMs: document.responseStart - document.requestStart,
+            transferBytes: document.transferSize, bodyBytes: document.encodedBodySize,
+            routePreflightMs: document.serverTiming.find(entry => entry.name === "route_preflight")?.duration ?? null },
+            imageTiming: resources.filter(e => e.initiatorType === "img" || e.initiatorType === "link" && new URL(e.name).pathname === "/_next/image")
+              .map(e => ({ startMs: e.startTime, responseStartMs: e.responseStart, endMs: e.responseEnd, bytes: e.encodedBodySize })),
+            scriptBodyBytes: resources.filter((e) => new URL(e.name).pathname.endsWith(".js"))
             .reduce((sum, e) => sum + e.encodedBodySize, 0),
             slowResources: [...resources].sort((a, b) => b.duration - a.duration).slice(0, 6)
               .map((e) => ({ type: e.initiatorType, startMs: e.startTime, endMs: e.responseEnd, durationMs: e.duration,

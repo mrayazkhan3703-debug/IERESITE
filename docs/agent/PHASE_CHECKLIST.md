@@ -12,8 +12,10 @@
 - [ ] Finish column mapping, publication-eligibility preview and missing bulk content adapters.
 - [ ] Complete ten clean actual Mercury turns and approved company-document citations/freshness.
 - [ ] Capture/restore an actual Railway encrypted backup; enable independent hosted scheduling.
+- [x] Implement Railway backup transport/namespace/static capture and a public-recipient-only hosted runner; verify focused contracts. Live recovery/scheduling stays unchecked.
 - [x] Start Docker through supported tooling; restoration engine is available again.
 - [ ] Reconcile/export unique legacy company records before stopping Render workloads.
+- [x] Export selected Concord Tower/Hammad/Imran records and catalog/media dependencies in one read-only snapshot; retain private source bundle and hash receipt. Transfer/reconciliation remains pending.
 - [ ] Owner completes testing, supplies real content and reviews demo archival.
 - [ ] Company SMTP (owner deferred); customer enquiry notification acceptance.
 - [ ] Review launch contacts/privacy/permissions/bilingual content and paid hosting usage.
