@@ -2,6 +2,8 @@
 
 ## Current Railway company transition (2026-10-03)
 
+- Stored-hash/pause candidate `36c7ac1` is NOT deployed: exact CI `37121474022` passes functional/security/build/recovery/browser checks but fails mobile home LCP (2988ms EN / 2920ms AR against 2500ms). Repeated navigation delays before request start by 1473–1923ms; response wait is 27–46ms. Local comparison across repeat/fresh-page/analytics/interception modes measures 1300–1480ms and cannot reproduce the CI delay. A disposable hosted connection-timeout comparison records browser network timings before any proposed server setting change. Budgets remain unchanged.
+
 - Active work: `codex/railway-isolated-test`, Railway Web and PostgreSQL retained. Customer launch remains gated; testing continues with demo labels and staging noindex.
 - Live Ayaz correction completed through audited Admin/media APIs: designation `Team member`, empty biography, original ID/photo/publication flags preserved. Current slug is `team-verification`.
 - Web and Worker now run exact passing storage-inventory commit `6a8b17135971c5f7c98d10cb65fbda6e6fe6f047` (full CI `37119372113`). Both use the Railway start scripts without seeding. Worker remains enabled; automatic deployments are disabled so passing commits can be released deliberately.
