@@ -14,14 +14,16 @@
 - [x] Reconcile the original 46 public media entries against copied objects or bundled static assets; remove two confirmed unused verification PDFs through audited APIs. Complete reference inventory is now observed below; an actual database backup remains pending.
 - [x] Inspect all 48 current asset references including one private asset; verify all 56 copied objects and 88 public/static/range/private-denial delivery checks. One unattached technical video is retained for recovery; company records remain preserved.
 - [x] Release stored-file checksum correction and temporary storage mutation pause, then perform final refresh and R2 delivery cutover. Historical sanitized-source hashes remain preserved; no unsupported historic stored-hash claim.
-- [ ] Finish column mapping and missing bulk content adapters.
+- [x] Deploy shared property CSV/JSON column mapping with immutable preview approval, live private snapshot/Worker/replay/mismatch checks; exact `38ce295` / CI `37131428062` passes.
+- [ ] Finish missing bulk content adapters for modules currently served through their existing forms/contracts.
 - [ ] Complete ten clean actual Mercury turns and approved company-document citations/freshness.
 - [ ] Capture/restore an actual Railway encrypted backup; enable independent hosted scheduling.
 - [x] Implement Railway backup transport/namespace/static capture and a public-recipient-only hosted runner; verify focused contracts. Live recovery/scheduling stays unchecked.
 - [x] Start Docker through supported tooling; restoration engine is available again.
-- [ ] Reconcile/export unique legacy company records before stopping Render workloads.
-- [x] Export selected Concord Tower/Hammad/Imran records and catalog/media dependencies in one read-only snapshot; retain private source bundle and hash receipt. Transfer/reconciliation remains pending.
-- [x] Transfer Hammad/Imran through audited Admin commands with photos and original website publication; verify both English/Arabic profiles, no login created. Transfer Concord Tower with gallery/floor plan/PDF into protected Draft; preserve source and ID mappings. Its expired listing requires an owner-supplied valid expiry before publication, so legacy acceptance remains incomplete.
+- [x] Reconcile/export the identified unique legacy company records; retain source and ID mapping receipts. Render shutdown remains gated on Railway recovery acceptance.
+- [x] Export selected Concord Tower/Hammad/Imran and dependencies in a read-only snapshot, then transfer through audited Admin/media workflows without login creation. Preserve later Admin visibility changes, including hidden Hammad.
+- [x] Publish Concord Tower after the owner supplied **no expiry**; `expiresAt:null`, public route 200, gallery/floor plan/PDF retained. Verify five transferred asset stored hashes against R2/public delivery and protected-media denial.
+- [x] Capture/encrypt/upload/download/decrypt/restore a fresh actual legacy Supabase backup: 119 tables, 41 migrations, 58 objects, permission/media/private-document checks. Existing Windows legacy schedule reports a fresh success. This is not Railway recovery or independent hosted scheduling.
 - [ ] Owner completes testing, supplies real content and reviews demo archival.
 - [ ] Company SMTP (owner deferred); customer enquiry notification acceptance.
 - [x] Retain latest owner deferral of CRM sync and company SMTP; private Mailpit remains testing only, no claim of customer email acceptance.
@@ -67,4 +69,4 @@ Hosted recovery passed exact full CI 36884868448 on `f6e7e96` and is deployed th
 
 ## Railway company transition, 3 October 2026
 
-R2 storage cutover COMPLETE_RELEASE_SCOPE on exact 9802eaa / CI 37125345657: 56 verified copied objects, stable references, 88 delivery checks, unpaused secure upload and private Worker preview, original company/demo records preserved. Railway remains staging/noindex. Column mapping, missing bulk adapters, ten actual Mercury turns, approved facts, live encrypted Railway recovery/scheduling, legacy transfer and Cloudflare public-domain policy review remain outstanding. Customer SMTP and CRM stay owner-deferred. See RAILWAY_COMPANY_LAUNCH.md.
+R2 cutover remains active on exact `38ce295` / full CI `37131428062`, 44 migrations. Shared column mapping and completed-empty Advisor correction are deployed; live private preview/replay/mismatch, technical duplicate reuse and company-media hash checks pass. Worker is running with no pending outbox or dead letters; ten public routes pass and all original IDs remain. Concord Tower is published with owner-authorized no expiry; legacy profiles/source exports and later Admin edits are retained. Actual old Supabase encrypted recovery passes but cannot replace Railway recovery. Three new actual Mercury turns pass; ten-turn/source acceptance, missing bulk adapters, Railway independent backup/recovery and Cloudflare public-domain review remain outstanding. Railway stays staging/noindex. CRM/company SMTP remain owner-deferred. See RAILWAY_COMPANY_LAUNCH.md.
