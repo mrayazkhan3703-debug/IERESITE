@@ -15,6 +15,7 @@
  *    transferred on human handoff (§22.6).
  */
 import { z } from "zod";
+import { approvedKnowledgeInstruction } from "./knowledge-context";
 import { db } from "@/lib/db";
 import { getConfig } from "@/lib/config";
 import { HttpError } from "@/server/auth";
@@ -196,9 +197,7 @@ function describeSchema(schema: z.ZodTypeAny): string {
 /** Same prompt builder used by real turns and owner-only request-shape diagnostics. */
 export async function advisorSystemPrompt(locale = "en", scope?: AdvisorScope) {
   const [scopeBlock, knowledgeAvailable] = await Promise.all([scopeContextBlock(scope), hasApprovedKnowledge(locale)]);
-  const knowledge = knowledgeAvailable
-    ? "Approved current knowledge is indexed for this language. Use lookup_knowledge and cite returned passages before making sourced claims; approval does not independently verify inventory."
-    : "No approved current knowledge documents are indexed for this language. State this explicitly when describing your capabilities or discussing regulations. Do not say recorded inventory came from approved channels. You can still search recorded inventory and calculate scenarios; do not invent regulatory guidance or citations.";
+  const knowledge = approvedKnowledgeInstruction(knowledgeAvailable);
   return SYSTEM_PROMPT.replace("{{TOOLS}}", toolsBlock()).replace("{{SCOPE}}", scopeBlock).replace("{{LOCALE}}", advisorLocaleInstruction(locale)) + "\nKNOWLEDGE AVAILABILITY: " + knowledge;
 }
 
