@@ -186,16 +186,26 @@ async function checks(mode, backup, extracted) {
       if (allowed.status !== 200 || createHash("sha256").update(new Uint8Array(await allowed.arrayBuffer())).digest("hex") !== protectedDoc.row.sha256 ||
           (protectedDoc.mode === "gated" && allowed.headers.get("cache-control") !== "private, no-store")) fail("AUTHORIZED_DOCUMENT_MISMATCH");
       if (protectedDoc.mode === "portfolio") {
-        const [other] = await sql`SELECT id FROM public."User" WHERE "isActive" AND id<>${protectedDoc.userId} LIMIT 1`;
-        if (!other) fail("RESTORE_ISOLATION_USER_MISSING");
+        let [other] = await sql`SELECT id FROM public."User" WHERE "isActive" AND id<>${protectedDoc.userId} LIMIT 1`;
+        // A one-owner company database needs no live dummy customers. The
+        // ownership probe may create one passwordless, roleless test principal
+        // only in this disposable restored database, then remove it.
+        const temporaryPrincipal = other ? null : `restore_probe_${randomUUID().replaceAll("-", "")}`;
+        if (temporaryPrincipal) {
+          await sql`INSERT INTO public."User"(id,email,"isActive","createdAt","updatedAt") VALUES(${temporaryPrincipal},${`${temporaryPrincipal}@example.invalid`},true,now(),now())`;
+          other = { id: temporaryPrincipal };
+        }
         const otherToken = randomUUID() + randomUUID(), otherSession = randomUUID(), otherHash = createHash("sha256").update(otherToken).digest("hex");
-        await sql`INSERT INTO public."Session"(id,"userId","tokenHash","expiresAt","mfaVerifiedAt","createdAt") VALUES(${otherSession},${other.id},${otherHash},now()+interval '10 minutes',now(),now())`;
         try {
+          await sql`INSERT INTO public."Session"(id,"userId","tokenHash","expiresAt","mfaVerifiedAt","createdAt") VALUES(${otherSession},${other.id},${otherHash},now()+interval '10 minutes',now(),now())`;
           const otherListing = await fetch(`${base}/api/account/portfolio/documents`, { headers: { Cookie: `ie_session=${otherToken}` } });
           if (otherListing.status !== 200) fail("PRIVATE_DOCUMENT_OWNERSHIP_CHECK_FAILED");
           const otherDocuments = (await otherListing.json()).documents;
           if (!Array.isArray(otherDocuments) || otherDocuments.some(item => item.id === protectedDoc.id || item.media?.id === protectedDoc.mediaId)) fail("PRIVATE_DOCUMENT_OWNERSHIP_CHECK_FAILED");
-        } finally { await sql`DELETE FROM public."Session" WHERE id=${otherSession}`; }
+        } finally {
+          await sql`DELETE FROM public."Session" WHERE id=${otherSession}`;
+          if (temporaryPrincipal) await sql`DELETE FROM public."User" WHERE id=${temporaryPrincipal} AND email=${`${temporaryPrincipal}@example.invalid`}`;
+        }
       }
     } finally { await sql`DELETE FROM public."Session" WHERE id=${sessionId}`; }
     return { status: "PASS_DELIVERY", publicImages: 1, publicVideos: 1, videoRanges: 1, protectedDocuments: 1, protectedDocumentMode: protectedDoc.mode, anonymousDocumentDenied: true, ...(protectedDoc.mode === "portfolio" ? { otherUserDocumentDenied: true } : {}) };

@@ -109,11 +109,14 @@ async function restore(directory, configFile) {
       "const {PrismaClient}=await import('@prisma/client');const db=new PrismaClient();try{console.log(JSON.stringify({publicImages:await db.mediaAsset.count({where:{isPrivate:false,mimeType:{startsWith:'image/'}}})}));}finally{await db.$disconnect();}"]));
     if (appDatabase.publicImages < 1) throw new Error("APPLICATION_DATABASE_MEDIA_MISSING");
     const deliveryChecks = check("delivery", network);
+    // Temporary permission-test sessions/principals must leave the captured
+    // application records intact before this drill can be accepted.
+    const postDeliveryDatabaseChecks = check("database", network);
     report = { status: "PASS", source: manifest.source, sourceId: manifest.sourceId, syntheticFixture: manifest.syntheticFixture === true,
       backupCreatedAtUtc: manifest.createdAtUtc, restoreStartedAtUtc: new Date(started).toISOString(), restoreCompletedAtUtc: new Date().toISOString(),
       elapsedSeconds: (Date.now() - started) / 1000, durationScope: "Isolated scripted recovery, not incident-to-service RTO",
       achievedRpo: "NOT_VERIFIED", achievedRto: "NOT_VERIFIED", network: "INTERNAL_NO_PUBLISHED_PORTS", outboundJobs: "DISABLED",
-      images: config, prepared, databaseChecks, objectChecks, staticChecks, deliveryChecks };
+      images: config, prepared, databaseChecks, postDeliveryDatabaseChecks, objectChecks, staticChecks, deliveryChecks };
   } finally {
     stage = "OWNED_CLEANUP";
     for (const resource of [...owned].reverse()) {
