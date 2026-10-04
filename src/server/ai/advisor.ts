@@ -16,6 +16,7 @@
  */
 import { z } from "zod";
 import { approvedKnowledgeInstruction } from "./knowledge-context";
+import { advisorToolContract } from "./tool-contract";
 import { db } from "@/lib/db";
 import { getConfig } from "@/lib/config";
 import { HttpError } from "@/server/auth";
@@ -181,17 +182,7 @@ function toolsBlock(): string {
 }
 
 function describeSchema(schema: z.ZodTypeAny): string {
-  try {
-    const shape = (schema as z.ZodObject<z.ZodRawShape>).shape;
-    return Object.entries(shape)
-      .map(([k, v]) => {
-        const isOptional = v instanceof z.ZodOptional;
-        return `${k}${isOptional ? "?" : ""}`;
-      })
-      .join(", ");
-  } catch {
-    return "object";
-  }
+  return advisorToolContract(schema);
 }
 
 /** Same prompt builder used by real turns and owner-only request-shape diagnostics. */
@@ -395,7 +386,7 @@ export async function advisorTurn(opts: {
         const args = tool.argsSchema.safeParse(parsed.args);
         if (!args.success) {
           status = "BLOCKED";
-          result = { ok: false, data: null, error: `Invalid arguments: ${args.error.issues[0]?.message}` };
+          result = { ok: false, data: null, error: `Invalid arguments: ${args.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("; ").slice(0, 800)}. Correct the call using the listed JSON argument schema.` };
         } else {
           result = await withinTurnBudget(() => tool.execute(args.data, { locale: opts.locale ?? "en" }), deadlineAt);
           if (!result.ok) status = "ERROR";

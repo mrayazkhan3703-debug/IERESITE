@@ -8,7 +8,7 @@ const config = { bucket: "fixture-backups", maxStoredBytes: 1073741824 };
 type ObjectRow = { body: Buffer; date: Date; etag: string };
 function fixture() {
   const objects = new Map<string,ObjectRow>(), deleted: string[] = [], commands: string[] = [], active: string[] = [];
-  let interruptAt = 0, deletes = 0, changeHead = false;
+  let interruptAt = 0, deletes = 0, changeHead = false, headPrecision = false, headOffset = 0;
   const put = (key: string, body: Buffer, date = new Date(now - 1000)) => objects.set(key, { body, date, etag: `"${hash(body)}"` });
   const add = (prefix: string, id: string, time: number) => {
     const members = ["database.dump", "object-storage.tar.gz", "manifest.json"].map(file => {
@@ -34,14 +34,20 @@ function fixture() {
     if(name==="PutObjectCommand"){put(String(input.Key),Buffer.from(input.Body as Uint8Array));return {};}
     const row=objects.get(String(input.Key));if(!row)return missing();
     if(name==="GetObjectCommand")return {Body:Readable.from([row.body]),ContentLength:row.body.length,ETag:row.etag};
-    if(name==="HeadObjectCommand")return {ContentLength:row.body.length,ETag:changeHead?"changed":row.etag,LastModified:row.date};
+    if(name==="HeadObjectCommand")return {ContentLength:row.body.length,ETag:changeHead?"changed":row.etag,LastModified:new Date((headPrecision?Math.floor(row.date.getTime()/1000)*1000:row.date.getTime())+headOffset)};
     if(name==="DeleteObjectCommand"){
       expect(input.IfMatch).toBe(row.etag);if(++deletes===interruptAt)throw Error("interrupted");
       objects.delete(String(input.Key));deleted.push(String(input.Key));return {};
     }throw Error("unexpected command");
   }};
-  return {store,objects,deleted,commands,active,put,add,interrupt:(at:number)=>{interruptAt=at;},changed:()=>{changeHead=true;}};
+  return {store,objects,deleted,commands,active,put,add,interrupt:(at:number)=>{interruptAt=at;},changed:()=>{changeHead=true;},r2Headers:(offset=0)=>{headPrecision=true;headOffset=offset;}};
 }
+
+test("R2 millisecond listings match second-precision HTTP headers; changed seconds abort",async()=>{
+  const f=fixture();for(const row of f.objects.values())row.date=new Date(row.date.getTime()+454);f.r2Headers();
+  expect((await runBackupRetention({store:f.store,config,now,apply:true,lockHeld:true})).removedRuns).toBe(2);
+  const g=fixture();g.r2Headers(1000);await expect(runBackupRetention({store:g.store,config,now,apply:true,lockHeld:true})).rejects.toThrow();expect(g.deleted).toHaveLength(0);
+});
 
 test("retention keeps four recent, seven UTC daily representatives and pinned/pointer points",()=>{
   const captures=Array.from({length:12},(_,i)=>({runId:String(i),receipt:{createdAtUtc:new Date(now-i*86400000).toISOString()}}));

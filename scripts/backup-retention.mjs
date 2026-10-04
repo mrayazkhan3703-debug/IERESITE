@@ -10,6 +10,11 @@ const FILES = new Set(["database.dump.age", "object-storage.tar.gz.age", "manife
 const sha = value => createHash("sha256").update(value).digest("hex");
 const fail = () => { throw new Error("RETENTION_VALIDATION_FAILED"); };
 const isMissing = error => error?.$metadata?.httpStatusCode === 404 || error?.name === "NoSuchKey";
+function unchangedHead(head, item) {
+  return head.ETag === item.ETag && head.ContentLength === item.Size &&
+    Number.isFinite(head.LastModified?.getTime()) &&
+    Math.floor(head.LastModified.getTime() / 1000) === Math.floor(item.LastModified.getTime() / 1000);
+}
 async function send(store, command) { return store.send(command, { abortSignal: AbortSignal.timeout(120000) }); }
 async function list(store, bucket, prefix) {
   const rows = []; let token;
@@ -142,10 +147,15 @@ export async function runBackupRetention({ store, config, apply = false, now = D
     }
     for (const item of group.members) {
       const currentHead = await send(store, new HeadObjectCommand({ Bucket: config.bucket, Key: item.Key }));
-      if (currentHead.ETag !== item.ETag || currentHead.ContentLength !== item.Size || currentHead.LastModified?.getTime() !== item.LastModified.getTime()) fail();
+      // S3 HTTP Last-Modified has second precision; R2 listings retain milliseconds.
+      // ETag/length plus verified content hashes still guard the immutable archive.
+      if (!unchangedHead(currentHead, item)) fail();
     }
     // Archives are immutable UUID keys. A changed receipt or member blocks cleanup.
     for (const item of [...group.members].sort((a,b) => Number(a.Key.endsWith("/receipt.json"))-Number(b.Key.endsWith("/receipt.json")))) {
+      // R2 may ignore DeleteObject IfMatch. Recheck immediately under the writer lock;
+      // UUID archives must remain immutable for cooperating capture/cleanup writers.
+      if (!unchangedHead(await send(store, new HeadObjectCommand({ Bucket: config.bucket, Key: item.Key })), item)) fail();
       await send(store, new DeleteObjectCommand({ Bucket: config.bucket, Key: item.Key, IfMatch: item.ETag }));
       try { await send(store, new HeadObjectCommand({ Bucket: config.bucket, Key: item.Key })); fail(); }
       catch (error) { if (!isMissing(error)) throw error; }
