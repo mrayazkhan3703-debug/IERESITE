@@ -4,7 +4,8 @@
 
 - [x] Recover an actual encrypted Railway/PostgreSQL/R2 capture: 119 tables, 44 migrations, 123 referenced R2/static assets, permissions, images/video/ranges/private PDF, post-delivery counts and outbound-disabled cleanup PASS.
 - [x] Enable hosted 30-minute captures alongside the existing accepted Worker, with actual recovery evidence and owner-confirmed key copy; observe first successful point at 08:53:31 UTC.
-- [ ] Observe successive hosted capture cadence; resolve finite capacity without unapproved deletion or a cap increase. Current 1 GiB cap leaves about six hours of points as of first schedule acceptance.
+- [x] Observe successive hosted capture cadence: second point `379832849efc4eb890aa405055e78dcd` completed 09:23:32 UTC with ciphertext readback/cleanup PASS; source snapshots are 29 minutes 59.895 seconds apart.
+- [ ] Resolve finite capacity without unapproved deletion or a cap increase. At 09:24 UTC, 419,082,548 bytes remain under the 1 GiB cap, about ten additional half-hour captures. Long-term continuous protection is not accepted.
 - [x] Complete ten real Mercury HTTP turns without fallback and verify durable replay/reload within budget.
 - [ ] Repair and verify the demonstrated Concord Tower lookup/semantic regression before declaring full conversational acceptance. Candidate adds all listing types and rental-frequency metadata without changing the source listing.
 - [ ] Populate approved company knowledge and real inventory from owner-supplied facts; complete owner testing and reviewed demo archival before customer launch.

@@ -25,6 +25,7 @@ import { NL_INTERPRETATION_SCOPE } from "./nl-interpretation-scope";
 import { ADVISOR_PROCESSING_MS, requireTurnBudget, withinTurnBudget } from "./turn-budget";
 import { advisorFailureReply } from "./failure-reply";
 import { containsAdvisorToolEnvelope } from "./tool-output";
+import { advisorListingTypeSchema } from "./inventory-listing-scope";
 import { AiProviderBlockedError } from "./controls";
 import { advisorLocaleInstruction, extractArabicSearchCriteria } from "./locale";
 import { TOOLS, toolByName } from "./tools";
@@ -593,7 +594,7 @@ export async function advisorTurn(opts: {
 export interface NlParseResult {
   filters: Partial<{
     q: string;
-    listingType: "SALE" | "RENT";
+    listingType: "SALE" | "RENT" | "SHORT_TERM";
     communities: string[];
     propertyTypes: string[];
     priceMin: number;
@@ -614,7 +615,7 @@ export interface NlParseResult {
 const NL_SCHEMA = z.object({
   filters: z.object({
     q: z.string().max(120).optional(),
-    listingType: z.enum(["SALE", "RENT"]).optional(),
+    listingType: advisorListingTypeSchema.optional(),
     communities: z.array(z.string().max(80)).max(6).optional(),
     propertyTypes: z.array(z.enum(["APARTMENT", "VILLA", "TOWNHOUSE", "PENTHOUSE", "DUPLEX", "STUDIO", "OFFICE"])).max(4).optional(),
     priceMin: z.number().int().min(0).max(500000000).optional(),
@@ -641,6 +642,7 @@ Rules:
 - "yield above X%" / "gross yield over X%" maps to yieldMinPct (number, percent).
 - "handover before Q4 2028" / "ready by Q2 2027" maps to handoverBeforeQuarter (e.g. "Q4 2028").
 - Only fill fields you are confident about; leave everything else out.
+- listingType: SALE for an explicit purchase, RENT for a regular rental, SHORT_TERM for explicit short-term/holiday/daily rental requests. Omit it when unspecified.
 - explanation: one short sentence describing the parsed criteria transparently.
 - unrecognized: list any criteria you understood but could NOT represent with these fields (e.g. "gym view", "quiet street"), so the UI can tell the user.
 Respond with ONLY valid JSON: {"filters": {...}, "explanation": "...", "unrecognized": [...]}`;
@@ -768,7 +770,8 @@ export function deterministicNlExtract(query: string, knownCommunities: string[]
   if (found.length) out.communities = found.slice(0, 6);
 
   // intent / flags
-  if (/\bfor rent\b|\brentals?\b|\bto rent\b|\brenting\b/.test(q)) out.listingType = "RENT";
+  if (/\bshort[ -]?term rentals?\b|\bholiday (?:rentals?|homes?)\b|\bdaily rentals?\b/.test(q)) out.listingType = "SHORT_TERM";
+  else if (/\bfor rent\b|\brentals?\b|\bto rent\b|\brenting\b/.test(q)) out.listingType = "RENT";
   else if (/\bfor sale\b|\bbuy(ing)?\b|\bpurchase\b/.test(q)) out.listingType = "SALE";
   if (/\boff-?plan\b/.test(q)) out.offPlan = true;
   if (/sea[- ]?view/.test(q)) out.seaView = true;

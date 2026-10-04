@@ -52,8 +52,8 @@ export function nlChipsFromFilters(
   if (typeof f.q === "string" && f.q.trim()) {
     chips.push({ id: "q", param: "q", value: f.q.slice(0, 120), label: `“${f.q.slice(0, 40)}${f.q.length > 40 ? "…" : ""}”`, applied: true });
   }
-  if (f.listingType === "RENT") {
-    chips.push({ id: "listingType", param: "type", value: "rent", label: t("search.nl.forRent", locale), applied: true });
+  if (f.listingType === "RENT" || f.listingType === "SHORT_TERM") {
+    chips.push({ id: "listingType", param: "type", value: f.listingType.toLowerCase(), label: t(f.listingType === "SHORT_TERM" ? "advisorV2.chip.shortTerm" : "search.nl.forRent", locale), applied: true });
   }
   if (Array.isArray(f.communities)) {
     f.communities.forEach((c, i) =>
@@ -118,7 +118,7 @@ export function SearchBar({
   mode,
 }: {
   className?: string;
-  listingType?: "SALE" | "RENT";
+  listingType?: "SALE" | "RENT" | "SHORT_TERM";
   size?: "lg" | "md";
   placeholder?: string;
   chips?: boolean;
@@ -179,7 +179,7 @@ export function SearchBar({
         ? mode !== "buy"
           ? { mode }
           : {}
-        : { type: listingType === "RENT" ? "rent" : undefined }),
+        : { type: listingType === "SALE" ? undefined : listingType.toLowerCase() }),
     });
   };
 

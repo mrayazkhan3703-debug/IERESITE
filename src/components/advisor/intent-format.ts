@@ -16,7 +16,7 @@ import { formatAEDPrecise } from "@/lib/format-precise";
 
 export interface IntentFilterSet {
   q?: string;
-  listingType?: "SALE" | "RENT";
+  listingType?: "SALE" | "RENT" | "SHORT_TERM";
   communities?: string[];
   propertyTypes?: string[];
   priceMin?: number;
@@ -54,7 +54,7 @@ export function filtersToChips(filters: IntentFilterSet, locale: Locale = "en"):
   if (filters.listingType) {
     chips.push({
       key: "listingType",
-      label: filters.listingType === "RENT" ? t("advisorV2.chip.forRent", locale) : t("advisorV2.chip.forSale", locale),
+      label: t(filters.listingType === "SHORT_TERM" ? "advisorV2.chip.shortTerm" : filters.listingType === "RENT" ? "advisorV2.chip.forRent" : "advisorV2.chip.forSale", locale),
     });
   }
   for (const c of filters.communities ?? []) {
@@ -97,7 +97,7 @@ export function filtersToChips(filters: IntentFilterSet, locale: Locale = "en"):
  */
 export function filtersToRefineQuery(filters: IntentFilterSet): string {
   const parts: string[] = [];
-  if (filters.listingType) parts.push(filters.listingType === "RENT" ? "rentals" : "properties for sale");
+  if (filters.listingType) parts.push(filters.listingType === "SHORT_TERM" ? "short-term rentals" : filters.listingType === "RENT" ? "rentals" : "properties for sale");
   if (filters.propertyTypes?.length) parts.push(filters.propertyTypes.map((p) => PROPERTY_TYPE_LABELS[p.toUpperCase()] ?? p).join(" or "));
   if (filters.communities?.length) parts.push(`in ${filters.communities.join(" or ")}`);
   if (filters.bedroomsMin != null) parts.push(`${filters.bedroomsMin}+ bedrooms`);
