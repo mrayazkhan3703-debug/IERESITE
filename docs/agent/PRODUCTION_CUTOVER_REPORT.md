@@ -1,5 +1,9 @@
 # IERESITE release and production cutover report
 
+## Railway software acceptance — 4 October 2026, 13:08 UTC
+
+Application `33ace7980f2bee1849fb17f86e41318b1d707b1e` passes full CI `37201990279` and is deployed successfully on Web/Worker. Ten real Mercury semantic turns, unlimited website usage, replay/reload, scoped archive cleanup, fresh encrypted capture and actual isolated recovery pass. Company records/media remain unchanged. [Current release report](RAILWAY_UNLIMITED_RETENTION_20261004.md) supersedes older Advisor quota and storage-capacity blockers. The recorded maintenance gap prevents claiming a one-hour RPO, and scripted restore duration is not incident RTO. CRM/company SMTP remain skipped; approved content, final demo archival, company domain and authenticated Cloudflare privacy acceptance still gate customer launch.
+
 ## Accepted application release — 4 October 2026, 10:22 UTC
 
 Railway Web/Worker exact `19476d9` pass full CI `37192779736` and live route/record/media/private-access checks. Concord Tower SHORT_TERM lookup is corrected and owner data is unchanged. Genuine hosted database/media recovery, two successive 30-minute capture intervals and a fresh post-release encrypted backup pass. One upload stalls; interrupted cleanup and one restart recover capture without losing the previous verified pointer. Ten clean final-release AI turns still require budget reset; current reserved usage is 57,589/60,000. Backup storage has about four hours left and awaits owner retention/storage review. Company facts/approved knowledge, final testing/demo cleanup and Cloudflare public-domain policy review remain launch conditions. CRM/company SMTP stay skipped. [Full current evidence](RAILWAY_RELEASE_20261004.md) supersedes historical gates below; company testing is usable, customer launch is not accepted.

@@ -1,5 +1,9 @@
 # Railway company launch checkpoint
 
+## Software checkpoint — 4 October 2026, 13:08 UTC
+
+Exact passing application `33ace798` is deployed on both Railway services. Website Advisor quotas are disabled, ten semantically reviewed Mercury turns pass, archive retention preserves recovery pins, and a fresh hosted backup restores successfully in isolation. All company profile/property/media fingerprints are unchanged. [Current completion evidence](RAILWAY_UNLIMITED_RETENTION_20261004.md) supersedes historical quota-reset/capacity blockers. CRM/company SMTP remain skipped. Customer launch still requires approved real content, reviewed final demo archival, company-domain setup and authenticated Cloudflare public-domain privacy inspection; staging noindex remains enabled. Provider limits and hosting purchases are not automatically increased.
+
 ## Accepted application release — 4 October 2026, 10:22 UTC
 
 Web/Worker exact `19476d9` are SUCCESS after full CI `37192779736` PASS. Current record/media preservation, bilingual routes, Concord Tower lookup, worker health and fresh hosted encrypted capture pass. Ten clean final-release AI turns, approved company content, reviewed backup capacity/retention and Cloudflare public-domain privacy review remain pending; CRM/company SMTP stay skipped. The roughly four-hour remaining backup capacity is not continuous protection. See [current release evidence](RAILWAY_RELEASE_20261004.md); this supersedes older candidate/recovery-blocked notes below. Company testing remains noindex, with no data reset or demo cleanup.

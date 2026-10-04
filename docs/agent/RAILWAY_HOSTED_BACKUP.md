@@ -1,5 +1,9 @@
 # Railway hosted backup and recovery
 
+## Current accepted archive policy — 4 October 2026, 13:08 UTC
+
+Owner-authorized Worker retention now manages only `live-backups/railway-main` and `private/iere-live`, keeping four recent verified points, seven UTC daily representatives, latest pointers and both restoration pins. It removed 32 obsolete runs / 658,951,396 bytes; the whole-bucket 1 GiB cap is unchanged. Fresh capture `51124b1a5a7b48a999afb39eb82d7d7a` and its actual isolated restoration pass (119 tables, 44 migrations, 123 R2/static assets, protected-document denial, outbound jobs disabled, cleanup PASS). One stalled read recovered through one controlled Worker restart; a one-hour RPO is not claimed for the maintenance gap. Scripted restoration was 17.173 seconds, not incident RTO. R2 conditional-delete limitations and cooperating-writer safeguards are documented in [current evidence](RAILWAY_UNLIMITED_RETENTION_20261004.md), which supersedes older no-deletion and capacity statements here. Company media and private recovery identities are preserved.
+
 ## Verified hosted status — 4 October 2026, 10:22 UTC
 
 Actual Railway encrypted restoration is PASS, and source snapshots at 08:52, 09:22 and 09:52 verify two successive 30-minute intervals. The current exact passing `19476d9` Worker is scheduled; its first upload stalls, interrupted cleanup passes, and one restart completes verified capture `98348fdb393b434687d7f9effb8ae8e0` at 10:20 UTC. Latest pointer readback and normal worker/routes pass. Storage has 321,630,567 bytes left under the unchanged 1 GiB whole-bucket cap, about four hours at the current cadence. Retention/storage review remains required, deletion is disabled, and achieved long-term RPO/RTO is not claimed. See [release evidence](RAILWAY_RELEASE_20261004.md). Older blocked/pending observations below are historical.

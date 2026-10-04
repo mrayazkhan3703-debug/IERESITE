@@ -1,5 +1,9 @@
 # Railway release — 4 October 2026
 
+## Superseding release at 13:08 UTC
+
+The later exact passing application `33ace798` / CI `37201990279` completes unlimited website Advisor quotas, ten semantically successful actual Mercury turns, durable replay/reload, authorized scoped backup retention, preserved recovery pins and fresh hosted recovery. All original company fingerprints and media hashes pass. [RAILWAY_UNLIMITED_RETENTION_20261004.md](RAILWAY_UNLIMITED_RETENTION_20261004.md) is the current report; quota-reset and pending-retention statements below describe the earlier release. CRM/company SMTP remain skipped, owner content/domain/privacy dependencies remain outstanding, and customer launch is not declared complete.
+
 ## Scope
 
 Company testing on Railway continues. CRM sync, company SMTP and unnecessary bulk adapters remain deferred. Demo inventory labels, real profiles, owner changes and media are preserved. Customer launch is not accepted.

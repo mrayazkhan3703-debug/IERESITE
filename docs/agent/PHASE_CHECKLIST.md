@@ -1,5 +1,18 @@
 # Phase Checklist
 
+## Current verified release — 4 October 2026, 13:08 UTC
+
+- [x] Exact `33ace798` passes full CI `37201990279` and both Railway services deploy it successfully.
+- [x] Unlimited website quotas; accurate usage aggregation; retained burst/ownership/cancellation/replay controls.
+- [x] Ten actual semantically clean Mercury turns, bilingual provenance, calculator assumptions, replay and reload.
+- [x] Scoped authorized retention: 32 obsolete backup runs removed, both restoration pins retained, unchanged 1 GiB cap.
+- [x] Fresh encrypted hosted capture and its actual isolated recovery, permissions/media/protected files, outbound-disabled cleanup.
+- [x] Unchanged company-record fingerprints, company media hashes, healthy Worker queues and public routes.
+- [ ] Owner-approved knowledge/content, final demo archival, domain setup and authenticated Cloudflare public-exposure inspection before customer launch.
+- [x] CRM and company SMTP remain skipped. Continuous incident RPO/RTO is not claimed from a scripted drill or the maintenance gap.
+
+[Current release evidence](RAILWAY_UNLIMITED_RETENTION_20261004.md) supersedes historical quotas, capacity and no-deletion entries below.
+
 ## Verified release — 4 October 2026, 10:22 UTC
 
 - [x] Full exact application gate `19476d9` / CI `37192779736`, including 427 unit, 163 integration, 75 backup contracts, 121 browser journeys, 16 delivery measurements and eight performance cases.
