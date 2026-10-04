@@ -39,7 +39,8 @@ export const POST = apiHandler(
       if (turn.status === "PENDING") return NextResponse.json({ conversationId: conversation.id, clientRequestId, status: "PENDING" }, { status: 202, headers: { "Retry-After": "3" } });
       return NextResponse.json({ error: "This saved request did not complete. Reload your conversation before sending a new message.", code: turn.errorCode ?? "AI_TURN_FAILED", conversationId: conversation.id }, { status: 409 });
     }
-    const rl = rateLimit(`ai:${user?.id ?? sessionHash ?? ip}`, config.AI_RATE_LIMIT_PER_HOUR, 3600_000);
+    const rl = config.AI_USAGE_LIMIT_MODE === "unlimited" ? { ok: true, retryAfterSec: 0 }
+      : rateLimit(`ai:${user?.id ?? sessionHash ?? ip}`, config.AI_RATE_LIMIT_PER_HOUR, 3600_000);
     if (!rl.ok) {
       await db.aiTurn.update({ where: { id: turn.id }, data: { status: "FAILED", activeKey: null, errorCode: "RATE_LIMITED", finishedAt: new Date() } });
       return NextResponse.json({ error: "You've reached the AI advisor limit for this hour. Your conversation is saved. You can submit a separate consultation request; this chat has not been transferred.", code: "RATE_LIMITED" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } });

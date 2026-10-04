@@ -103,7 +103,8 @@ async function command(program, args, stdoutPath) {
 }
 export function validateBackupScope(manifest, fixture = false) {
   const local = manifest.format === 1 && manifest.source === "local-docker-compose";
-  const hosted = manifest.format === 2 && manifest.source === "hosted-postgres-r2"
+  const hosted = manifest.format === 2 && (manifest.source === "hosted-postgres-r2" ||
+    (manifest.source === "hosted-postgres-s3" && manifest.mediaProfile === "railway-temporary-seaweed"))
     && /^[a-z0-9][a-z0-9-]{2,80}$/.test(manifest.sourceId ?? "")
     && manifest.database?.schema === "public"
     && manifest.objectStorage?.format === "content-addressed-r2"

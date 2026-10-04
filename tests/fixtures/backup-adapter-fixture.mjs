@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { S3Client, CreateBucketCommand, ListObjectsV2Command, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { hashFile, uploadExistingBackup, restoreToNewDirectory, loadConfig } from "../../scripts/backup-adapter.mjs";
+import { BACKUP_RETENTION_NAMESPACES, runBackupRetention } from "../../scripts/backup-retention.mjs";
 
 const task = process.argv[2];
 let stage = task;
@@ -64,6 +65,33 @@ async function operate() {
         run("tar", ["-xzf", "/output/restored/object-storage.tar.gz", "-C", "/payload/recovered"]);
         if ((await readFile("/payload/recovered/private-synthetic.txt", "utf8")) !== "SYNTHETIC ONLY: no property/customer/provider data") throw new Error("Synthetic object bytes differ");
         console.log(JSON.stringify({ ...result, originalHashEquality: true, syntheticObjectRead: true }));
+      } else if (task === "retention") {
+        // Real S3 API contract, isolated network/bucket; duplicate encrypted bytes only.
+        const now = Date.now(), payloads = await Promise.all(receipt.objects.map(async object => {
+          const response = await store.send(new GetObjectCommand({ Bucket: cfg.bucket, Key: object.key }));
+          return response.Body.transformToByteArray();
+        }));
+        async function point(prefix, id, time) {
+          const copy = { ...receipt, runId: id, status: "VERIFIED_CIPHERTEXT_ONLY", createdAtUtc: new Date(time).toISOString(), verifiedAtUtc: new Date(time + 100).toISOString(),
+            objects: receipt.objects.map(object => ({ ...object, key: `${prefix}/${id}/${object.file}` })) };
+          for (let i = 0; i < copy.objects.length; i++) await store.send(new PutObjectCommand({ Bucket: cfg.bucket, Key: copy.objects[i].key, Body: payloads[i] }));
+          await store.send(new PutObjectCommand({ Bucket: cfg.bucket, Key: `${prefix}/${id}/receipt.json`, Body: JSON.stringify(copy) }));
+          return copy;
+        }
+        for (const [prefix, pin] of Object.entries(BACKUP_RETENTION_NAMESPACES)) {
+          await point(prefix, pin, now - 14 * 86400000);
+          for (let i = 1; i <= 5; i++) {
+            const copy = await point(prefix, String(i).repeat(32), now - i * 60000);
+            if (i === 1) await store.send(new PutObjectCommand({ Bucket: cfg.bucket, Key: prefix + "/latest.json", Body: JSON.stringify(copy) }));
+          }
+        }
+        const preview = await runBackupRetention({ store, config: cfg, now });
+        if (preview.manifest.namespaces.some(ns => ns.remove.length !== 1)) throw Error("Synthetic retention preview mismatch");
+        const result = await runBackupRetention({ store, config: cfg, now, apply: true, lockHeld: true });
+        if (result.removedRuns !== 2) throw Error("Synthetic retention deletion mismatch");
+        // Unrelated original encrypted backup must still restore after cleanup.
+        await restoreToNewDirectory({ config: cfg, receipt, outputDirectory: "/output/retained-after-cleanup", identityFile: "/identities/recovery.agekey", fixture: true, store });
+        console.log(JSON.stringify({ status: "PASS_LOCAL_SYNTHETIC", conditionalDeletion: true, pinnedRecoveryPreserved: true, unrelatedArchiveRestored: true, removedRuns: result.removedRuns }));
       } else if (task === "wrong-key") {
         let rejected = false;
         try { await restoreToNewDirectory({ config: cfg, receipt, outputDirectory: "/output/wrong-key", identityFile: "/identities/wrong.agekey", fixture: true, store }); }

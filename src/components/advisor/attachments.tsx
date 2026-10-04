@@ -50,6 +50,8 @@ export interface PropertyCardAttachment {
   community: string;
   project: string | null;
   propertyType: string;
+  listingType?: string | null;
+  rentFrequency?: string | null;
   bedrooms: number;
   bathrooms: number;
   areaSqft: number | null;
@@ -149,6 +151,17 @@ function freshnessLabel(asOf: string | null | undefined): string | null {
  * ------------------------------------------------------------------ */
 
 function PropertyAttachmentCard({ a, locale }: { a: PropertyCardAttachment; locale: Locale }) {
+  const frequency = ({
+    DAILY: locale === "ar" ? "/ يوم" : "/ day",
+    WEEKLY: locale === "ar" ? "/ أسبوع" : "/ week",
+    MONTHLY: locale === "ar" ? "/ شهر" : "/ month",
+    YEARLY: locale === "ar" ? "/ سنة" : "/ year",
+  } as Record<string, string>)[a.rentFrequency ?? ""];
+  const listingLabel = ({
+    SALE: locale === "ar" ? "للبيع" : "For sale",
+    RENT: locale === "ar" ? "للإيجار" : "For rent",
+    SHORT_TERM: locale === "ar" ? "إيجار قصير الأجل" : "Short-term rental",
+  } as Record<string, string>)[a.listingType ?? ""];
   return (
     <article className="overflow-hidden rounded-lg border border-border/60 bg-card">
       <Link to={a.url} className="group flex h-full flex-col focus-visible:outline-offset-[-2px]">
@@ -174,7 +187,9 @@ function PropertyAttachmentCard({ a, locale }: { a: PropertyCardAttachment; loca
             <h4 className="line-clamp-2 text-[13px] font-semibold leading-snug group-hover:text-brand-strong">{a.title}</h4>
             <p className="num mt-1 text-sm font-semibold" title={`${formatAEDPrecise(a.priceAed)} — asking price`}>
               {formatAEDPrecise(a.priceAed)}
+              {frequency && <span className="ms-1 text-xs font-normal">{frequency}</span>}
             </p>
+            {listingLabel && <p className="text-[11px] text-muted-foreground">{listingLabel}</p>}
             <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-0.5">
                 <MapPin className="h-3 w-3 text-brand" aria-hidden />

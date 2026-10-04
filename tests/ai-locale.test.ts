@@ -1,8 +1,22 @@
 import { describe, expect, it } from "bun:test";
 import { advisorLocaleInstruction, extractArabicSearchCriteria, normalizeAdvisorLocale } from "@/server/ai/locale";
 import { deterministicNlExtract } from "@/server/ai/advisor";
+import { filtersToChips, filtersToRefineQuery } from "@/components/advisor/intent-format";
+import { nlChipsFromFilters } from "@/components/search/search-bar";
 
 describe("advisor locale and deterministic search evaluation", () => {
+  it("preserves short-term criteria in English/Arabic chips and refined searches", () => {
+    const criteria = { listingType: "SHORT_TERM" as const };
+    expect(filtersToChips(criteria, "en")[0].label).toBe("Short-term rental");
+    expect(filtersToChips(criteria, "ar")[0].label).toBe("إيجار قصير الأجل");
+    expect(nlChipsFromFilters(criteria, [], "ar")[0]).toMatchObject({ param: "type", value: "short_term", applied: true, label: "إيجار قصير الأجل" });
+    expect(deterministicNlExtract(filtersToRefineQuery(criteria), []).listingType).toBe("SHORT_TERM");
+    expect(deterministicNlExtract("Find daily rentals", []).listingType).toBe("SHORT_TERM");
+    expect(extractArabicSearchCriteria("ابحث عن شقة للإيجار قصير الأجل").listingType).toBe("SHORT_TERM");
+    expect(extractArabicSearchCriteria("ابحث عن شقة للإيجار اليومي").listingType).toBe("SHORT_TERM");
+    expect(extractArabicSearchCriteria("ابحث عن شقة للإيجار السنوي").listingType).toBe("RENT");
+    expect(deterministicNlExtract("What is a short-term investment strategy?", []).listingType).toBeUndefined();
+  });
   it("normalizes unknown locales and keeps source/entity values exact", () => {
     expect(normalizeAdvisorLocale("ar")).toBe("ar");
     expect(normalizeAdvisorLocale("fr")).toBe("en");

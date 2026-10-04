@@ -10,6 +10,7 @@ import { clientIp } from "@/server/rate-limit";
 import { getConfig } from "@/lib/config";
 import { canManageCatalogResource } from "@/server/domain/resource-policy";
 import { retainedMediaUsage } from "@/server/media/retained-usage";
+import { requireStorageWrites } from "@/server/storage/mutation-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -179,6 +180,7 @@ const deleteSchema = z.object({ mediaAssetIds: z.array(z.string().min(1)).min(1)
 /** Bulk delete is intentionally limited to unreferenced assets; each result is reported independently. */
 export const DELETE = apiHandler(async (req) => {
   const actor = await requirePermission("media:delete");
+  requireStorageWrites();
   const input = deleteSchema.parse(await jsonBody<z.infer<typeof deleteSchema>>(req));
   const mediaAssetIds = [...new Set(input.mediaAssetIds)];
   const results = await Promise.all(mediaAssetIds.map(async (id) => {

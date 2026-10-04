@@ -119,7 +119,9 @@ export function Hero({
           alt="Dubai skyline at dusk across the water"
           fill
           sizes="100vw"
-          preload
+          quality={60}
+          loading="eager"
+          fetchPriority="high"
           className="h-full w-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-ink/92 via-ink/62 to-ink/35" />

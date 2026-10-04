@@ -26,7 +26,7 @@ const createdSlug = `${prefix}-created`;
 const actor: SessionUser = {
   sessionId: `${prefix}-session`,
   id: ids.user,
-  email: "property-command@example.invalid",
+  email: `${prefix}@example.invalid`,
   name: "Property command integration",
   organizationId: null,
   roles: ["OWNER"],
@@ -66,7 +66,7 @@ beforeAll(async () => {
   await cleanup();
   await db.organization.create({ data: { id: ids.organization, name: "Property Command Organization", slug: `${prefix}-organization` } });
   await db.user.create({ data: { id: ids.user, email: actor.email } });
-  await db.importSource.create({ data: { id: ids.importSource, name: `${prefix}-feed`, sourceType: "JSON" } });
+  await db.importSource.create({ data: { id: ids.importSource, name: `${prefix}-feed`, ownerOrganizationId: ids.organization, sourceType: "JSON" } });
   await db.mediaAsset.createMany({ data: [
     { id: ids.publicMedia, storageKey: `${prefix}/public.jpg`, url: "/api/media/public/content", mimeType: "image/jpeg", sizeBytes: 256, kind: "IMAGE", isPrivate: false },
     { id: ids.privateMedia, storageKey: `${prefix}/private.jpg`, url: "private-object://test", mimeType: "image/jpeg", sizeBytes: 256, kind: "IMAGE", isPrivate: true },
@@ -77,7 +77,7 @@ beforeAll(async () => {
   await db.community.create({
     data: {
       id: ids.community,
-      name: "Command Test Community",
+      name: `${prefix} Community`,
       slug: `${prefix}-community`,
       areaType: "WATERFRONT",
       lat: 25.08,
@@ -116,6 +116,9 @@ beforeAll(async () => {
       },
     },
   });
+  await db.importRun.create({ data: { importSourceId: ids.importSource, status: "SUCCEEDED", records: { create: {
+    entityKind: "PROPERTY", externalKey: `${prefix}-external-property`, propertyId: ids.property, action: "CREATED",
+  } } } });
 });
 
 afterAll(async () => {
@@ -315,13 +318,17 @@ describe("transactional property command", () => {
   });
 
   test("refreshes source snapshots without clobbering edits, then restores selected source values", async () => {
+    const coordinateVersion = await db.property.findUniqueOrThrow({ where: { id: ids.property } });
+    await updatePropertyCommand(actor, { propertyId: ids.property, expectedUpdatedAt: coordinateVersion.updatedAt.toISOString(),
+      lat: 25.12, lng: 55.33, locationPrecision: "EXACT" }, null);
     const summary = await runImport({
       sourceId: ids.importSource,
       triggeredBy: actor.email,
       records: [{
-        externalId: `${prefix}-external-property`, title: "Provider refreshed title", community: "Command Test Community",
+        externalId: `${prefix}-external-property`, title: "Provider refreshed title", community: `${prefix} Community`,
         propertyType: "VILLA", listingType: "SALE", bedrooms: 3, bathrooms: 2.5,
-        priceAed: 2_900_000, offPlan: true, availability: "RESERVED", description: "Refreshed source description",
+        priceAed: 2_900_000, offPlan: false, availability: "RESERVED", description: "Refreshed source description",
+        areaSqft: 1200, furnishing: "FURNISHED", lat: 25.07, lng: 55.123,
       }],
     });
     expect(summary.updated).toBe(1);
@@ -335,9 +342,17 @@ describe("transactional property command", () => {
     expect(refreshedProperty.propertyType).toBe("VILLA");
     expect(refreshedProperty.bedrooms).toBe(3);
     expect(refreshedProperty.description).toBe("Refreshed source description");
+    expect(refreshedProperty.builtUpAreaSqft).toBe(1325);
+    expect(refreshedProperty.furnishing).toBe("SEMI_FURNISHED");
+    expect(refreshedProperty.lat).toBe(25.12);
+    expect(refreshedProperty.lng).toBe(55.33);
+    expect(refreshedProperty.locationPrecision).toBe("EXACT");
+    expect(refreshedProperty.locationSourceType).toBe("MANUAL_ADMIN");
     expect(JSON.parse(refreshedProperty.sourceSnapshotJson ?? "{}").title).toBe("Provider refreshed title");
     expect(refreshedListing.priceMinor).toBe(260_000_000n);
     expect(refreshedListing.availabilityStatus).toBe("RESERVED");
+    expect(refreshedListing.offPlan).toBe(true);
+    expect(JSON.parse(refreshedListing.sourceSnapshotJson ?? "{}").offPlan).toBe(false);
     expect(JSON.parse(refreshedListing.sourceSnapshotJson ?? "{}").priceAed).toBe(2_900_000);
 
     await updatePropertyCommand(actor, {

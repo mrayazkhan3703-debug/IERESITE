@@ -16,6 +16,12 @@ export function advisorFailureReply(code: string | null, locale = "en"): string 
   if (code === "AI_BUDGET_BUSY") return ar
     ? "مستشار الذكاء الاصطناعي مشغول حالياً. لم يُرسل أي طلب إلى النموذج. حاول قريباً أو استخدم نموذج الاستشارة."
     : "The AI advisor is busy or unavailable. No model request was sent. Please try again shortly or use the consultation form.";
+  if (code === "PROVIDER_RATE_LIMITED") return ar
+    ? "خدمة الذكاء الاصطناعي وصلت مؤقتاً إلى حد مزوّد الخدمة، وليس حد رسائل الموقع. تم حفظ محادثتك. حاول لاحقاً أو استخدم نموذج الاستشارة."
+    : "The AI provider is temporarily limiting requests. This is not a website message quota. Your conversation is saved; try again later or use the consultation form.";
+  if (code?.startsWith("PROVIDER_")) return ar
+    ? "خدمة الذكاء الاصطناعي غير متاحة مؤقتاً. هذا ليس حد رسائل الموقع. تم حفظ محادثتك؛ حاول لاحقاً أو استخدم نموذج الاستشارة."
+    : "The AI provider is temporarily unavailable. This is not a website message quota. Your conversation is saved; try again later or use the consultation form.";
   return ar
     ? "تعذّر الاتصال بخدمة المساعد حالياً. تم حفظ محادثتك. يمكنك إعادة المحاولة قريباً أو إرسال طلب استشارة منفصل؛ لا تُنقل هذه المحادثة تلقائياً."
     : "I'm having trouble reaching the assistant service right now. Your conversation is saved. You can retry in a moment, or submit a consultation request separately; this chat is not transferred automatically.";

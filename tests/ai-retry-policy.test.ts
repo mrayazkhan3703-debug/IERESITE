@@ -9,3 +9,9 @@ test("one jittered upstream retry fits the same deadline", () => {
 test("ambiguous timeout, auth, rate, malformed and budget failures do not retry", () => {
   for (const code of ["PROVIDER_TIMEOUT", "PROVIDER_NETWORK_FAILED", "PROVIDER_AUTH_FAILED", "PROVIDER_RATE_LIMITED", "PROVIDER_RESPONSE_INVALID", "PROVIDER_OUTPUT_TRUNCATED", "AI_DAILY_REQUEST_LIMIT"]) expect(aiRetryDelay(code, false, 60000)).toBeNull();
 });
+
+test("a completed empty response retries only once within the original deadline", () => {
+  expect(aiRetryDelay("PROVIDER_OUTPUT_EMPTY", false, 20000, 0)).toBe(1000);
+  expect(aiRetryDelay("PROVIDER_OUTPUT_EMPTY", true, 20000, 0)).toBeNull();
+  expect(aiRetryDelay("PROVIDER_OUTPUT_EMPTY", false, 5999, 0)).toBeNull();
+});

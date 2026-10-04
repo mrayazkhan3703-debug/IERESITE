@@ -14,6 +14,7 @@ import { deletePrivateObject, deletePublicObject, getPublicObject, putPrivateObj
 import { HttpError } from "@/server/auth";
 import { validateVideo } from "./video-validation";
 import { localMediaPath, readLocalMedia } from "./file-storage";
+import { requireStorageWrites } from "@/server/storage/mutation-policy";
 
 
 
@@ -71,6 +72,7 @@ export class DuplicateMediaError extends HttpError {
 }
 
 export async function storeUpload(file: File, opts?: { altText?: string; uploadedBy?: string; private?: boolean; kind?: "IMAGE" | "LOGO" | "FLOOR_PLAN" | "DOCUMENT" | "BROCHURE" | "VIDEO" }): Promise<StoredMedia> {
+  requireStorageWrites();
   const config = (await import("@/lib/config")).getConfig();
   const maxBytes = config.MEDIA_MAX_UPLOAD_MB * 1024 * 1024;
   if (file.size === 0 || file.size > maxBytes) {
@@ -149,6 +151,7 @@ export async function storeUpload(file: File, opts?: { altText?: string; uploade
         height,
         altText: opts?.altText ?? null,
         checksum,
+        storageChecksum: crypto.createHash("sha256").update(buf).digest("hex"),
         exifStripped: mime.startsWith("image/"),
         isPrivate: opts?.private ?? false,
         uploadedBy: opts?.uploadedBy ?? null,
@@ -221,6 +224,7 @@ async function generateVariants(id: string, storageKey: string, buf: Buffer, obj
 
 /** Job handler: (re)process derivatives for a media asset */
 export async function processMediaJob(mediaId: string, signal?: AbortSignal): Promise<void> {
+  requireStorageWrites();
   signal?.throwIfAborted();
   const media = await db.mediaAsset.findUnique({ where: { id: mediaId } });
   // Deletion may win the race with outbox delivery; there is no derivative

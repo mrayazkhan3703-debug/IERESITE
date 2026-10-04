@@ -30,7 +30,7 @@ export function assertFixtureId(id) {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("Invalid owned Docker resource ID; cleanup refused.");
 }
 
-async function verify() {
+async function verify(supervised = false) {
   const root = fileURLToPath(new URL("../", import.meta.url));
   const token = randomUUID().replaceAll("-", "");
   const prefix = `iere-shutdown-${token}`;
@@ -81,6 +81,7 @@ async function verify() {
   const command = JSON.parse(docker(["inspect", "-f", "{{json .Config.Cmd}}", workerId]));
   const packageScript = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).scripts.worker;
   assertWorkerContract(command, packageScript);
+  const testedCommand = supervised ? ["bun", "--no-env-file", "scripts/railway-worker-supervisor.mjs"] : command;
   check(docker(["exec", workerId, "bun", "--no-env-file", "-e", "console.log(JSON.parse(await Bun.file('package.json').text()).scripts.worker)"]) === packageScript, "Running worker image script matches checked repository wrapper");
   const entrypoint = docker(["inspect", "-f", "{{json .Config.Entrypoint}}", workerId]);
   check(entrypoint === docker(["image", "inspect", "-f", "{{json .Config.Entrypoint}}", workerImage]), "Default image entrypoint matches Compose worker");
@@ -130,7 +131,7 @@ async function verify() {
         "-e", "DATABASE_URL=postgresql://iere_shutdown@queue-db:5432/iere_shutdown?schema=public", "-e", "NODE_ENV=test", "-e", "APP_ENV=development",
         "-e", "JOB_SCHEDULER_ENABLED=true", "-e", "JOB_INTERVAL_MS=100", "-e", "WORKER_HEALTH_PORT=3001", "-e", `WORKER_SIGTERM_FIXTURE=${mode}`,
         "-e", "AI_PROVIDER=mock", "-e", "AI_LIVE_ENABLED=false", "-e", "CRM_PROVIDER=localdev", "-e", "CRM_LIVE_ENABLED=false", "-e", "EMAIL_PROVIDER=localdev",
-        "-e", "NEXT_TELEMETRY_DISABLED=1", "-e", "DO_NOT_TRACK=1", workerImage, ...command]);
+        "-e", "NEXT_TELEMETRY_DISABLED=1", "-e", "DO_NOT_TRACK=1", "-e", "RAILWAY_BACKUP_MODE=off", workerImage, ...testedCommand]);
       docker(["start", id]);
       return id;
     };
@@ -159,7 +160,7 @@ async function verify() {
     check((docker(["logs", second]).match(/fixture.handler.recovered/g) ?? []).length === 2, "Recovery handler runs once for each job");
     check(sql('SELECT count(*) FROM "DeadLetterEvent";') === "0", "No fixture dead letters");
     check(snapshot() === preserved, "Working DEAD job versions and dead-letter identities/replay markers remain unchanged");
-    evidence = { status: "PASS", capturedAtUtc: new Date().toISOString(), scope: "Disposable Docker container stop with real Compose Bun wrapper, test-only handler and queue definitions; no domain rows copied.", command, entrypoint: JSON.parse(entrypoint), workerImage, postgresImage: pgImage, stopDeadlineSeconds: 10, stopElapsedMs, checks };
+    evidence = { status: "PASS", capturedAtUtc: new Date().toISOString(), scope: supervised ? "Disposable Docker container stop with Railway supervisor and backup disabled, test-only handler and queue definitions; no domain rows copied." : "Disposable Docker container stop with real Compose Bun wrapper, test-only handler and queue definitions; no domain rows copied.", command: testedCommand, sourceComposeCommand: command, entrypoint: JSON.parse(entrypoint), workerImage, postgresImage: pgImage, stopDeadlineSeconds: 10, stopElapsedMs, checks };
   } finally {
     stage = "owned-resource cleanup";
     for (const resource of owned.reverse()) {
@@ -181,5 +182,5 @@ async function verify() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  await verify().catch((error) => { console.error(error.message); process.exitCode = 1; });
+  await verify(process.argv.includes("--supervised")).catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

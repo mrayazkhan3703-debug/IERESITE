@@ -9,6 +9,7 @@ export const feedRecordSchema = z.object({
   developer: z.string().max(160).optional(),
   propertyType: z.enum(["APARTMENT", "VILLA", "TOWNHOUSE", "PENTHOUSE", "DUPLEX", "STUDIO", "OFFICE", "RETAIL", "PLOT"]).default("APARTMENT"),
   listingType: z.enum(["SALE", "RENT"]).default("SALE"),
+  rentFrequency: z.enum(["YEARLY", "MONTHLY", "WEEKLY", "DAILY"]).optional(),
   bedrooms: z.number().min(0).max(20).default(0),
   bathrooms: z.number().min(0).max(20).default(0),
   areaSqft: z.number().positive().max(200000).optional(),

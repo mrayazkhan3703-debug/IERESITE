@@ -6,7 +6,7 @@
 import { db, parseJson } from "@/lib/db";
 import { getConfig } from "@/lib/config";
 import { LocalSearchProvider } from "./local-provider";
-import type { AutocompleteItem, IndexedProperty, SearchProvider, SearchState } from "./types";
+import type { AutocompleteItem, IndexedProperty, InventorySearchState, SearchProvider, SearchState } from "./types";
 import type { ListingCardDTO, SearchResponse } from "@/lib/types";
 import { cache } from "@/server/cache";
 import { PUBLIC_AGENT_WHERE, PUBLIC_COMMUNITY_WHERE, publicListingWhere } from "@/server/domain/visibility";
@@ -418,21 +418,24 @@ async function hydrateAgentNames(cards: ListingCardDTO[]): Promise<void> {
   }
 }
 
-export async function search(state: SearchState): Promise<SearchResponse> {
+export async function search(state: SearchState, options?: { listingTypes: SearchState["listingType"][] }): Promise<SearchResponse> {
+  const inventoryState: InventorySearchState = options
+    ? { ...state, inventoryListingTypes: options.listingTypes }
+    : state;
   // Public visibility and advisor access are evaluated on every request.
   // Response caching can retain withdrawn entities and revoked contact details.
 
   const execution = await withSearchFallback(async () => {
     await ensureIndex();
-    if (usesPostgres()) return await searchPostgres(state);
+    if (usesPostgres()) return await searchPostgres(inventoryState);
     const current = new LocalSearchProvider();
     for (const document of await assembleSearchDocuments(undefined, 1000)) current.upsert(document);
-    const result = current.search(state);
+    const result = current.search(inventoryState);
     return { result, documents: current.getDocs(result.ids) };
   }, async () => {
     const fallback = new LocalSearchProvider();
     for (const document of await assembleSearchDocuments(undefined, 1000)) fallback.upsert(document);
-    const result = fallback.search(state);
+    const result = fallback.search(inventoryState);
     return { result, documents: fallback.getDocs(result.ids) };
   });
   const result = execution.value.result;

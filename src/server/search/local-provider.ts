@@ -19,6 +19,7 @@ import type {
   IndexedProperty,
   SearchProvider,
   SearchState,
+  InventorySearchState,
   SearchResult,
   SmartFilterKey,
 } from "./types";
@@ -257,7 +258,7 @@ export class LocalSearchProvider implements SearchProvider {
 
   /* ------------------------------ querying ------------------------------- */
 
-  search(state: SearchState): SearchResult {
+  search(state: InventorySearchState): SearchResult {
     const startedAt = performance.now();
 
     // Token scores come from the inverted index (exact hits weight 1, one-edit
@@ -376,8 +377,10 @@ export class LocalSearchProvider implements SearchProvider {
   /** Every optional SearchState filter — all must pass. Values the document
    *  genuinely lacks (no area, no yield metric, no payment plan) never match
    *  the corresponding filter: honesty over guessing. */
-  private passesFilters(doc: IndexedProperty, s: SearchState): boolean {
-    if (s.listingType !== undefined && doc.listingType !== s.listingType) return false;
+  private passesFilters(doc: IndexedProperty, s: InventorySearchState): boolean {
+    if (s.inventoryListingTypes) {
+      if (!s.inventoryListingTypes.includes(doc.listingType as SearchState["listingType"])) return false;
+    } else if (s.listingType !== undefined && doc.listingType !== s.listingType) return false;
 
     // Property types arrive lowercased from the public UI and uppercased from
     // the AI tool layer — compare case-insensitively.

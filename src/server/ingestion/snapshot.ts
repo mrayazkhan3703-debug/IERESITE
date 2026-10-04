@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { putPrivateObject, getPrivateObjectStream } from "@/server/storage/object-store";
-import { acquiredSnapshotSchema, getCanonicalAdapterForFormat, getIngestionAdapter, type AcquiredSnapshot } from "./adapters";
+import { acquiredSnapshotSchema, getUploadIngestionAdapter, getConfiguredIngestionAdapter, type AcquiredSnapshot } from "./adapters";
 
 export const MAX_IMPORT_SNAPSHOT_BYTES = 50 * 1024 * 1024;
 const SNAPSHOT_KEY_PATTERN = /^private\/imports\/[a-f0-9]{24}\/[a-f0-9]{64}\.(csv|json)$/;
@@ -29,6 +29,7 @@ export async function persistImportSnapshot(input: {
   sourceVersion?: string | null;
   format: "CSV" | "JSON";
   bytes: Uint8Array;
+  mappingJson?: string | null;
 }): Promise<AcquiredSnapshot> {
   const sourceKey = input.sourceKey.trim();
   if (!sourceKey || sourceKey.length > 160) throw new Error("A bounded source key is required");
@@ -36,7 +37,7 @@ export async function persistImportSnapshot(input: {
     throw new Error("Import snapshots must contain between 1 byte and 50 MiB");
   }
 
-  const adapter = getCanonicalAdapterForFormat(input.format);
+  const adapter = getUploadIngestionAdapter(input.format, input.mappingJson);
   const sha256 = createHash("sha256").update(input.bytes).digest("hex");
   const sourcePathKey = createHash("sha256").update(sourceKey).digest("hex").slice(0, 24);
   const extension = input.format.toLowerCase();
@@ -60,6 +61,7 @@ export async function persistImportSnapshot(input: {
     storageRef,
     adapterKey: adapter.key,
     adapterVersion: adapter.version,
+    mappingJson: input.mappingJson ?? null,
   });
 }
 
@@ -69,7 +71,7 @@ export async function openVerifiedImportSnapshot(snapshotInput: AcquiredSnapshot
   if (!SNAPSHOT_KEY_PATTERN.test(snapshot.storageRef) || !snapshot.storageRef.endsWith(`/${snapshot.sha256}.${snapshot.format.toLowerCase()}`)) {
     throw new SnapshotIntegrityError();
   }
-  getIngestionAdapter(snapshot.adapterKey, snapshot.adapterVersion);
+  getConfiguredIngestionAdapter(snapshot.adapterKey, snapshot.adapterVersion, snapshot.mappingJson);
   const stored = await hashStoredObject(snapshot.storageRef);
   if (stored.sha256 !== snapshot.sha256) throw new SnapshotIntegrityError();
   return getPrivateObjectStream(snapshot.storageRef);

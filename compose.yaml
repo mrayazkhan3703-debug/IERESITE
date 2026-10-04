@@ -11,6 +11,7 @@ x-app-environment: &app-environment
   AUTH_MFA_ENCRYPTION_KEY: ${AUTH_MFA_ENCRYPTION_KEY:-6f8b51e0d3942ca764ad7190b235e8f1463c9a5078df2b61e4ac9035d7f28b16}
   REDIS_URL: redis://redis:6379/0
   STORAGE_PROVIDER: s3
+  STORAGE_MUTATIONS_PAUSED: ${STORAGE_MUTATIONS_PAUSED:-false}
   S3_ENDPOINT: http://object-storage:8333
   S3_PUBLIC_ENDPOINT: http://localhost:${S3_API_PORT:-8333}
   S3_REGION: us-east-1

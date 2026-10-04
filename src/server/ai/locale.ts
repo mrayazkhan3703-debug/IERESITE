@@ -25,7 +25,7 @@ function normalizeArabicSearchText(text: string): string {
 export type ArabicSearchCriteria = {
   bedroomsMin?: number;
   priceMax?: number;
-  listingType?: "SALE" | "RENT";
+  listingType?: "SALE" | "RENT" | "SHORT_TERM";
   communities?: string[];
   offPlan?: boolean;
   seaView?: boolean;
@@ -57,7 +57,9 @@ export function extractArabicSearchCriteria(query: string, knownCommunities: str
     if ((unit || amount >= 1000) && priceMax > 0 && priceMax <= 500_000_000) filters.priceMax = priceMax;
   }
 
-  if (/(?:للإيجار|للايجار|إيجار|ايجار|استئجار)/u.test(q)) filters.listingType = "RENT";
+  if (/(?:للإيجار|للايجار|إيجار|ايجار|استئجار)/u.test(q)) {
+    filters.listingType = /(?:قصير(?:ة|ه)?\s+(?:الأجل|الاجل|المدة|المده)|يومي(?:ة|ه)?)/u.test(q) ? "SHORT_TERM" : "RENT";
+  }
   else if (/(?:للبيع|شراء|اشتر|تملك)/u.test(q)) filters.listingType = "SALE";
   if (/(?:على\s+المخطط|قيد\s+الإنشاء|قيد\s+الانشاء)/u.test(q)) filters.offPlan = true;
   if (/(?:إطلالة\s+بحرية|اطلالة\s+بحرية|مطلة\s+على\s+البحر)/u.test(q)) filters.seaView = true;

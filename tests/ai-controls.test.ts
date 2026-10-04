@@ -1,7 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { aiBudgetDecision, aiProviderGateCode, estimateAiPromptCharacters, estimateAiReservationTokens } from "@/server/ai/controls";
+import { aiBudgetDecision, aiUsageQuotaDecision, advisorConversationQuotaReached, aiProviderGateCode, estimateAiPromptCharacters, estimateAiReservationTokens } from "@/server/ai/controls";
 
 describe("AI live-provider safety controls", () => {
+  it("unlimited mode bypasses quotas without changing bounded request estimation", () => {
+    const totals = { requestsToday: 100000, reservedTokensToday: 900000000 };
+    expect(aiUsageQuotaDecision(totals, 10000, 25, 60000, "unlimited")).toBeNull();
+    expect(aiUsageQuotaDecision(totals, 10000, 25, 60000, "capped")).toBe("AI_DAILY_REQUEST_LIMIT");
+    expect(advisorConversationQuotaReached(10000, "unlimited")).toBe(false);
+    expect(advisorConversationQuotaReached(61, "capped")).toBe(true);
+  });
   it("fails closed for external providers unless both operator gates permit Inception", () => {
     expect(aiProviderGateCode("inception", false, { isEnabled: true, rolloutPercent: 100 })).toBe("AI_LIVE_DISABLED");
     expect(aiProviderGateCode("inception", true, null)).toBe("AI_KILL_SWITCH");

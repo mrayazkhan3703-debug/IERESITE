@@ -92,6 +92,8 @@ test("home LCP hero uses responsive optimized image output", async ({ page }) =>
   const hero = page.getByRole("img", { name: "Dubai skyline at dusk across the water" });
   await expect(hero).toHaveAttribute("src", /\/_next\/image\?url=/);
   await expect(hero).toHaveAttribute("srcset", /\/_next\/image/);
+  await expect(hero).toHaveAttribute("loading", "eager");
+  await expect(hero).toHaveAttribute("fetchpriority", "high");
   await expect.poll(() => heroResponseContentType).toBe("image/webp");
   await expect.poll(() => hero.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
 });

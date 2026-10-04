@@ -51,6 +51,8 @@ import { withGalleryCover } from "@/lib/media-contract";
 import { ProjectPaymentPlanEditor } from "@/features/admin/shared/project-payment-plan-editor";
 import { UnitEditorDialog, UnitImportDialog, type UnitRow, type UnitProject, type UnitProperty } from "@/features/admin/shared/unit-studio-actions";
 import { AdminShell } from "@/features/admin/admin-shell";
+import { DemoCleanupStudio } from "@/features/admin/shared/demo-cleanup-studio";
+import { InventoryColumnMapper, inventoryMappingKey, type InventoryColumnSelection } from "@/features/admin/shared/inventory-column-mapper";
 
 function isPublicMediaUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/uploads/") || value.startsWith("/api/media/"));
@@ -454,6 +456,8 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   const [communities, setCommunities] = React.useState<Record<string, unknown>[]>([]);
   const [propertyOptions, setPropertyOptions] = React.useState<{ projects: Record<string, unknown>[]; developers: Record<string, unknown>[]; agents: Record<string, unknown>[]; amenities: Record<string, unknown>[] }>({ projects: [], developers: [], agents: [], amenities: [] });
   const [q, setQ] = React.useState("");
+  const [demoFilter, setDemoFilter] = React.useState("all");
+  const [page, setPage] = React.useState(1);
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -464,10 +468,10 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
   const [form, setForm] = React.useState(emptyPropertyForm);
 
   const load = React.useCallback(() => {
-    api.get<{ properties: Record<string, unknown>[]; total: number }>(`/api/admin/properties${q ? `?q=${encodeURIComponent(q)}` : ""}`)
+    api.get<{ properties: Record<string, unknown>[]; total: number }>(`/api/admin/properties?q=${encodeURIComponent(q)}&demo=${demoFilter}&page=${page}`)
       .then(setData)
       .catch(() => setData({ properties: [], total: 0 }));
-  }, [q]);
+  }, [q, demoFilter, page]);
 
   React.useEffect(() => { load(); }, [load]);
 
@@ -672,8 +676,8 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           <p className="mt-1 text-sm text-muted-foreground">Publish, price and feature listings — every change emits an index event and audit entry.</p>
         </div>
         <div className="flex flex-wrap gap-2"><div className="w-64">
-          <Input placeholder="Search titles…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search properties" />
-        </div>{canCreate && <Button onClick={openCreate}>Create property</Button>}</div>
+          <Input placeholder="Search titles…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Search properties" />
+        </div><label className="sr-only" htmlFor="property-demo-filter">Inventory provenance</label><select id="property-demo-filter" className="rounded-md border bg-background px-3 text-sm" value={demoFilter} onChange={e => { setDemoFilter(e.target.value); setPage(1); }}><option value="all">All inventory</option><option value="demo">Demo records</option><option value="company">Company records</option></select>{canCreate && <Button onClick={openCreate}>Create property</Button>}</div>
       </header>
 
       {data === null ? (
@@ -729,6 +733,7 @@ function PropertiesSection({ canCreate, canReindex }: { canCreate: boolean; canR
           </table>
         </div>
       )}
+      {data && <><div className="flex items-center gap-3 text-sm"><Button variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous properties</Button><span>Page {page} · {data.total} records</span><Button variant="outline" disabled={page * 15 >= data.total} onClick={() => setPage(p => p + 1)}>Next properties</Button></div>{canCreate && <DemoCleanupStudio properties={data.properties} onSaved={load} />}</>}
       {canReindex && <Button variant="outline" size="sm" className="gap-2" disabled={reindexing} onClick={async () => {
         setReindexing(true);
         try {
@@ -2000,7 +2005,10 @@ function ImportsSection() {
   const [data, setData] = React.useState<{ runs: Record<string, unknown>[]; qualityIssues: Record<string, unknown>[] } | null>(null);
   const [error, setError] = React.useState("");
   const [csv, setCsv] = React.useState("");
+  const [format, setFormat] = React.useState<"csv" | "json">("csv");
   const [busy, setBusy] = React.useState(false);
+  const [preview, setPreview] = React.useState<{ runId: string; csv: string; format: "csv" | "json"; mappingKey: string } | null>(null);
+  const [columnMapping, setColumnMapping] = React.useState<InventoryColumnSelection | null>(null);
   const requestKey = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [details, setDetails] = React.useState<{ runId: string; records: Record<string, unknown>[]; loading: boolean; truncated: boolean } | null>(null);
 
@@ -2015,20 +2023,28 @@ function ImportsSection() {
   }, [data, load]);
 
   const runImport = async (dryRun: boolean) => {
-    if (!csv.trim()) { toast.error("Paste CSV records first"); return; }
+    if (!csv.trim()) { toast.error("Choose a source file or paste records first"); return; }
     setBusy(true);
     try {
-      const fingerprint = `${dryRun ? "dry" : "apply"}\u0000${csv}`;
+      let records: string | unknown[] = csv;
+      if (columnMapping && !Object.keys(columnMapping).length) throw new Error("Choose source columns before validating the mapping.");
+      if (format === "json") {
+        try { records = JSON.parse(csv); } catch { throw new Error("JSON must be a valid array of inventory records."); }
+        if (!Array.isArray(records)) throw new Error("JSON must be an array of inventory records.");
+      }
+      const mappingKey = inventoryMappingKey(columnMapping);
+      const fingerprint = `${dryRun ? "dry" : "apply"}\u0000${format}\u0000${mappingKey}\u0000${csv}`;
       if (!requestKey.current || requestKey.current.fingerprint !== fingerprint) {
         requestKey.current = { fingerprint, key: clientRequestId() };
       }
       const res = await api.post<{ importRunId: string; status: string; duplicateRequest: boolean }>(
         "/api/admin/imports",
-        { format: "csv", data: csv, dryRun },
+        { format, data: records, dryRun, ...(columnMapping ? { columnMapping } : {}), ...(!dryRun ? { previewRunId: preview?.runId } : {}) },
         { headers: { "Idempotency-Key": requestKey.current.key } },
       );
       toast.info(`${dryRun ? "Validation" : "Import"} ${res.status.toLowerCase()}${res.duplicateRequest ? " (existing request)" : ""} · run ${res.importRunId}`);
-      if (!dryRun) setCsv("");
+      if (dryRun) setPreview({ runId: res.importRunId, csv, format, mappingKey });
+      else { setCsv(""); setPreview(null); setColumnMapping(null); }
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Import failed");
@@ -2051,27 +2067,41 @@ function ImportsSection() {
     <div className="space-y-6">
       <header>
         <h1 className="font-display text-2xl font-semibold">Imports & data quality</h1>
-        <p className="mt-1 text-sm text-muted-foreground">CSV validation and ingestion run asynchronously in the dedicated worker. Imported inventory remains draft until an editor explicitly publishes it.</p>
+        <p className="mt-1 text-sm text-muted-foreground">CSV/JSON validation and ingestion run asynchronously in the dedicated worker. New inventory remains draft until an editor explicitly publishes it. Source refreshes preserve recorded Admin overrides and existing publication settings.</p>
       </header>
       {error && <div role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm"><p>{error}</p><Button size="sm" variant="outline" className="mt-2" onClick={load}>Retry inventory import history</Button></div>}
 
       <div className="rounded-xl border border-border/70 bg-card p-5">
-        <h2 className="kicker mb-2">Run a CSV import</h2>
+        <h2 className="kicker mb-2">Import company inventory</h2>
+        <div className="mb-3 flex flex-wrap gap-4 text-sm"><a href="/api/admin/imports/template?format=csv" className="underline">Download blank inventory CSV template</a><a href="/api/admin/imports/template?format=json" className="underline">Download blank inventory JSON template</a></div>
+        <div className="mb-3 flex flex-wrap items-end gap-4 text-sm">
+          <label className="space-y-1"><span className="block">Source format</span><select aria-label="Inventory source format" value={format} onChange={e => setFormat(e.target.value as "csv" | "json")} className="rounded-md border bg-background p-2"><option value="csv">CSV</option><option value="json">JSON</option></select></label>
+          <label className="space-y-1"><span className="block">Choose inventory file</span><input type="file" accept=".csv,.json,text/csv,application/json" disabled={busy} onChange={async e => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (file.size > 50 * 1024 * 1024) { toast.error("Inventory files are limited to 50 MiB and 500 records."); e.target.value = ""; return; }
+            if (!/\.(csv|json)$/i.test(file.name)) { toast.error("Choose a CSV or JSON file."); e.target.value = ""; return; }
+            try { const text = await file.text(); setFormat(/\.json$/i.test(file.name) ? "json" : "csv"); setCsv(text); setPreview(null); setColumnMapping(null); }
+            catch { toast.error("The source file could not be read. Choose it again."); }
+          }} /></label>
+        </div>
         <p className="mb-3 text-xs text-muted-foreground">
-          Headers: externalId,title,community,project,developer,propertyType,listingType,bedrooms,bathrooms,areaSqft,priceAed,offPlan,availability,view,furnishing,handover,description,agentEmail,lat,lng
+          Canonical fields: externalId,title,community,project,developer,propertyType,listingType,rentFrequency,bedrooms,bathrooms,areaSqft,priceAed,offPlan,availability,view,furnishing,handover,description,agentEmail,lat,lng. Rental frequency: YEARLY, MONTHLY, WEEKLY or DAILY. Limit: 500 records.
         </p>
         <textarea
           value={csv}
           onChange={(e) => setCsv(e.target.value)}
           rows={5}
-          aria-label="CSV records"
-          placeholder={"externalId,title,community,propertyType,listingType,bedrooms,bathrooms,priceAed,offPlan,availability,description,lat,lng\nPaste a verified source export using canonical headers; no sample property data is provided."}
+          aria-label={format === "csv" ? "CSV records" : "JSON records"}
+          placeholder={format === "json" ? "Paste an array of your company inventory records using the canonical fields." : "Paste your company source export using canonical CSV headers."}
           className="w-full rounded-md border border-input bg-background p-3 font-mono text-xs outline-none focus:border-brand/60"
         />
+        <InventoryColumnMapper source={csv} format={format} value={columnMapping} onChange={setColumnMapping} disabled={busy} />
         <div className="mt-3 flex gap-2">
           <Button size="sm" variant="outline" onClick={() => runImport(true)} disabled={busy}>Validate only</Button>
-          <Button size="sm" onClick={() => runImport(false)} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Import</Button>
+          <Button size="sm" onClick={() => runImport(false)} disabled={busy || !preview || preview.csv !== csv || preview.format !== format || preview.mappingKey !== inventoryMappingKey(columnMapping) || !data?.runs.some(run => run.id === preview.runId && run.status === "DRY_RUN")}>{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Commit reviewed import</Button>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">Validate first, then review additions, updates, duplicates, row errors and publication prerequisites below before committing. Changing the file or format requires a new preview. New valid rows become drafts; invalid rows are skipped with errors. Publishing never independently verifies source facts.</p>
       </div>
 
       {data && (

@@ -11,6 +11,9 @@ import { createHash } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { parseCatalogJson } from "@/server/domain/catalog-source";
 import { feedRecordSchema, type FeedRecord } from "./feed-record";
+import { editorialValue } from "./editorial-value";
+import { propertyPublicationChecks } from "@/lib/property-publication";
+import { PUBLIC_AGENT_WHERE, PUBLIC_PROJECT_WHERE } from "@/server/domain/visibility";
 export { feedRecordSchema } from "./feed-record";
 export type { FeedRecord } from "./feed-record";
 export { CsvParseError, parseCsv, parseCsvStream } from "./csv";
@@ -77,6 +80,25 @@ export async function runImport(opts: {
   client?: Prisma.TransactionClient;
 }): Promise<ImportSummary> {
   const client = opts.client ?? db;
+  const source = await client.importSource.findUniqueOrThrow({ where: { id: opts.sourceId } });
+  const companyScoped = source.ownerOrganizationId !== null || source.name.startsWith("INTERACTIVE_UPLOAD_");
+  const referenceScope = source.ownerOrganizationId
+    ? { OR: [{ ownerOrganizationId: null }, { ownerOrganizationId: source.ownerOrganizationId }] }
+    : { ownerOrganizationId: null };
+  async function findSourceProperty(externalId: string) {
+    const linked = await client.importRecord.findFirst({
+      where: { entityKind: "PROPERTY", externalKey: externalId, importRun: { importSourceId: source.id }, propertyId: { not: null }, action: { in: ["CREATED", "UPDATED"] } },
+      orderBy: { createdAt: "desc" }, include: { property: true },
+    });
+    if (linked?.property) {
+      if (linked.property.ownerOrganizationId !== source.ownerOrganizationId) throw new Error("Imported property ownership changed; reconcile before refreshing.");
+      return linked.property;
+    }
+    // Legacy global feeds predate source associations. Company uploads never
+    // claim those records merely because their external identifiers coincide.
+    if (companyScoped) return null;
+    return client.property.findFirst({ where: { sourceId: externalId, sourceType: "IMPORT", ownerOrganizationId: null, importRecords: { none: { action: { in: ["CREATED", "UPDATED"] } } } } });
+  }
   if (opts.recordNumbers && opts.recordNumbers.length !== opts.records.length) {
     throw new Error("Import record numbers must match the supplied record count");
   }
@@ -144,9 +166,24 @@ export async function runImport(opts: {
     const rec = parsed.data;
     const cs = checksum(rec);
 
+    const repeatedKey = await client.importRecord.findFirst({
+      where: { importRunId: run.id, entityKind: "PROPERTY", externalKey: rec.externalId, action: { in: ["DRY_RUN", "CREATED", "UPDATED", "SKIPPED_DUPLICATE"] } },
+      select: { checksum: true },
+    });
+    if (repeatedKey) {
+      const identical = repeatedKey.checksum === cs;
+      if (identical) summary.skippedDuplicate++;
+      else summary.skippedInvalid++;
+      await client.importRecord.create({ data: { importRunId: run.id, ...recordMeta, entityKind: "PROPERTY", externalKey: rec.externalId,
+        action: identical ? "SKIPPED_DUPLICATE" : "SKIPPED_INVALID", checksum: cs,
+        issuesJson: JSON.stringify([{ path: "externalId", message: identical ? "Repeated source ID with identical content; reuse the first row." : "Repeated source ID has conflicting values; reconcile the source file before importing." }]),
+      } });
+      continue;
+    }
+
     // Duplicate detection: same externalId already imported with identical content
     const existing = await client.importRecord.findFirst({
-      where: { entityKind: "PROPERTY", externalKey: rec.externalId, checksum: cs, action: { in: ["CREATED", "UPDATED"] } },
+      where: { entityKind: "PROPERTY", externalKey: rec.externalId, checksum: cs, action: { in: ["CREATED", "UPDATED"] }, importRun: { importSourceId: source.id }, property: { ownerOrganizationId: source.ownerOrganizationId, contentHash: cs } },
     });
     if (existing) {
       summary.skippedDuplicate++;
@@ -156,61 +193,89 @@ export async function runImport(opts: {
       continue;
     }
 
-    if (opts.dryRun) {
-      const existingProperty = await client.property.findFirst({ where: { sourceId: rec.externalId, sourceType: "IMPORT" }, select: { id: true } });
-      const plannedAction = existingProperty ? "UPDATE" : "CREATE";
-      if (existingProperty) summary.wouldUpdate++;
-      else summary.wouldCreate++;
-      await client.importRecord.create({
-        data: {
-          importRunId: run.id,
-          ...recordMeta,
-          entityKind: "PROPERTY",
-          externalKey: rec.externalId,
-          action: "DRY_RUN",
-          checksum: cs,
-          issuesJson: JSON.stringify({ plannedAction }),
-          rawJson: JSON.stringify(rec),
-        },
-      });
-      continue;
-    }
-
     try {
       // Resolve community by name (normalized contains)
       const communityName = rec.community.trim();
       const communitySlug = slugify(rec.community);
-      const exactCommunity = await client.community.findFirst({
-        where: { name: { equals: communityName, mode: "insensitive" } },
+      const exactCommunities = await client.community.findMany({
+        where: { ...referenceScope, name: { equals: communityName, mode: "insensitive" } }, take: 2,
       });
-      const slugCommunity = exactCommunity ? null : await client.community.findUnique({ where: { slug: communitySlug } });
+      if (exactCommunities.length > 1) throw new Error(`Ambiguous community reference: ${rec.community}`);
+      const exactCommunity = exactCommunities[0];
+      const slugCommunity = exactCommunity ? null : await client.community.findFirst({ where: { ...referenceScope, slug: communitySlug } });
       const partialCommunities = exactCommunity || slugCommunity ? [] : await client.community.findMany({
-        where: { name: { contains: communityName, mode: "insensitive" } },
+        where: { ...referenceScope, name: { contains: communityName, mode: "insensitive" } },
         take: 2,
       });
       if (partialCommunities.length > 1) throw new Error(`Ambiguous community reference: ${rec.community}`);
       const community = exactCommunity ?? slugCommunity ?? partialCommunities[0] ?? null;
       if (!community) throw new Error(`Unknown community: ${rec.community}`);
 
+      // Preview and apply resolve the same parents. Existing slugs must match
+      // both ownership and supplied parent identities; never silently relink.
+      const developerSlug = rec.developer ? slugify(rec.developer) : null;
+      const projectSlug = rec.project ? slugify(rec.project) : null;
+      if (rec.project && !rec.developer) throw new Error(`Developer mapping required for project: ${rec.project}`);
+      const mappedDeveloper = developerSlug ? await client.developer.findUnique({ where: { slug: developerSlug } }) : null;
+      if (mappedDeveloper && mappedDeveloper.ownerOrganizationId !== null && mappedDeveloper.ownerOrganizationId !== source.ownerOrganizationId) throw new Error("Developer belongs to another organization.");
+      const mappedProject = projectSlug ? await client.project.findUnique({ where: { slug: projectSlug } }) : null;
+      if (mappedProject?.deletedAt) throw new Error("The mapped project has been removed; reconcile before importing.");
+      if (mappedProject && (mappedProject.ownerOrganizationId !== null && mappedProject.ownerOrganizationId !== source.ownerOrganizationId)) throw new Error("Project belongs to another organization.");
+      if (mappedProject && (mappedProject.communityId !== community.id || mappedProject.developerId !== mappedDeveloper?.id)) throw new Error("Project parent mapping conflicts with the existing catalog; reconcile before importing.");
+      const agent = rec.agentEmail ? await client.agent.findFirst({ where: { ...PUBLIC_AGENT_WHERE, ...referenceScope, email: rec.agentEmail } }) : null;
+      if (rec.agentEmail && !agent) throw new Error("Agent email does not resolve to an available profile.");
+      const existingProperty = await findSourceProperty(rec.externalId);
+
+      if (opts.dryRun) {
+        const plannedAction = existingProperty ? "UPDATE" : "CREATE";
+        const overrides = parseCatalogJson(existingProperty?.editorOverridesJson ?? null);
+        const listing = existingProperty ? await client.listing.findFirst({ where: { propertyId: existingProperty.id }, orderBy: { createdAt: "desc" } }) : null;
+        const listingOverrides = parseCatalogJson(listing?.editorOverridesJson ?? null);
+        const publicationCommunity = existingProperty ? await client.community.findUniqueOrThrow({ where: { id: existingProperty.communityId } }) : community;
+        const publicationProjectId = existingProperty ? existingProperty.projectId : mappedProject?.id;
+        const now = new Date();
+        const publicationIssues = propertyPublicationChecks({
+          title: editorialValue(overrides, "title", rec.title), propertyType: editorialValue(overrides, "propertyType", rec.propertyType),
+          bedrooms: editorialValue(overrides, "bedrooms", rec.bedrooms), bathrooms: editorialValue(overrides, "bathrooms", rec.bathrooms),
+          lat: editorialValue(overrides, "lat", rec.lat ?? existingProperty?.lat ?? community.lat),
+          lng: editorialValue(overrides, "lng", rec.lng ?? existingProperty?.lng ?? community.lng),
+          communityStatus: publicationCommunity.publicationStatus,
+          projectSelected: Boolean(existingProperty ? existingProperty.projectId : rec.project),
+          projectPublic: Boolean(publicationProjectId && await client.project.findFirst({ where: { id: publicationProjectId, ...PUBLIC_PROJECT_WHERE }, select: { id: true } })),
+          listingType: editorialValue(listingOverrides, "listingType", rec.listingType), rentFrequency: editorialValue(listingOverrides, "rentFrequency", rec.rentFrequency ?? listing?.rentFrequency),
+          listings: [{ pricePositive: editorialValue(listingOverrides, "priceAed", rec.priceAed) > 0, availability: editorialValue(listingOverrides, "availabilityStatus", editorialValue(listingOverrides, "availability", rec.availability)), publishedAt: now, expiresAt: listing?.expiresAt ?? null }],
+        }, now).filter(check => !check.ready).map(({ path, message }) => ({ field: path, message }));
+        if (existingProperty) summary.wouldUpdate++;
+        else summary.wouldCreate++;
+        await client.importRecord.create({
+          data: {
+            importRunId: run.id,
+            ...recordMeta,
+            entityKind: "PROPERTY",
+            externalKey: rec.externalId,
+            action: "DRY_RUN",
+            checksum: cs,
+            issuesJson: JSON.stringify({ plannedAction, publicationIssues }),
+            rawJson: JSON.stringify(rec),
+          },
+        });
+        continue;
+      }
+
       // Resolve project/developer only when the source supplied an explicit
       // developer identity. Ambiguous references require human reconciliation.
       let projectId: string | null = null;
       if (rec.project) {
-        if (!rec.developer) throw new Error(`Developer mapping required for project: ${rec.project}`);
-        const developerSlug = slugify(rec.developer);
-        const dev = await client.developer.upsert({
-          where: { slug: developerSlug },
-          create: { name: rec.developer, slug: developerSlug, sourceType: "IMPORT", retrievedAt: new Date() },
-          update: {},
+        const dev = mappedDeveloper ?? await client.developer.create({
+          data: { name: rec.developer!, slug: developerSlug!, ownerOrganizationId: source.ownerOrganizationId, sourceType: "IMPORT", retrievedAt: new Date() },
         });
         const developerId = dev.id;
-        const projectSlug = slugify(rec.project);
-        const project = await client.project.upsert({
-          where: { slug: projectSlug },
-          create: {
+        const project = mappedProject ?? await client.project.create({
+          data: {
             name: rec.project,
-            slug: projectSlug,
-            developerId: developerId!, // verified non-null below via throw
+            slug: projectSlug!,
+            ownerOrganizationId: source.ownerOrganizationId,
+            developerId,
             communityId: community.id,
             lat: rec.lat ?? community.lat,
             lng: rec.lng ?? community.lng,
@@ -220,40 +285,15 @@ export async function runImport(opts: {
             publicationStatus: "DRAFT",
             sourceType: "IMPORT",
           },
-          update: {},
-        }).catch(async (err) => {
-          // projectSlug collision with different developer → append hash suffix
-          if (String(err).includes("Unique")) {
-            return client.project.upsert({
-              where: { slug: `${projectSlug}-${cs.slice(0, 4)}` },
-              create: {
-                name: rec.project!,
-                slug: `${projectSlug}-${cs.slice(0, 4)}`,
-                developerId: developerId!,
-                communityId: community.id,
-                lat: rec.lat ?? community.lat,
-                lng: rec.lng ?? community.lng,
-                locationPrecision: rec.lat !== undefined && rec.lng !== undefined ? "APPROXIMATE" : "COMMUNITY_CENTROID",
-                locationSourceType: "IMPORT",
-                retrievedAt: new Date(),
-                publicationStatus: "DRAFT",
-                sourceType: "IMPORT",
-              },
-              update: {},
-            });
-          }
-          throw err;
         });
         projectId = project.id;
       }
 
-      const agent = rec.agentEmail ? await client.agent.findFirst({ where: { email: rec.agentEmail } }) : null;
-
       // Property upsert keyed by sourceId (idempotency)
-      const existingProperty = await client.property.findFirst({ where: { sourceId: rec.externalId, sourceType: "IMPORT" } });
       let propertyId: string;
       if (existingProperty) {
         const propertyOverrides = parseCatalogJson(existingProperty.editorOverridesJson);
+        const manualCoordinates = Object.prototype.hasOwnProperty.call(propertyOverrides, "lat") || Object.prototype.hasOwnProperty.call(propertyOverrides, "lng");
         await client.property.update({
           where: { id: existingProperty.id },
           data: {
@@ -261,17 +301,17 @@ export async function runImport(opts: {
             propertyType: Object.prototype.hasOwnProperty.call(propertyOverrides, "propertyType") ? String(propertyOverrides.propertyType) : rec.propertyType,
             bedrooms: Object.prototype.hasOwnProperty.call(propertyOverrides, "bedrooms") ? Number(propertyOverrides.bedrooms) : rec.bedrooms,
             bathrooms: Object.prototype.hasOwnProperty.call(propertyOverrides, "bathrooms") ? Number(propertyOverrides.bathrooms) : rec.bathrooms,
-            builtUpAreaSqft: rec.areaSqft,
-            lat: rec.lat ?? existingProperty.lat,
-            lng: rec.lng ?? existingProperty.lng,
-            view: rec.view,
-            furnishing: rec.furnishing,
+            builtUpAreaSqft: editorialValue(propertyOverrides, "builtUpAreaSqft", rec.areaSqft ?? existingProperty.builtUpAreaSqft),
+            lat: editorialValue(propertyOverrides, "lat", rec.lat ?? existingProperty.lat),
+            lng: editorialValue(propertyOverrides, "lng", rec.lng ?? existingProperty.lng),
+            view: editorialValue(propertyOverrides, "view", rec.view ?? existingProperty.view),
+            furnishing: editorialValue(propertyOverrides, "furnishing", rec.furnishing ?? existingProperty.furnishing),
             description: Object.prototype.hasOwnProperty.call(propertyOverrides, "description") ? String(propertyOverrides.description ?? "") || null : rec.description ?? null,
-            handoverQuarter: rec.handover,
+            handoverQuarter: editorialValue(propertyOverrides, "handoverQuarter", rec.handover ?? existingProperty.handoverQuarter),
             sourceUpdatedAt: rec.sourceUpdatedAt ? new Date(rec.sourceUpdatedAt) : null,
             retrievedAt: new Date(),
-            locationPrecision: rec.lat !== undefined && rec.lng !== undefined ? "APPROXIMATE" : existingProperty.locationPrecision,
-            locationSourceType: "IMPORT",
+            locationPrecision: editorialValue(propertyOverrides, "locationPrecision", !manualCoordinates && rec.lat !== undefined && rec.lng !== undefined ? "APPROXIMATE" : existingProperty.locationPrecision),
+            locationSourceType: manualCoordinates ? "MANUAL_ADMIN" : "IMPORT",
             contentHash: cs,
             sourceSnapshotJson: JSON.stringify(rec),
           },
@@ -290,11 +330,12 @@ export async function runImport(opts: {
           await client.listing.update({
             where: { id: listing.id },
             data: {
-              listingType: rec.listingType,
+              listingType: editorialValue(listingOverrides, "listingType", rec.listingType),
+              rentFrequency: editorialValue(listingOverrides, "rentFrequency", rec.rentFrequency ?? listing.rentFrequency),
               priceMinor: newPrice,
               availabilityStatus: effectiveAvailability,
-              offPlan: rec.offPlan,
-              sourceSnapshotJson: JSON.stringify({ listingType: rec.listingType, priceAed: rec.priceAed, availability: rec.availability, offPlan: rec.offPlan }),
+              offPlan: editorialValue(listingOverrides, "offPlan", rec.offPlan),
+              sourceSnapshotJson: JSON.stringify({ listingType: rec.listingType, rentFrequency: rec.rentFrequency, priceAed: rec.priceAed, availability: rec.availability, offPlan: rec.offPlan }),
             },
           });
           if (newPrice !== listing.priceMinor) {
@@ -308,13 +349,14 @@ export async function runImport(opts: {
             data: {
               propertyId,
               listingType: rec.listingType,
+              rentFrequency: rec.rentFrequency ?? null,
               priceMinor: BigInt(Math.round(rec.priceAed * 100)),
               currency: "AED",
               availabilityStatus: rec.availability,
               offPlan: rec.offPlan,
               agentId: agent?.id ?? null,
               publishedAt: null,
-              sourceSnapshotJson: JSON.stringify({ listingType: rec.listingType, priceAed: rec.priceAed, availability: rec.availability, offPlan: rec.offPlan }),
+              sourceSnapshotJson: JSON.stringify({ listingType: rec.listingType, rentFrequency: rec.rentFrequency, priceAed: rec.priceAed, availability: rec.availability, offPlan: rec.offPlan }),
             },
           });
           await client.priceHistory.create({ data: { propertyId, listingId: listing.id, priceMinor: listing.priceMinor, sourceType: "IMPORT" } });
@@ -324,7 +366,8 @@ export async function runImport(opts: {
         const property = await client.property.create({
           data: {
             title: rec.title,
-            slug: `${slugify(rec.title)}-${cs.slice(0, 6)}`,
+            slug: `${slugify(rec.title)}-${createHash("sha256").update(`${source.id}:${rec.externalId}`).digest("hex").slice(0, 12)}`,
+            ownerOrganizationId: source.ownerOrganizationId,
             communityId: community.id,
             projectId,
             propertyType: rec.propertyType,
@@ -355,11 +398,12 @@ export async function runImport(opts: {
           data: {
             propertyId,
             listingType: rec.listingType,
+            rentFrequency: rec.rentFrequency ?? null,
             priceMinor: BigInt(Math.round(rec.priceAed * 100)),
             currency: "AED",
             availabilityStatus: rec.availability,
             offPlan: rec.offPlan,
-            sourceSnapshotJson: JSON.stringify({ listingType: rec.listingType, priceAed: rec.priceAed, availability: rec.availability, offPlan: rec.offPlan }),
+            sourceSnapshotJson: JSON.stringify({ listingType: rec.listingType, rentFrequency: rec.rentFrequency, priceAed: rec.priceAed, availability: rec.availability, offPlan: rec.offPlan }),
             editorOverridesJson: null,
             agentId: agent?.id ?? null,
             publishedAt: null,

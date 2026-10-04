@@ -11,7 +11,7 @@ async function restore(directory, configFile) {
   if (existsSync(resolve(directory, "INCOMPLETE.txt"))) throw new Error("INCOMPLETE_BACKUP");
   const manifest = JSON.parse(readFileSync(resolve(directory, "manifest.json"), "utf8").replace(/^\uFEFF/, ""));
   validateBackupScope(manifest, manifest.syntheticFixture === true);
-  if (manifest.source !== "hosted-postgres-r2") throw new Error("HOSTED_SCOPE_REQUIRED");
+  if (!["hosted-postgres-r2", "hosted-postgres-s3"].includes(manifest.source)) throw new Error("HOSTED_SCOPE_REQUIRED");
   const config = JSON.parse(readFileSync(configFile, "utf8").replace(/^\uFEFF/, ""));
   for (const key of ["toolImage", "postgresImage", "storageImage", "appImage"]) {
     if (!/^sha256:[a-f0-9]{64}$/.test(config[key] ?? "")) throw new Error("PINNED_RESTORE_IMAGES_REQUIRED");
@@ -39,7 +39,7 @@ async function restore(directory, configFile) {
       "--tmpfs", "/tmp:rw,nosuid,noexec,size=64m", "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,noexec,size=1m",
       "--mount", `type=bind,source=${directory},target=/backup,readonly`,
       "--mount", `type=bind,source=${resolve(root, "scripts/hosted-restore-checks.mjs")},target=/app/scripts/hosted-restore-checks.mjs,readonly`,
-      "--mount", `type=volume,source=${extractVolume},target=/extracted${mode === "prepare" ? "" : ",readonly"}`,
+      "--mount", `type=volume,source=${extractVolume},target=/extracted${["prepare", "static"].includes(mode) ? "" : ",readonly"}`,
       "--entrypoint", "bun", config.toolImage, "--no-env-file", "scripts/hosted-restore-checks.mjs", mode, "/backup", "/extracted"]);
     const result = JSON.parse(docker(["start", "-a", id], 15 * 60000, true));
     if (docker(["inspect", "-f", "{{.State.ExitCode}}", id]) !== "0" || !result.status?.startsWith("PASS_")) {
@@ -89,6 +89,12 @@ async function restore(directory, configFile) {
       config.storageImage, "mini", "-dir=/data"]);
     docker(["start", storage]); await ready(storage, ["curl", "-fsS", "http://127.0.0.1:8333/healthz"]);
     const objectChecks = check("objects", network);
+    stage = "STATIC_MEDIA_RESTORE";
+    const publicCopy = create("container", ["create", "--label", `iere.restore=${token}`, "--network", "none", "--user", "root",
+      "--mount", `type=volume,source=${extractVolume},target=/extracted`, "--entrypoint", "/bin/sh", config.appImage,
+      "-c", "mkdir /extracted/public && cp -a /app/public/. /extracted/public/ && chown -R 1000:1000 /extracted/public"]);
+    docker(["start", "-a", publicCopy]);
+    const staticChecks = check("static");
     stage = "APPLICATION_DELIVERY";
     const env = { APP_ENV: "development", APP_URL: "http://restored-web:3000", PORT: "3000", HOSTNAME: "0.0.0.0",
       DATABASE_URL: "postgresql://iere_app:restore_fixture_only@restored-db:5432/iere_restore", AI_PROVIDER: "mock", AI_LIVE_ENABLED: "false",
@@ -96,17 +102,21 @@ async function restore(directory, configFile) {
       STORAGE_PROVIDER: "s3", S3_ENDPOINT: "http://restored-objects:8333", S3_REGION: "us-east-1", S3_BUCKET: "iere-restored",
       S3_ACCESS_KEY_ID: "restore_fixture", S3_SECRET_ACCESS_KEY: "restore_fixture_only", S3_FORCE_PATH_STYLE: "true", AUTH_MFA_REQUIRED: "true" };
     const app = create("container", ["create", "--label", `iere.restore=${token}`, "--network", network, "--network-alias", "restored-web",
+      "--mount", `type=volume,source=${extractVolume},target=/app/public,volume-subpath=public,readonly`,
       ...Object.entries(env).flatMap(([key, value]) => ["-e", `${key}=${value}`]), config.appImage, "bun", ".next/standalone/server.js"]);
     docker(["start", app]); await ready(app, ["bun", "--no-env-file", "-e", "const r=await fetch('http://localhost:3000/api/health');if(!r.ok)process.exit(1)"]);
     const appDatabase = JSON.parse(docker(["exec", app, "bun", "--no-env-file", "-e",
       "const {PrismaClient}=await import('@prisma/client');const db=new PrismaClient();try{console.log(JSON.stringify({publicImages:await db.mediaAsset.count({where:{isPrivate:false,mimeType:{startsWith:'image/'}}})}));}finally{await db.$disconnect();}"]));
     if (appDatabase.publicImages < 1) throw new Error("APPLICATION_DATABASE_MEDIA_MISSING");
     const deliveryChecks = check("delivery", network);
+    // Temporary permission-test sessions/principals must leave the captured
+    // application records intact before this drill can be accepted.
+    const postDeliveryDatabaseChecks = check("database", network);
     report = { status: "PASS", source: manifest.source, sourceId: manifest.sourceId, syntheticFixture: manifest.syntheticFixture === true,
       backupCreatedAtUtc: manifest.createdAtUtc, restoreStartedAtUtc: new Date(started).toISOString(), restoreCompletedAtUtc: new Date().toISOString(),
       elapsedSeconds: (Date.now() - started) / 1000, durationScope: "Isolated scripted recovery, not incident-to-service RTO",
       achievedRpo: "NOT_VERIFIED", achievedRto: "NOT_VERIFIED", network: "INTERNAL_NO_PUBLISHED_PORTS", outboundJobs: "DISABLED",
-      images: config, prepared, databaseChecks, objectChecks, deliveryChecks };
+      images: config, prepared, databaseChecks, postDeliveryDatabaseChecks, objectChecks, staticChecks, deliveryChecks };
   } finally {
     stage = "OWNED_CLEANUP";
     for (const resource of [...owned].reverse()) {

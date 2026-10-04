@@ -40,6 +40,7 @@ model Organization {
   ownedCommunities Community[] @relation("CommunityOwner")
   ownedAgents      Agent[] @relation("AgentOwner")
   invitations      UserInvitation[]
+  importSources    ImportSource[] @relation("ImportSourceOwner")
 }
 
 model User {
@@ -908,6 +909,7 @@ model MediaAsset {
   posterFor     MediaAsset[] @relation("VideoPoster")
   variantsJson String? // JSON {thumb, card, hero, webp...}
   checksum     String?
+  storageChecksum String? @db.VarChar(64) // SHA-256 of stored bytes; checksum retains source-file duplicate identity
   exifStripped Boolean  @default(true)
   isPrivate    Boolean  @default(false)
   uploadedBy   String?
@@ -2190,6 +2192,9 @@ model MediaProcessingJob {
 // ============================================================
 
 model ImportSource {
+  ownerOrganizationId String?
+  ownerOrganization Organization? @relation("ImportSourceOwner", fields: [ownerOrganizationId], references: [id], onDelete: Restrict)
+  @@index([ownerOrganizationId])
   id         String   @id @default(cuid())
   name       String   @unique
   sourceType String   @default("CSV") // CSV|JSON|API|XML
@@ -2217,6 +2222,7 @@ model ImportRun {
   adapterKey         String?
   adapterVersion     Int?
   sourceVersion      String?
+  mappingJson        String? // immutable reviewed field-to-source mapping; null for canonical/historical runs
   snapshotRetrievedAt DateTime? @db.Timestamptz(3)
   snapshotSha256     String?   @db.VarChar(64)
   snapshotRef        String? // private object-store key; never a public URL

@@ -25,6 +25,7 @@ export async function proxy(request: NextRequest) {
     response.headers.set("Cache-Control", "no-store");
     return response;
   }
+  const preflightStarted = performance.now();
   const redirect = await lookupRedirect(request.nextUrl.pathname);
   if (redirect && isSafeInternalRedirectPath(redirect.to)) {
     const destination = request.nextUrl.clone();
@@ -47,6 +48,7 @@ export async function proxy(request: NextRequest) {
   // inline bootstrap scripts; return the same policy to the browser.
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Server-Timing", `route_preflight;dur=${(performance.now() - preflightStarted).toFixed(1)}`);
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
   if (process.env.APP_ENV === "staging") response.headers.set("X-Robots-Tag", "noindex, nofollow");
   return response;

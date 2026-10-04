@@ -72,6 +72,14 @@ describe("Inception Mercury REST adapter (all network mocked)", () => {
   test("rejects truncated, blocked and unexpected native-tool results", async () => {
     for (const [finish_reason, code] of [["length", "PROVIDER_OUTPUT_TRUNCATED"], ["content_filter", "PROVIDER_OUTPUT_BLOCKED"], ["tool_calls", "PROVIDER_RESPONSE_INVALID"]]) await expect(generateWithInception(request, { ...options, fetchImpl: respond({ choices: [{ finish_reason, message: { role: "assistant", content: "Partial answer" } }], usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 } }) })).rejects.toMatchObject({ code, usage: { promptTokens: 5, completionTokens: 7 } });
   });
+  test("empty responses retain measured usage and safe request correlation", async () => {
+    const body = { choices: [{ finish_reason: "stop", message: { role: "assistant", content: "" } }], usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 } };
+    await expect(generateWithInception(request, { ...options, fetchImpl: respond(body, 200, { "x-request-id": "request_abcdefgh" }) })).rejects.toMatchObject({
+      code: "PROVIDER_OUTPUT_EMPTY", usage: { promptTokens: 5, completionTokens: 7 },
+      diagnostics: { httpStatus: 200, providerCode: null, requestId: "request_abcdefgh" },
+    });
+    await expect(generateWithInception(request, { ...options, fetchImpl: respond(body, 200, { "x-request-id": options.apiKey }) })).rejects.toMatchObject({ diagnostics: { requestId: null } });
+  });
   test("aborts at the deadline and redacts network failures", async () => {
     const fetchImpl: InceptionFetch = async (_url, init) => new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("sensitive aborted request")), { once: true }));
     await expect(generateWithInception(request, { ...options, timeoutMs: 5, fetchImpl })).rejects.toMatchObject({ code: "PROVIDER_TIMEOUT" });

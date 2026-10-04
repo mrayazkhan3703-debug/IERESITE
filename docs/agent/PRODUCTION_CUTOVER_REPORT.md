@@ -1,5 +1,29 @@
 # IERESITE release and production cutover report
 
+## Railway software acceptance — 4 October 2026, 13:08 UTC
+
+Application `33ace7980f2bee1849fb17f86e41318b1d707b1e` passes full CI `37201990279` and is deployed successfully on Web/Worker. Ten real Mercury semantic turns, unlimited website usage, replay/reload, scoped archive cleanup, fresh encrypted capture and actual isolated recovery pass. Company records/media remain unchanged. [Current release report](RAILWAY_UNLIMITED_RETENTION_20261004.md) supersedes older Advisor quota and storage-capacity blockers. The recorded maintenance gap prevents claiming a one-hour RPO, and scripted restore duration is not incident RTO. CRM/company SMTP remain skipped; approved content, final demo archival, company domain and authenticated Cloudflare privacy acceptance still gate customer launch.
+
+## Accepted application release — 4 October 2026, 10:22 UTC
+
+Railway Web/Worker exact `19476d9` pass full CI `37192779736` and live route/record/media/private-access checks. Concord Tower SHORT_TERM lookup is corrected and owner data is unchanged. Genuine hosted database/media recovery, two successive 30-minute capture intervals and a fresh post-release encrypted backup pass. One upload stalls; interrupted cleanup and one restart recover capture without losing the previous verified pointer. Ten clean final-release AI turns still require budget reset; current reserved usage is 57,589/60,000. Backup storage has about four hours left and awaits owner retention/storage review. Company facts/approved knowledge, final testing/demo cleanup and Cloudflare public-domain policy review remain launch conditions. CRM/company SMTP stay skipped. [Full current evidence](RAILWAY_RELEASE_20261004.md) supersedes historical gates below; company testing is usable, customer launch is not accepted.
+
+## Current continuation — 4 October 2026
+
+Railway actual encrypted recovery passed 119 tables / 44 migrations / 123 referenced R2 and static assets, application permissions, public image/video/ranges, captured owner-private PDF access/denials, post-delivery counts, disabled outbound jobs and isolated cleanup. Capture `a43857db13d74050936bc7f4a9f90e61` is genuine Railway source evidence. The 18.445-second scripted restoration is not an achieved incident RTO. Hosted scheduling now shares the existing accepted Worker; first 30-minute point completed 08:53:31 UTC with encrypted readback PASS. The 1 GiB whole-bucket cap and disabled deletion leave finite headroom of approximately six hours at initial activation; continuous long-term protection needs a reviewed capacity/retention decision.
+
+Ten actual Mercury turns completed without transport errors/fallback, including calculations and bilingual follow-ups, with durable replay/reload. Semantic review discovered the sale-only search incorrectly excluded Concord Tower's SHORT_TERM record. Candidate correction and live semantic acceptance remain pending. Real company knowledge/content, owner testing/demo cleanup, bucket-policy review and launch acceptance remain outstanding. CRM/company SMTP and unnecessary bulk adapters stay deferred; customer launch is not claimed. Older checkpoints below are historical.
+
+## Current Railway checkpoint — 3 October 2026
+
+Company testing now uses [Railway](https://web-production-5ab32.up.railway.app) and its [Admin](https://web-production-5ab32.up.railway.app/admin). Web and enabled Worker run exact `38ce295bd848b8272359414fc2585e57a678b3ea`, passing full CI `37131428062`, with 44 applied migrations and Cloudflare R2 delivery. Shared inventory column mapping, private preview approval/retry checks and the bounded completed-empty Mercury correction are deployed. Live routes, media hashes, original-record preservation and three actual Advisor turns pass. Concord Tower is published with owner-authorized no expiry, and transferred Team facts/photos plus later Admin visibility choices are retained.
+
+Fresh actual **legacy Supabase** encrypted recovery passed database/permissions/58-object/media/private-document checks. Its Windows schedule reports a fresh success; it does not cover Railway or provide independent hosted scheduling. Railway capture/restore/scheduling remains blocked by the current five-service cap. Ten-turn Mercury/approved knowledge acceptance, missing bulk content adapters, Cloudflare public-domain policy review and owner content/testing remain outstanding. CRM and company SMTP are explicitly deferred; customer launch remains unaccepted and staging noindex retained. Render workloads remain retained pending Railway recovery.
+
+Current evidence and deployment IDs are recorded in [RAILWAY_COMPANY_LAUNCH.md](RAILWAY_COMPANY_LAUNCH.md). The Render checkpoint below is historical, not the current company destination.
+
+## Historical Render checkpoint
+
 Updated: 1 October 2026. Deployment: https://ieresite.onrender.com (staging).
 Admin: https://ieresite.onrender.com/admin (existing OWNER account).
 
