@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import type { AutocompleteItem, FacetCounts, IndexedProperty, SearchResult, SearchState } from "./types";
+import type { AutocompleteItem, FacetCounts, IndexedProperty, InventorySearchState, SearchResult, SearchState } from "./types";
 import { normalizeSearchText } from "./normalize";
 
 const PRICE_BUCKETS = [
@@ -199,8 +199,10 @@ const PUBLIC_DOCUMENT_CONDITION = Prisma.sql`EXISTS (
     AND (current_listing."expiresAt" IS NULL OR current_listing."expiresAt" > CURRENT_TIMESTAMP)
     AND current_listing."availabilityStatus" <> 'WITHDRAWN'
 )`;
-function whereFor(state: SearchState): { where: Prisma.Sql; score: Prisma.Sql } {
-  const conditions: Prisma.Sql[] = [PUBLIC_DOCUMENT_CONDITION, Prisma.sql`"listingType" = ${state.listingType}`];
+function whereFor(state: InventorySearchState): { where: Prisma.Sql; score: Prisma.Sql } {
+  const types = state.inventoryListingTypes ?? [state.listingType];
+  const conditions: Prisma.Sql[] = [PUBLIC_DOCUMENT_CONDITION,
+    types.length ? Prisma.sql`"listingType" IN (${Prisma.join(types)})` : Prisma.sql`FALSE`];
   const normalizedQuery = normalizeSearchText(state.q ?? "");
   const score = normalizedQuery
     ? Prisma.sql`(
@@ -402,7 +404,7 @@ function facetsFor(rows: SearchDocumentRow[]): FacetCounts {
   };
 }
 
-export async function searchPostgres(state: SearchState): Promise<{ result: SearchResult; documents: IndexedProperty[] }> {
+export async function searchPostgres(state: InventorySearchState): Promise<{ result: SearchResult; documents: IndexedProperty[] }> {
   const startedAt = performance.now();
   const { where, score } = whereFor(state);
   const order = orderFor(state, score);

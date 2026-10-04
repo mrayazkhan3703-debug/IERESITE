@@ -46,6 +46,8 @@ export interface PropertyCardAttachment {
   community: string;
   project: string | null;
   propertyType: string;
+  listingType?: string | null;
+  rentFrequency?: string | null;
   bedrooms: number;
   bathrooms: number;
   areaSqft: number | null;
@@ -164,6 +166,8 @@ export function propertyCards(data: {
     community: String(m.community ?? "—"),
     project: str(m.project),
     propertyType: String(m.propertyType ?? ""),
+    listingType: str(m.listingType),
+    rentFrequency: str(m.rentFrequency),
     bedrooms: Number(m.bedrooms ?? 0),
     bathrooms: Number(m.bathrooms ?? 0),
     areaSqft: num(m.areaSqft),

@@ -1,5 +1,11 @@
 # IERESITE release and production cutover report
 
+## Current continuation — 4 October 2026
+
+Railway actual encrypted recovery passed 119 tables / 44 migrations / 123 referenced R2 and static assets, application permissions, public image/video/ranges, captured owner-private PDF access/denials, post-delivery counts, disabled outbound jobs and isolated cleanup. Capture `a43857db13d74050936bc7f4a9f90e61` is genuine Railway source evidence. The 18.445-second scripted restoration is not an achieved incident RTO. Hosted scheduling now shares the existing accepted Worker; first 30-minute point completed 08:53:31 UTC with encrypted readback PASS. The 1 GiB whole-bucket cap and disabled deletion leave finite headroom of approximately six hours at initial activation; continuous long-term protection needs a reviewed capacity/retention decision.
+
+Ten actual Mercury turns completed without transport errors/fallback, including calculations and bilingual follow-ups, with durable replay/reload. Semantic review discovered the sale-only search incorrectly excluded Concord Tower's SHORT_TERM record. Candidate correction and live semantic acceptance remain pending. Real company knowledge/content, owner testing/demo cleanup, bucket-policy review and launch acceptance remain outstanding. CRM/company SMTP and unnecessary bulk adapters stay deferred; customer launch is not claimed. Older checkpoints below are historical.
+
 ## Current Railway checkpoint — 3 October 2026
 
 Company testing now uses [Railway](https://web-production-5ab32.up.railway.app) and its [Admin](https://web-production-5ab32.up.railway.app/admin). Web and enabled Worker run exact `38ce295bd848b8272359414fc2585e57a678b3ea`, passing full CI `37131428062`, with 44 applied migrations and Cloudflare R2 delivery. Shared inventory column mapping, private preview approval/retry checks and the bounded completed-empty Mercury correction are deployed. Live routes, media hashes, original-record preservation and three actual Advisor turns pass. Concord Tower is published with owner-authorized no expiry, and transferred Team facts/photos plus later Admin visibility choices are retained.

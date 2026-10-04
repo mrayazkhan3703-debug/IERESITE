@@ -1,5 +1,14 @@
 # Execution State
 
+## Current continuation (2026-10-04)
+
+- CRM and company SMTP remain deferred. Existing forms/contracts remain the supported company-content entry path; additional bulk adapters are not a necessary launch dependency under the owner's latest scope.
+- Actual Railway source recovery now **PASS**: capture `a43857db13d74050936bc7f4a9f90e61`, source snapshot 2026-10-03 18:03:35 UTC; encrypted R2 readback, download/decryption, isolated restoration of 119 tables / 44 migrations and 123 referenced objects/static assets (40,110,279 bytes). Public image/video/ranges, real captured owner-private Portfolio PDF, anonymous/other-user denial, application permissions and post-delivery record counts pass. Isolated probe principals are removed; outbound jobs disabled and cleanup passes. Scripted restore took 18.445 seconds, not measured incident RTO. The owner-held private key never leaves Windows.
+- Existing Worker exact `8abbc13e35c9db91f347df94a504478c730593fd` (full CI `37139763039` PASS), deployment `ec490a70-f2f3-495f-9f60-f40ebe884f91`, now supervises 30-minute hosted captures. Actual first scheduled point `0a2633008ab9417d8b45c0ef16624d4c` completed 2026-10-04 08:53:31 UTC with verified ciphertext and cleanup PASS. Its stale-prior flag correctly reports the overnight gap. Successive cadence verification remains pending; this shares Worker lifecycle and is independent of Windows, not a separately provisioned service.
+- Backup deletion stays disabled and the reviewed whole-bucket cap stays 1 GiB. At 08:45 UTC, remaining capacity was 498,986,847 bytes before the first scheduled ~40 MB capture: approximately six hours of additional 30-minute points. Durable ongoing protection requires an owner-approved capacity/retention decision; do not silently increase the cap or remove recovery exports.
+- Ten actual Mercury turns completed HTTP 200 without fallback; replay/reload passed and reserved daily usage was 42,886 / 60,000. Semantic review found a genuine false zero-match for Concord Tower: it is PUBLISHED, non-demo, SHORT_TERM with no expiry, but the tool implicitly filtered SALE. The candidate searches all listing types when unspecified, preserves explicit preferences/unknown community criteria, returns rental frequency and adds truthful source guidance. Full gate and actual post-release semantic verification remain required; the ten transport successes are not full conversational acceptance.
+- Real company inventory/approved knowledge, owner testing/demo archival and company domain remain owner-dependent. Customer launch is not accepted and staging noindex remains. Earlier checkpoints below are historical.
+
 ## Current Railway company transition (2026-10-03)
 
 - Latest owner instruction retains CRM/company SMTP deferral. Current live R2 cutover and remaining launch conditions are in `RAILWAY_COMPANY_LAUNCH.md`; this overrides older candidate-only cutover notes below. Dedicated Worker remains enabled.

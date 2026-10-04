@@ -1,5 +1,15 @@
 # Railway company launch checkpoint
 
+## Current continuation — 4 October 2026
+
+Actual Railway encrypted recovery is now accepted for capture `a43857db13d74050936bc7f4a9f90e61`: 119 tables, 44 migrations, 123 referenced R2/static assets, permissions, public media/video/ranges, protected owner PDF, post-delivery counts and isolated cleanup PASS. The existing Worker now runs 30-minute hosted captures; first point at 08:53:31 UTC passes complete ciphertext readback and cleanup. Successive cadence and sufficient retained capacity remain to verify. Existing private age identity is local only, and its separate owner-held copy was confirmed.
+
+The whole backup bucket remains capped at 1 GiB with deletion disabled. About 499 MB remained before the first scheduled ~40 MB point, approximately six hours at the current cadence. Capacity/retention needs owner review; no silent cap increase, deleted archive, or continuous long-term protection claim.
+
+Ten real Mercury turns passed transport, replay and reload within budget, but semantic review found Concord Tower was missed because the tool defaulted to SALE instead of searching its recorded SHORT_TERM listing. An all-type search correction, rental-frequency metadata and source-truthfulness guidance are awaiting exact passing release/live verification. Preserve the published listing, no expiry and company/owner edits.
+
+CRM/company SMTP and unnecessary new bulk adapters are deferred; existing forms/contracts remain supported. Real facts/approved knowledge, owner testing/demo archival, domain and provider bucket-policy review remain uncompleted. Staging noindex and the existing source exports remain preserved. This section supersedes older gates/status below.
+
 Updated 2026-10-03. Railway remains a staging, noindex company testing site. Customer launch is not accepted yet. External CRM synchronization and company SMTP remain explicitly deferred at the owner's latest request.
 
 ## Preserve and release

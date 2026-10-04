@@ -9,6 +9,7 @@ import { search } from "@/server/search/service";
 import { queryToSearchState, searchStateSchema, type SearchState } from "@/server/search/types";
 import { retrieve } from "@/server/rag/pipeline";
 import * as calc from "@/lib/calculators";
+import { advisorListingTypes, advisorListingTypeSchema } from "./inventory-listing-scope";
 import {
   PUBLIC_COMMUNITY_WHERE,
   PUBLIC_DEVELOPER_WHERE,
@@ -33,7 +34,7 @@ export interface ToolDef {
 /* Property search tool ------------------------------------------------------ */
 
 const propertySearchArgs = z.object({
-  listingType: z.enum(["SALE", "RENT"]).optional(),
+  listingType: advisorListingTypeSchema.optional(),
   communities: z.array(z.string()).optional(),
   propertyTypes: z.array(z.string()).optional(),
   priceMin: z.number().optional(),
@@ -66,7 +67,8 @@ async function normalizeCommunitySlugs(communities: string[] | undefined): Promi
       if (byName.has(norm)) return byName.get(norm)!;
       // partial match
       for (const [name, slug] of byName) if (name.includes(norm) || norm.includes(name)) return slug;
-      return null;
+      // Keep unknown criteria: removing them would silently widen the request.
+      return c;
     })
     .filter((c): c is string => !!c);
 }
@@ -93,21 +95,25 @@ async function execPropertySearch(args: z.infer<typeof propertySearchArgs>): Pro
     page: 1,
     pageSize: args.limit ?? 4,
   });
-  const result = await search(state);
+  const listingTypes = advisorListingTypes(args.listingType);
+  const result = await search(state, { listingTypes: [...listingTypes] });
   return {
     ok: true,
     data: {
       total: result.total,
+      listingTypes,
       properties: result.results.map((r) => ({
         slug: r.slug,
         title: r.title,
         community: r.community.name,
         project: r.project?.name ?? null,
         propertyType: r.propertyType,
+        listingType: r.listingType,
         bedrooms: r.bedrooms,
         bathrooms: r.bathrooms,
         areaSqft: r.areaSqft,
         priceAed: Number(r.price.minor) / 100,
+        rentFrequency: r.price.rentFrequency ?? null,
         availability: r.availabilityStatus,
         offPlan: r.offPlan,
         coverUrl: r.cover?.url ?? null,
@@ -115,7 +121,7 @@ async function execPropertySearch(args: z.infer<typeof propertySearchArgs>): Pro
         isDemoData: r.isDemoData ?? false,
         url: `/properties/${r.slug}`,
       })),
-      note: "Only these properties exist in current inventory. Cite them by title exactly.",
+      note: "These are the available published listings matching the submitted criteria and listingTypes; total counts listings, not unique properties. Cite their titles exactly. Recorded facts are not independently verified. Clearly label every isDemoData record as demo inventory.",
     },
   };
 }
@@ -233,6 +239,7 @@ async function execPropertyLookup(args: z.infer<typeof propertyLookupArgs>): Pro
           handoverQuarter: property.handoverQuarter,
           serviceChargePerSqft: listing?.serviceChargePerSqft ?? null,
           listingType: listing?.listingType ?? "SALE",
+          rentFrequency: listing?.rentFrequency ?? null,
           sourceType: property.sourceType,
           isDemoData: property.isDemoData,
           sourceUpdatedAt: property.sourceUpdatedAt?.toISOString() ?? null,
@@ -479,7 +486,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "search_properties",
     description:
-      "Search REAL property inventory by structured criteria (community names, property type, bedrooms, price range in AED, off-plan, sea view, min modeled gross yield percent, handover-before quarter like 'Q4 2028', etc). Returns actual available properties with prices. Always use this before recommending any property.",
+      "Search published inventory by structured criteria (q for a property title, community names, property type, bedrooms, price range in AED, off-plan, sea view, min modeled gross yield percent, handover-before quarter like 'Q4 2028'). listingType accepts SALE, RENT or SHORT_TERM; omit it to search all three, especially when finding a named listing without a stated transaction type. Do not assume SALE. Returns recorded listing facts and isDemoData labels, not independent verification. Always use this before recommending any property.",
     argsSchema: propertySearchArgs,
     execute: execPropertySearch,
   },

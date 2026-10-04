@@ -1,6 +1,8 @@
 # Railway hosted backup and recovery
 
-Status on 2026-10-03: the owner requested necessary work only, retaining CRM/company SMTP deferral. A supervised backup child is under verification alongside the existing Railway Worker. No actual Railway snapshot, encrypted roundtrip, hosted schedule, or achieved recovery objective is claimed by the candidate.
+Status on 2026-10-04: actual Railway capture `a43857db13d74050936bc7f4a9f90e61` has passed complete encrypted readback/download/decryption and isolated database/media/private-document recovery. Recovery checks restored 119 tables, 44 migrations and 123 R2/static assets (40,110,279 bytes), checked application permissions and post-delivery counts, disabled outbound jobs and cleaned the owned environment. A roleless/passwordless other-user principal existed only in the isolated restore and was removed. The 18.445-second scripted restore is not an incident RTO measurement.
+
+The existing Worker now runs `scheduled` alongside its normal scheduler, using accepted actual-source evidence and the already-confirmed owner key copy. First scheduled capture `0a2633008ab9417d8b45c0ef16624d4c` completed at 08:53:31 UTC on 4 October; ciphertext readback and cleanup PASS. Cadence needs successive observed points. Cap stays 1 GiB and deletion stays disabled: observed headroom before this capture was about 499 MB, approximately six hours at ~40 MB per half hour. Ongoing protection is capacity-limited until the owner reviews retention/storage. CRM/company SMTP remain deferred.
 
 Live provisioning on 2026-10-03 was rejected with "Free plan resource provision limit exceeded" when creating `Encrypted-backup`. No new service exists. Five existing services remain operational. Do not remove or repurpose database/media/worker/email services automatically to bypass the cap, and do not claim independent scheduled protection. Purchasing remains the owner's action.
 

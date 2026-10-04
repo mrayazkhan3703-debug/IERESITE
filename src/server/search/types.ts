@@ -68,6 +68,11 @@ export const searchStateSchema = z.object({
 
 export type SearchState = z.infer<typeof searchStateSchema>;
 
+/** Server-only scope: Advisor can search all listing types without changing public URL defaults. */
+export type InventorySearchState = SearchState & {
+  inventoryListingTypes?: SearchState["listingType"][];
+};
+
 export interface IndexedProperty {
   id: string; // listing id
   propertyId: string;

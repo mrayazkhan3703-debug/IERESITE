@@ -1,5 +1,17 @@
 # Phase Checklist
 
+## Current verification on 4 October 2026
+
+- [x] Recover an actual encrypted Railway/PostgreSQL/R2 capture: 119 tables, 44 migrations, 123 referenced R2/static assets, permissions, images/video/ranges/private PDF, post-delivery counts and outbound-disabled cleanup PASS.
+- [x] Enable hosted 30-minute captures alongside the existing accepted Worker, with actual recovery evidence and owner-confirmed key copy; observe first successful point at 08:53:31 UTC.
+- [ ] Observe successive hosted capture cadence; resolve finite capacity without unapproved deletion or a cap increase. Current 1 GiB cap leaves about six hours of points as of first schedule acceptance.
+- [x] Complete ten real Mercury HTTP turns without fallback and verify durable replay/reload within budget.
+- [ ] Repair and verify the demonstrated Concord Tower lookup/semantic regression before declaring full conversational acceptance. Candidate adds all listing types and rental-frequency metadata without changing the source listing.
+- [ ] Populate approved company knowledge and real inventory from owner-supplied facts; complete owner testing and reviewed demo archival before customer launch.
+- [x] Keep CRM and company SMTP deferred; retain existing content forms/contracts. Additional bulk adapters are optional under the owner's necessary-work-only instruction.
+
+Earlier checklist entries below are historical and are superseded by this section.
+
 ## Railway main-site transition: current acceptance overrides historical Render status
 
 - [x] Preserve existing people/property identities; compare private before/after manifests.

@@ -4,6 +4,7 @@ import { cache } from "@/server/cache";
 import { autocomplete, rebuildIndex, reindexProperty, search } from "@/server/search/service";
 import { searchStateSchema } from "@/server/search/types";
 import { mapClustersPostgres } from "@/server/search/postgres-provider";
+import { toolByName } from "@/server/ai/tools";
 
 const baseUrl = process.env.TEST_BASE_URL ?? "http://host.docker.internal:3000";
 const prefix = "pg-search-contract";
@@ -139,6 +140,33 @@ afterAll(async () => {
 });
 
 describe("PostgreSQL search projection", () => {
+  test("Advisor finds a published short-term title without assuming SALE and retains other criteria", async () => {
+    const listingId = `${ids.nearProperty}-listing`;
+    await db.listing.update({ where: { id: listingId }, data: { listingType: "SHORT_TERM", rentFrequency: "DAILY" } });
+    await reindexProperty(ids.nearProperty);
+    try {
+      const tool = toolByName.get("search_properties")!;
+      const run = async (extra = {}) => {
+        const result = await tool.execute(tool.argsSchema.parse({ q: "Zaffre Marina Residence", ...extra }));
+        expect(result.ok).toBe(true);
+        return result.data as { total: number; properties: { slug: string; listingType: string; rentFrequency: string; isDemoData: boolean }[] };
+      };
+      const found = await run();
+      expect(found.properties).toHaveLength(1);
+      expect(found.properties[0]).toMatchObject({ slug: `${prefix}-zaffre-residence`, listingType: "SHORT_TERM", rentFrequency: "DAILY", isDemoData: false });
+      expect((await run({ listingType: "SALE" })).total).toBe(0);
+      expect((await run({ listingType: "SHORT_TERM" })).total).toBe(1);
+      expect((await run({ communities: ["unknown-community-that-must-not-be-removed"] })).total).toBe(0);
+      expect((await run({ priceMax: 100 })).total).toBe(0);
+      await db.property.update({ where: { id: ids.nearProperty }, data: { publicationStatus: "DRAFT" } });
+      // Canonical visibility rejects the now-private record even before reindexing.
+      expect((await run()).total).toBe(0);
+    } finally {
+      await db.property.update({ where: { id: ids.nearProperty }, data: { publicationStatus: "PUBLISHED" } });
+      await db.listing.update({ where: { id: listingId }, data: { listingType: "SALE", rentFrequency: null } });
+      await reindexProperty(ids.nearProperty);
+    }
+  });
   test("indexes canonical public listings and removes drafts", async () => {
     const documents = await db.searchDocument.findMany({
       where: { propertyId: { startsWith: prefix } },
