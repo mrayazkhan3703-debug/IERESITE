@@ -9,6 +9,8 @@
 - Ten actual Mercury turns completed HTTP 200 without fallback; replay/reload passed and reserved daily usage was 42,886 / 60,000. Semantic review found a genuine false zero-match for Concord Tower: it is PUBLISHED, non-demo, SHORT_TERM with no expiry, but the tool implicitly filtered SALE. The candidate searches all listing types when unspecified, preserves explicit preferences/unknown community criteria, returns rental frequency and adds truthful source guidance. Full gate and actual post-release semantic verification remain required; the ten transport successes are not full conversational acceptance.
 - Real company inventory/approved knowledge, owner testing/demo archival and company domain remain owner-dependent. Customer launch is not accepted and staging noindex remains. Earlier checkpoints below are historical.
 
+- Candidate `d66bfa266b210d8cec761a358760a64266669a04` full CI `37191179901` failed the new unknown-community integration assertion and is not deployed. Arabic community names became empty ASCII-only normalization keys, incorrectly matching an unknown area. Follow-up uses shared Unicode normalization, retains unknown/ambiguous criteria, and adds direct regression tests. Other release checks that did not run are not claimed PASS. The earlier standalone Windows-wide unit command also lacked DATABASE_URL; focused pure tests/typecheck/lint pass, with database-backed acceptance required in disposable CI.
+
 ## Current Railway company transition (2026-10-03)
 
 - Latest owner instruction retains CRM/company SMTP deferral. Current live R2 cutover and remaining launch conditions are in `RAILWAY_COMPANY_LAUNCH.md`; this overrides older candidate-only cutover notes below. Dedicated Worker remains enabled.

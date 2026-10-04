@@ -10,6 +10,7 @@ import { queryToSearchState, searchStateSchema, type SearchState } from "@/serve
 import { retrieve } from "@/server/rag/pipeline";
 import * as calc from "@/lib/calculators";
 import { advisorListingTypes, advisorListingTypeSchema } from "./inventory-listing-scope";
+import { resolveAdvisorCommunities } from "./community-criteria";
 import {
   PUBLIC_COMMUNITY_WHERE,
   PUBLIC_DEVELOPER_WHERE,
@@ -58,19 +59,7 @@ const propertySearchArgs = z.object({
 async function normalizeCommunitySlugs(communities: string[] | undefined): Promise<string[] | undefined> {
   if (!communities?.length) return communities;
   const all = await db.community.findMany({ where: PUBLIC_COMMUNITY_WHERE, select: { slug: true, name: true } });
-  const byName = new Map(all.map((c) => [c.name.toLowerCase().replace(/[^a-z0-9]/g, ""), c.slug]));
-  const bySlug = new Set(all.map((c) => c.slug));
-  return communities
-    .map((c) => {
-      if (bySlug.has(c)) return c;
-      const norm = c.toLowerCase().replace(/[^a-z0-9]/g, "");
-      if (byName.has(norm)) return byName.get(norm)!;
-      // partial match
-      for (const [name, slug] of byName) if (name.includes(norm) || norm.includes(name)) return slug;
-      // Keep unknown criteria: removing them would silently widen the request.
-      return c;
-    })
-    .filter((c): c is string => !!c);
+  return resolveAdvisorCommunities(communities, all);
 }
 
 async function execPropertySearch(args: z.infer<typeof propertySearchArgs>): Promise<ToolResult> {

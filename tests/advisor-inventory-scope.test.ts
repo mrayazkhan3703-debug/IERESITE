@@ -3,6 +3,7 @@ import { advisorListingTypes, advisorListingTypeSchema } from "@/server/ai/inven
 import { LocalSearchProvider } from "@/server/search/local-provider";
 import { searchStateSchema, type IndexedProperty } from "@/server/search/types";
 import { propertyCards } from "@/server/ai/attachments";
+import { resolveAdvisorCommunities } from "@/server/ai/community-criteria";
 
 function document(type: "SALE" | "RENT" | "SHORT_TERM", price: bigint): IndexedProperty {
   return {
@@ -22,6 +23,13 @@ function document(type: "SALE" | "RENT" | "SHORT_TERM", price: bigint): IndexedP
 }
 
 describe("Advisor inventory listing scope", () => {
+  test("Arabic names cannot become empty keys that match every unknown community", () => {
+    const communities = [{ name: "مجتمع الاختبار الزمردي", slug: "arabic-fixture" }, { name: "Dubai Marina", slug: "dubai-marina" }];
+    expect(resolveAdvisorCommunities(["unknown-community-that-must-not-be-removed"], communities)).toEqual(["unknown-community-that-must-not-be-removed"]);
+    expect(resolveAdvisorCommunities(["مُجتمع الاختبار الزمردي", "Marina", "dubai-marina"], communities)).toEqual(["arabic-fixture", "dubai-marina", "dubai-marina"]);
+    expect(resolveAdvisorCommunities(["???"], [...communities, { name: "!!!", slug: "empty-key" }])).toEqual(["???"]);
+    expect(resolveAdvisorCommunities(["Marina"], [...communities, { name: "Other Marina", slug: "other-marina" }])).toEqual(["Marina"]);
+  });
   test("cards retain recorded transaction type and rental frequency without inventing missing values", () => {
     const cards = propertyCards({ properties: [
       { slug: "concord-fixture", title: "Concord Fixture", listingType: "SHORT_TERM", rentFrequency: "DAILY", priceAed: 500, isDemoData: true, sourceType: "INDEX" },
