@@ -26,7 +26,9 @@ import { ADVISOR_PROCESSING_MS, requireTurnBudget, withinTurnBudget } from "./tu
 import { advisorFailureReply } from "./failure-reply";
 import { containsAdvisorToolEnvelope } from "./tool-output";
 import { advisorListingTypeSchema } from "./inventory-listing-scope";
-import { AiProviderBlockedError } from "./controls";
+import { AiProviderBlockedError, advisorConversationQuotaReached } from "./controls";
+import { advisorFollowupContext } from "./followup-context";
+import { hasApprovedKnowledge } from "@/server/rag/availability";
 import { advisorLocaleInstruction, extractArabicSearchCriteria } from "./locale";
 import { TOOLS, toolByName } from "./tools";
 import { retrieve } from "@/server/rag/pipeline";
@@ -193,7 +195,11 @@ function describeSchema(schema: z.ZodTypeAny): string {
 
 /** Same prompt builder used by real turns and owner-only request-shape diagnostics. */
 export async function advisorSystemPrompt(locale = "en", scope?: AdvisorScope) {
-  return SYSTEM_PROMPT.replace("{{TOOLS}}", toolsBlock()).replace("{{SCOPE}}", await scopeContextBlock(scope)).replace("{{LOCALE}}", advisorLocaleInstruction(locale));
+  const [scopeBlock, knowledgeAvailable] = await Promise.all([scopeContextBlock(scope), hasApprovedKnowledge(locale)]);
+  const knowledge = knowledgeAvailable
+    ? "Approved current knowledge is indexed for this language. Use lookup_knowledge and cite returned passages before making sourced claims; approval does not independently verify inventory."
+    : "No approved current knowledge documents are indexed for this language. State this explicitly when describing your capabilities or discussing regulations. Do not say recorded inventory came from approved channels. You can still search recorded inventory and calculate scenarios; do not invent regulatory guidance or citations.";
+  return SYSTEM_PROMPT.replace("{{TOOLS}}", toolsBlock()).replace("{{SCOPE}}", scopeBlock).replace("{{LOCALE}}", advisorLocaleInstruction(locale)) + "\nKNOWLEDGE AVAILABILITY: " + knowledge;
 }
 
 /* Conversation persistence ----------------------------------------------------- */
@@ -284,7 +290,7 @@ export async function advisorTurn(opts: {
   const deadlineAt = Math.min(opts.deadlineAt ?? Infinity, Date.now() + ADVISOR_PROCESSING_MS);
   const conversation = await db.aiConversation.findUnique({ where: { id: opts.conversationId } });
   if (!conversation) throw new Error("Conversation not found");
-  if (conversation.messageCount > 60) {
+  if (advisorConversationQuotaReached(conversation.messageCount, config.AI_USAGE_LIMIT_MODE)) {
     return {
       reply: "This conversation has reached its length limit. Please start a new chat, or use the consultation form to contact an advisor. This chat has not been transferred.",
       citations: [],
@@ -329,7 +335,10 @@ export async function advisorTurn(opts: {
   const communitySnapshots: Awaited<ReturnType<typeof communityCard>>[] = [];
   const communityRaw: Parameters<typeof communityComparison>[0] = [];
 
-  const systemPrompt = await withinTurnBudget(() => advisorSystemPrompt(opts.locale, opts.scope), deadlineAt);
+  const [basePrompt, followupContext] = await withinTurnBudget(() => Promise.all([
+    advisorSystemPrompt(opts.locale, opts.scope), advisorFollowupContext(opts.conversationId),
+  ]), deadlineAt);
+  const systemPrompt = basePrompt + followupContext;
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     ...persistedHistory.reverse().map((message) => ({

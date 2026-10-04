@@ -34,6 +34,19 @@ export type AiBudgetUsage = {
   completionTokens: number | null;
 };
 
+export function aiUsageQuotaDecision(
+  totals: { requestsToday: number; reservedTokensToday: number }, requestedTokens: number,
+  dailyRequestLimit: number, dailyTokenLimit: number, mode: "capped" | "unlimited" = "capped",
+): "AI_DAILY_REQUEST_LIMIT" | "AI_DAILY_TOKEN_LIMIT" | null {
+  if (mode === "unlimited") return null;
+  if (totals.requestsToday >= dailyRequestLimit) return "AI_DAILY_REQUEST_LIMIT";
+  return totals.reservedTokensToday + requestedTokens > dailyTokenLimit ? "AI_DAILY_TOKEN_LIMIT" : null;
+}
+
+export function advisorConversationQuotaReached(messageCount: number, mode: "capped" | "unlimited") {
+  return mode === "capped" && messageCount > 60;
+}
+
 export function aiBudgetDecision(
   rows: AiBudgetUsage[],
   requestedTokens: number,
@@ -41,11 +54,10 @@ export function aiBudgetDecision(
   dailyTokenLimit: number,
   unknownUsageReserveTokens: number,
 ): "AI_DAILY_REQUEST_LIMIT" | "AI_DAILY_TOKEN_LIMIT" | null {
-  if (rows.length >= dailyRequestLimit) return "AI_DAILY_REQUEST_LIMIT";
   const consumed = rows.reduce((sum, row) => {
     if (row.reservedTokens > 0) return sum + row.reservedTokens;
     if (row.promptTokens === null || row.completionTokens === null) return sum + unknownUsageReserveTokens;
     return sum + row.promptTokens + row.completionTokens;
   }, 0);
-  return consumed + requestedTokens > dailyTokenLimit ? "AI_DAILY_TOKEN_LIMIT" : null;
+  return aiUsageQuotaDecision({ requestsToday: rows.length, reservedTokensToday: consumed }, requestedTokens, dailyRequestLimit, dailyTokenLimit);
 }

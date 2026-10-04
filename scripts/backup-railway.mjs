@@ -1,4 +1,4 @@
-// Dedicated short-lived backup service. No application env loading, private age keys, or deletion of remote backups.
+// Hosted encrypted capture. Approved namespace retention is explicit and disabled by default.
 import { mkdtemp, writeFile, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, relative, isAbsolute } from "node:path";
@@ -8,9 +8,11 @@ import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3
 import { captureHosted } from "./backup-hosted.mjs";
 import { uploadExistingBackup, validateConfig, validateReceipt, assessReceipt } from "./backup-adapter.mjs";
 import { validateHostedSource } from "./backup-hosted.mjs";
+import { databaseTransport } from "./backup-source-policy.mjs";
+import { runBackupRetention } from "./backup-retention.mjs";
 
 const fail = code => { throw new Error(code); };
-export const SAFE_BACKUP_ERROR_CODES = new Set(["RECOVERY_GATE_REQUIRED", "STORAGE_CAP_REACHED", "REFERENCED_OBJECT_MISSING", "OBJECT_CAPTURE_INCOMPLETE", "LATEST_RECEIPT_MISMATCH", "SOURCE_EXTENSIONS_MISSING", "UNSUPPORTED_MEDIA_KEY", "SOURCE_CA_REQUIRED", "INVALID_HOSTED_SOURCE", "PUBLIC_RECIPIENT_REQUIRED", "STORAGE_CAP_REQUIRED", "BACKUP_CREDENTIALS_REQUIRED", "SEPARATE_BACKUP_BUCKET_REQUIRED", "HOSTED_TOOL_FAILED", "MEDIA_BOUND_EXCEEDED", "INVALID_BACKUP_RECEIPT"]);
+export const SAFE_BACKUP_ERROR_CODES = new Set(["RETENTION_LOCK_REQUIRED", "RETENTION_VALIDATION_FAILED", "RECOVERY_GATE_REQUIRED", "STORAGE_CAP_REACHED", "REFERENCED_OBJECT_MISSING", "OBJECT_CAPTURE_INCOMPLETE", "LATEST_RECEIPT_MISMATCH", "SOURCE_EXTENSIONS_MISSING", "UNSUPPORTED_MEDIA_KEY", "SOURCE_CA_REQUIRED", "INVALID_HOSTED_SOURCE", "PUBLIC_RECIPIENT_REQUIRED", "STORAGE_CAP_REQUIRED", "BACKUP_CREDENTIALS_REQUIRED", "SEPARATE_BACKUP_BUCKET_REQUIRED", "HOSTED_TOOL_FAILED", "MEDIA_BOUND_EXCEEDED", "INVALID_BACKUP_RECEIPT"]);
 export function railwayBackupConfiguration(env) {
   const source = validateHostedSource({ format: 1, sourceId: env.BACKUP_SOURCE_ID,
     databaseUrl: env.BACKUP_DATABASE_URL, databaseTransport: env.BACKUP_DATABASE_TRANSPORT,
@@ -26,7 +28,27 @@ export function railwayBackupConfiguration(env) {
     region: "auto", forcePathStyle: true, bucket: env.BACKUP_BUCKET, prefix: `live-backups/${source.sourceId}`,
     maxStoredBytes, recipientFile: resolve(tmpdir(), "public-recipient"), credentialFile: resolve(tmpdir(), "backup-credentials") });
   if (source.bucket === destination.bucket) fail("SEPARATE_BACKUP_BUCKET_REQUIRED");
-  return { source, recipient, destination, credentials: { accessKeyId: env.BACKUP_ACCESS_KEY_ID, secretAccessKey: env.BACKUP_SECRET_ACCESS_KEY } };
+  const retentionEnabled = env.BACKUP_RETENTION_ENABLED === "true";
+  if (env.BACKUP_RETENTION_ENABLED && !["true", "false"].includes(env.BACKUP_RETENTION_ENABLED)) fail("RETENTION_VALIDATION_FAILED");
+  if (retentionEnabled && (source.sourceId !== "railway-main" || destination.bucket !== "iere" || maxStoredBytes !== 1073741824)) fail("RETENTION_VALIDATION_FAILED");
+  return { source, recipient, destination, retentionEnabled, credentials: { accessKeyId: env.BACKUP_ACCESS_KEY_ID, secretAccessKey: env.BACKUP_SECRET_ACCESS_KEY } };
+}
+
+async function approvedRetention(store, config) {
+  const { SQL } = await import("bun");
+  const sql = new SQL(config.source.databaseUrl, { max: 1, connectionTimeout: 15, idleTimeout: 0, maxLifetime: 0,
+    tls: databaseTransport(config.source).tls });
+  let connection, locked = false;
+  try {
+    connection = await sql.reserve();
+    const [row] = await connection`SELECT pg_try_advisory_lock(633428174781274::bigint) AS locked`;
+    if (!row.locked) fail("RETENTION_LOCK_REQUIRED");
+    locked = true;
+    return await runBackupRetention({ store, config: config.destination, apply: true, lockHeld: true });
+  } finally {
+    try { if (connection && locked) await connection`SELECT pg_advisory_unlock(633428174781274::bigint)`; }
+    finally { connection?.release(); await sql.close(); }
+  }
 }
 
 export function requireRailwayRecovery(env, sourceId, now = Date.now()) {
@@ -81,7 +103,11 @@ export async function runRailwayBackup(action, env) {
     progress({ phase: "LATEST_RECEIPT" });
     const previous = await latestRailwayReceipt(store, config.destination);
     progress({ phase: "LATEST_RECEIPT_COMPLETE" });
-    if (action === "report") return previous ? assessReceipt(previous.receipt, config.destination) : { status: "BACKUP_MISSING", achievedRpo: "NOT_VERIFIED", achievedRto: "NOT_VERIFIED" };
+    if (action === "report") return previous ? { ...assessReceipt(previous.receipt, config.destination), retentionEnabled: config.retentionEnabled, deletionAuthorized: config.retentionEnabled } : { status: "BACKUP_MISSING", achievedRpo: "NOT_VERIFIED", achievedRto: "NOT_VERIFIED" };
+    if (config.retentionEnabled) {
+      const cleanup = await approvedRetention(store, config);
+      progress({ phase: "RETENTION_BEFORE", objects: cleanup.removedRuns, totalBytes: cleanup.removedBytes });
+    }
     root = await mkdtemp(resolve(tmpdir(), "iere-railway-backup-"));
     const recipientFile = resolve(root, "recipients.txt"), credentialFile = resolve(root, "credentials.json");
     await writeFile(recipientFile, `${config.recipient}\n`, { mode: 0o600, flag: "wx" });
@@ -94,10 +120,14 @@ export async function runRailwayBackup(action, env) {
     progress({ phase: "ENCRYPT_UPLOAD_COMPLETE" });
     // A compare-and-set pointer avoids an older concurrent run replacing the latest recovery point.
     await publishLatestRailwayReceipt(store, destination, receipt);
+    if (config.retentionEnabled) {
+      const cleanup = await approvedRetention(store, config);
+      progress({ phase: "RETENTION_AFTER", objects: cleanup.removedRuns, totalBytes: cleanup.removedBytes });
+    }
     return { status: "VERIFIED_CIPHERTEXT_ONLY", sourceId: manifest.sourceId, runId: receipt.runId, objectCount: manifest.objectStorage.objectCount,
       backupCreatedAtUtc: manifest.createdAtUtc, verifiedAtUtc: receipt.verifiedAtUtc, previousCaptureAgeSeconds: previous ? (Date.now() - Date.parse(previous.receipt.createdAtUtc)) / 1000 : null,
       staleBeforeCapture: previous ? Date.now() - Date.parse(previous.receipt.createdAtUtc) > 3600000 : true,
-      privateIdentityRequired: false, deletionEnabled: false, achievedRpo: "NOT_VERIFIED", achievedRto: "NOT_VERIFIED" };
+      privateIdentityRequired: false, deletionEnabled: config.retentionEnabled, achievedRpo: "NOT_VERIFIED", achievedRto: "NOT_VERIFIED" };
   } finally {
     store.destroy();
     if (root) {

@@ -119,7 +119,7 @@ jobs:
       - name: Isolated encrypted S3 backup adapter (synthetic only)
         run: |
           docker build -f docker/backup-tools.Dockerfile -t iere-local-backup-tools .
-          docker run --rm --network none --entrypoint bun iere-local-backup-tools --no-env-file test tests/backup-adapter.test.ts tests/backup-storage-cap.test.ts tests/hosted-backup.test.ts tests/railway-backup.test.ts tests/r2-backup-verification.test.ts tests/backup-operations-report.test.ts tests/disposable-environment.test.ts tests/transition-capture.test.ts
+          docker run --rm --network none --entrypoint bun iere-local-backup-tools --no-env-file test tests/backup-adapter.test.ts tests/backup-storage-cap.test.ts tests/backup-retention.test.ts tests/hosted-backup.test.ts tests/railway-backup.test.ts tests/r2-backup-verification.test.ts tests/backup-operations-report.test.ts tests/disposable-environment.test.ts tests/transition-capture.test.ts
           node scripts/verify-backup-adapter.mjs
 
       - name: Seed deterministic browser fixtures

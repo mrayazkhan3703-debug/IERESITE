@@ -10,6 +10,10 @@ async function run(mode: string) {
   return JSON.parse(line.slice("GATEWAY_EVIDENCE ".length)) as { calls: number; code: string | null; result: { content: string; costMicros: number | null; model: string } | null; rows: { kind: string; status: string; reservedTokens: number; errorCode: string | null }[] };
 }
 describe("Inception gateway controls (isolated database and network mocks)", () => {
+  test("unlimited mode sends a real-provider-shaped request past the daily budget and records usage", async () => {
+    const evidence = await run("unlimited"); expect(evidence.code).toBeNull(); expect(evidence.calls).toBe(1);
+    expect(evidence.rows).toHaveLength(2); expect(evidence.rows[1]).toMatchObject({ status: "SUCCEEDED", reservedTokens: 20 });
+  });
   test("selected provider records known usage and no invented monetary cost", async () => {
     const evidence = await run("success"); expect(evidence.code).toBeNull(); expect(evidence.calls).toBe(1);
     expect(evidence.result).toMatchObject({ model: "mercury-2.5", costMicros: null }); expect(evidence.rows[0]).toMatchObject({ status: "SUCCEEDED", reservedTokens: 20 });

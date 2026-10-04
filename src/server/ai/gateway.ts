@@ -7,7 +7,8 @@ import { db } from "@/lib/db";
 import { getConfig } from "@/lib/config";
 import { logEvent } from "@/server/rate-limit";
 import { Prisma } from "@prisma/client";
-import { aiBudgetDecision, aiProviderGateCode, AiProviderBlockedError, estimateAiPromptCharacters, estimateAiReservationTokens } from "./controls";
+import { aiUsageQuotaDecision, aiProviderGateCode, AiProviderBlockedError, estimateAiPromptCharacters, estimateAiReservationTokens } from "./controls";
+import { aiDailyUsageTotals } from "./usage-totals";
 import { generateWithInception, inceptionConfigCode } from "./inception-provider";
 import { AiProviderError } from "./provider-error";
 import { aiRetryDelay } from "./retry-policy";
@@ -74,18 +75,10 @@ async function reserveLiveAiUsage(provider: string, model: string, req: ChatRequ
         logEvent("ai.request_blocked", { provider, code: blockedCode });
         throw new AiProviderBlockedError(blockedCode);
       }
-      const usage = await tx.aiUsage.findMany({
-        where: { createdAt: { gte: utcDayStart(now) } },
-        select: { reservedTokens: true, promptTokens: true, completionTokens: true },
-        take: config.AI_DAILY_REQUEST_LIMIT + 1,
-      });
-      const budgetCode = aiBudgetDecision(
-        usage,
-        reservationTokens,
-        config.AI_DAILY_REQUEST_LIMIT,
-        config.AI_DAILY_TOKEN_LIMIT,
-        config.AI_MAX_OUTPUT_TOKENS,
-      );
+      const usage = config.AI_USAGE_LIMIT_MODE === "unlimited" ? { requestsToday: 0, reservedTokensToday: 0 }
+        : await aiDailyUsageTotals(tx, utcDayStart(now), config.AI_MAX_OUTPUT_TOKENS);
+      const budgetCode = aiUsageQuotaDecision(usage, reservationTokens, config.AI_DAILY_REQUEST_LIMIT,
+        config.AI_DAILY_TOKEN_LIMIT, config.AI_USAGE_LIMIT_MODE);
       if (budgetCode) {
         logEvent("ai.request_blocked", { provider, code: budgetCode });
         throw new AiProviderBlockedError(budgetCode);

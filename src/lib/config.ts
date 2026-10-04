@@ -63,6 +63,7 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-3.8-flash"),
   AI_LIVE_ENABLED: bool(false),
+  AI_USAGE_LIMIT_MODE: z.enum(["capped", "unlimited"]).default("capped"),
   AI_DAILY_REQUEST_LIMIT: boundedInt(25, 1000),
   AI_DAILY_TOKEN_LIMIT: boundedInt(60000, 500000),
   AI_MAX_PROMPT_CHARS: boundedInt(48000, 200000),

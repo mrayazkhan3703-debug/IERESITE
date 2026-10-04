@@ -68,7 +68,7 @@ try {
     "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,noexec,size=64m", "-e", "POSTGRES_USER=backup_fixture", "-e", "POSTGRES_DB=backup_fixture",
     "-e", "POSTGRES_HOST_AUTH_METHOD=trust", "--user", "0:0", "--entrypoint", "docker-entrypoint.sh", image, "postgres"]);
   const storage = own("container", ["create", "--label", label, "--network", network, "--network-alias", "backup-fixture-store",
-    "--tmpfs", "/data:rw,nosuid,noexec,size=256m", "-e", "AWS_ACCESS_KEY_ID=backup_fixture", "-e", "AWS_SECRET_ACCESS_KEY=synthetic_fixture_only",
+    "--tmpfs", "/data:rw,nosuid,noexec,size=512m", "-e", "AWS_ACCESS_KEY_ID=backup_fixture", "-e", "AWS_SECRET_ACCESS_KEY=synthetic_fixture_only",
     storageImage, "mini", "-dir=/data"]);
   docker(["start", database, storage]);
   await until(() => docker(["exec", database, "pg_isready", "-U", "backup_fixture", "-d", "backup_fixture"]), "database");
@@ -97,7 +97,7 @@ try {
   job("seed");
   const uploaded = job("upload");
   if (!uploaded.multipartArchive || !uploaded.uploaderIdentityAbsent) throw new Error("Multipart/identity separation not exercised");
-  job("restore"); job("wrong-key"); job("corrupt");
+  job("restore"); job("wrong-key"); job("retention"); job("corrupt");
   // Query the recovered archive in a clean synthetic database, not working PostgreSQL.
   const recovered = resolve(directory, "restored/restored/database.dump");
   const restoreContainer = own("container", ["create", "--label", label, "--network", network,

@@ -12,7 +12,8 @@ const schema = z.object({ query: z.string().min(3).max(400), locale: z.enum(["en
 export const POST = apiHandler(
   async (req) => {
     const config = getConfig();
-    const rl = rateLimit(`nl:${clientIp(req)}`, config.AI_RATE_LIMIT_PER_HOUR, 3600_000);
+    const rl = config.AI_USAGE_LIMIT_MODE === "unlimited" ? { ok: true, retryAfterSec: 0 }
+      : rateLimit(`nl:${clientIp(req)}`, config.AI_RATE_LIMIT_PER_HOUR, 3600_000);
     if (!rl.ok) {
       return NextResponse.json({ error: "Natural-language search limit reached. Use the filters or try later.", code: "RATE_LIMITED" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } });
     }

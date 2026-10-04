@@ -11,7 +11,7 @@ import { hashFile, ARCHIVE_LIMIT } from "./backup-adapter.mjs";
 import { databaseTransport, objectNamespace, staticMediaKey } from "./backup-source-policy.mjs";
 
 const fail = code => { throw new Error(code); };
-export const BACKUP_PHASES = new Set(["LATEST_RECEIPT", "LATEST_RECEIPT_COMPLETE", "SOURCE_CONNECT", "SOURCE_SNAPSHOT", "SOURCE_INVENTORY", "DATABASE_DUMP", "DATABASE_DUMP_COMPLETE", "OBJECT_CAPTURE", "OBJECT_PROGRESS", "OBJECT_CAPTURE_COMPLETE", "ARCHIVE_VALIDATION", "CAPTURE_COMPLETE", "ENCRYPT_UPLOAD", "ENCRYPT_UPLOAD_COMPLETE"]);
+export const BACKUP_PHASES = new Set(["RETENTION_BEFORE", "RETENTION_AFTER", "LATEST_RECEIPT", "LATEST_RECEIPT_COMPLETE", "SOURCE_CONNECT", "SOURCE_SNAPSHOT", "SOURCE_INVENTORY", "DATABASE_DUMP", "DATABASE_DUMP_COMPLETE", "OBJECT_CAPTURE", "OBJECT_PROGRESS", "OBJECT_CAPTURE_COMPLETE", "ARCHIVE_VALIDATION", "CAPTURE_COMPLETE", "ENCRYPT_UPLOAD", "ENCRYPT_UPLOAD_COMPLETE"]);
 export function validateHostedSource(value, fixture = false) {
   if (value?.format !== 1 || !/^[a-z0-9][a-z0-9-]{2,80}$/.test(value.sourceId ?? "") ||
       !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value.bucket ?? "") ||
