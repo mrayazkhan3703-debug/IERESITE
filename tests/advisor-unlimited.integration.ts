@@ -69,6 +69,6 @@ test("knowledge capability requires current approved indexed revisions and fresh
   expect(await hasApprovedKnowledge("ar", now)).toBe(false);
   await db.ragChunk.updateMany({ where: { documentId: id }, data: { documentVersion: 2 } });
   expect(await hasApprovedKnowledge("ar", now)).toBe(true);
-  await db.ragSource.update({ where: { id }, data: { freshnessReviewDueAt: past } });
+  await db.ragSource.update({ where: { id }, data: { freshnessReviewDueAt: past, verifiedAt: new Date(past.getTime() - 1000) } });
   expect(await hasApprovedKnowledge("ar", now)).toBe(false);
 });
