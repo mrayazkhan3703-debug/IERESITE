@@ -1,5 +1,9 @@
 # Railway company launch checkpoint
 
+## Accepted application release — 4 October 2026, 10:22 UTC
+
+Web/Worker exact `19476d9` are SUCCESS after full CI `37192779736` PASS. Current record/media preservation, bilingual routes, Concord Tower lookup, worker health and fresh hosted encrypted capture pass. Ten clean final-release AI turns, approved company content, reviewed backup capacity/retention and Cloudflare public-domain privacy review remain pending; CRM/company SMTP stay skipped. The roughly four-hour remaining backup capacity is not continuous protection. See [current release evidence](RAILWAY_RELEASE_20261004.md); this supersedes older candidate/recovery-blocked notes below. Company testing remains noindex, with no data reset or demo cleanup.
+
 ## Current continuation — 4 October 2026
 
 Actual Railway encrypted recovery is now accepted for capture `a43857db13d74050936bc7f4a9f90e61`: 119 tables, 44 migrations, 123 referenced R2/static assets, permissions, public media/video/ranges, protected owner PDF, post-delivery counts and isolated cleanup PASS. The existing Worker now runs 30-minute hosted captures; first point at 08:53:31 UTC passes complete ciphertext readback and cleanup. Successive cadence and sufficient retained capacity remain to verify. Existing private age identity is local only, and its separate owner-held copy was confirmed.

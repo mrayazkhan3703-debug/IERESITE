@@ -1,5 +1,9 @@
 # Execution State
 
+## Accepted application release — 4 October 2026, 10:22 UTC
+
+Exact `19476d9b0498601446a594766328eb983289de44` passed complete CI `37192779736` and is live on both Railway Web/Worker; matching merge/head trees verified. Advisor now finds Concord Tower's SHORT_TERM listing, preserves unknown Arabic community criteria and renders bilingual rental intent accurately. Ten live routes, all 29 profiles/24 properties/58 media fingerprints, five company media hashes and private-file denial pass. Actual hosted recovery and three observed 30-minute captures pass; after a stalled first post-deploy upload, one Worker restart produces fresh verified capture `98348fdb393b434687d7f9effb8ae8e0` with cleanup PASS. Four fresh Mercury transport/replay/reload turns pass; ten clean final-release turns remain pending after daily budget reset (57,589/60,000 reserved). Backup capacity is about four hours at 10:22 UTC; owner retention/storage preference is pending, no deletion/cap increase. CRM/SMTP remain skipped. Full evidence and launch dependencies: [RAILWAY_RELEASE_20261004.md](RAILWAY_RELEASE_20261004.md). This section supersedes historical statuses below; customer launch is not claimed.
+
 ## Current continuation (2026-10-04)
 
 - Update at 09:37 UTC: second scheduled capture `379832849efc4eb890aa405055e78dcd` completed 09:23:32 UTC, readback/cleanup PASS and stale-prior false. Its source snapshot was 29 minutes 59.895 seconds after the first scheduled point: cadence PASS for this observed interval, not a long-term RPO claim. Read-only company media and original-record checks remain PASS. Candidate `81b9f43` passes the previously failing database integration; it is superseded before deployment to complete short-term English/Arabic chips, refine queries and shared NL parsing. Full passing gate on the combined candidate is still required.

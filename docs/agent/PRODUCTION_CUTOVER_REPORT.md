@@ -1,5 +1,9 @@
 # IERESITE release and production cutover report
 
+## Accepted application release — 4 October 2026, 10:22 UTC
+
+Railway Web/Worker exact `19476d9` pass full CI `37192779736` and live route/record/media/private-access checks. Concord Tower SHORT_TERM lookup is corrected and owner data is unchanged. Genuine hosted database/media recovery, two successive 30-minute capture intervals and a fresh post-release encrypted backup pass. One upload stalls; interrupted cleanup and one restart recover capture without losing the previous verified pointer. Ten clean final-release AI turns still require budget reset; current reserved usage is 57,589/60,000. Backup storage has about four hours left and awaits owner retention/storage review. Company facts/approved knowledge, final testing/demo cleanup and Cloudflare public-domain policy review remain launch conditions. CRM/company SMTP stay skipped. [Full current evidence](RAILWAY_RELEASE_20261004.md) supersedes historical gates below; company testing is usable, customer launch is not accepted.
+
 ## Current continuation — 4 October 2026
 
 Railway actual encrypted recovery passed 119 tables / 44 migrations / 123 referenced R2 and static assets, application permissions, public image/video/ranges, captured owner-private PDF access/denials, post-delivery counts, disabled outbound jobs and isolated cleanup. Capture `a43857db13d74050936bc7f4a9f90e61` is genuine Railway source evidence. The 18.445-second scripted restoration is not an achieved incident RTO. Hosted scheduling now shares the existing accepted Worker; first 30-minute point completed 08:53:31 UTC with encrypted readback PASS. The 1 GiB whole-bucket cap and disabled deletion leave finite headroom of approximately six hours at initial activation; continuous long-term protection needs a reviewed capacity/retention decision.

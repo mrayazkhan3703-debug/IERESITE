@@ -1,5 +1,18 @@
 # Phase Checklist
 
+## Verified release — 4 October 2026, 10:22 UTC
+
+- [x] Full exact application gate `19476d9` / CI `37192779736`, including 427 unit, 163 integration, 75 backup contracts, 121 browser journeys, 16 delivery measurements and eight performance cases.
+- [x] Both Railway services deploy that commit; 44 migrations, fresh worker heartbeat, zero pending/dead-letter jobs and ten live routes pass.
+- [x] Correct Concord Tower lookup, Unicode community criteria and bilingual SHORT_TERM labels; preserve all company records/media and owner choices.
+- [x] Actual hosted restoration, observed two 30-minute intervals and fresh post-release ciphertext readback/cleanup pass. One stalled capture is unusable and a single restart recovers it without overwriting the last verified point.
+- [ ] Ten clean final-release Mercury turns after daily budget reset; four new transport successes and durable replay/reload are insufficient for this gate.
+- [ ] Owner-reviewed ongoing backup capacity/retention; about four hours of space remains. No automatic deletion/cap increase.
+- [ ] Approved company facts/content, final testing/demo archival and Cloudflare public-domain privacy review before customer launch.
+- [x] CRM/company SMTP and unnecessary adapters remain deferred as requested.
+
+Details: [RAILWAY_RELEASE_20261004.md](RAILWAY_RELEASE_20261004.md). This current section supersedes historical checklists below.
+
 ## Current verification on 4 October 2026
 
 - [x] Recover an actual encrypted Railway/PostgreSQL/R2 capture: 119 tables, 44 migrations, 123 referenced R2/static assets, permissions, images/video/ranges/private PDF, post-delivery counts and outbound-disabled cleanup PASS.
